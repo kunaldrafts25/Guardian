@@ -1,0 +1,18 @@
+# Configuration for code coverage
+coverage:
+  # Exclude generated files
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - "**/generated_plugin_registrant.dart"
+    - "**/*.config.dart"
+    - "**/firebase_options.dart"
+    - "lib/generated/**"
+    - "lib/l10n/**"
+  
+  # Minimum coverage percentage
+  minimum: 70
+  
+  # Files to include in coverage report
+  include:
+    - "lib/**"
