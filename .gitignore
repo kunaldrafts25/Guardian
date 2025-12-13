@@ -57,3 +57,8 @@ android/**/local.properties
 .env.local
 .env.*.local
 ios/Runner/Config.xcconfig
+
+# Firebase configuration files (contain API keys)
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+lib/firebase_options.dart
