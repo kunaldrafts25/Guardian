@@ -1,37 +1,28 @@
 /*
  * Guardian - Women's Safety App
  * © 2025 All Rights Reserved - Kunal Singh
- * Contact: kunalsingh2514@gmail.com
+ * 
+ * Mock Data Service - Compatibility layer backed by Cloud Firestore
+ * This provides a simple interface for features that haven't migrated to Firebase yet
  */
 
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:guardian/core/utils/logger.dart';
 
-/// A service for managing mock data that replaces Firebase functionality
+/// Compatibility layer for MockDataService backed by Cloud Firestore
 class MockDataService {
-  static final MockDataService _instance = MockDataService._internal();
-  static SharedPreferences? _prefs;
+  static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  static final FirebaseAuth _auth = FirebaseAuth.instance;
   static bool _initialized = false;
 
-  // Collection names
-  static const String _usersCollection = 'users';
-  static const String _alertsCollection = 'alerts';
-  static const String _productsCollection = 'products';
-  static const String _incidentsCollection = 'incidents';
-  static const String _safetyTipsCollection = 'safetyTips';
-
-  // Current user data
+  // Current user data (cached)
   static Map<String, dynamic>? _currentUser;
   static String? _currentUserId;
 
-  // Factory constructor
-  factory MockDataService() {
-    return _instance;
-  }
-
-  // Internal constructor
-  MockDataService._internal();
+  // Getters for current user
+  static Map<String, dynamic>? get currentUser => _currentUser;
+  static String? get currentUserId => _currentUserId;
 
   // Initialize the service
   static Future<bool> initialize() async {
@@ -41,19 +32,19 @@ class MockDataService {
     }
 
     try {
-      _prefs = await SharedPreferences.getInstance();
+      // Listen to auth state changes to update current user
+      _auth.authStateChanges().listen((user) {
+        if (user != null) {
+          _currentUserId = user.uid;
+          _loadCurrentUser(user.uid);
+        } else {
+          _currentUser = null;
+          _currentUserId = null;
+        }
+      });
+
       _initialized = true;
-
-      // Initialize collections with default data if they don't exist
-      await _initializeCollectionIfEmpty(_usersCollection, []);
-      await _initializeCollectionIfEmpty(_alertsCollection, []);
-      await _initializeCollectionIfEmpty(
-          _productsCollection, _getDefaultProducts());
-      await _initializeCollectionIfEmpty(_incidentsCollection, []);
-      await _initializeCollectionIfEmpty(
-          _safetyTipsCollection, _getDefaultSafetyTips());
-
-      Logger.info('MockDataService initialized successfully');
+      Logger.info('MockDataService initialized (Firestore-backed)');
       return true;
     } catch (e) {
       Logger.error('Error initializing MockDataService', e);
@@ -61,22 +52,17 @@ class MockDataService {
     }
   }
 
-  // Initialize a collection with default data if it doesn't exist
-  static Future<void> _initializeCollectionIfEmpty(
-      String collection, List<Map<String, dynamic>> defaultData) async {
-    if (_prefs?.getString(collection) == null) {
-      await _prefs?.setString(collection, jsonEncode(defaultData));
-      Logger.info('Initialized $collection with default data');
+  // Load current user data from Firestore
+  static Future<void> _loadCurrentUser(String uid) async {
+    try {
+      final doc = await _firestore.collection('users').doc(uid).get();
+      _currentUser = doc.data();
+    } catch (e) {
+      Logger.error('Error loading current user', e);
     }
   }
 
-  // Get current user
-  static Map<String, dynamic>? get currentUser => _currentUser;
-
-  // Get current user ID
-  static String? get currentUserId => _currentUserId;
-
-  // Set current user
+  // Set current user (for compatibility)
   static void setCurrentUser(Map<String, dynamic> user, String userId) {
     _currentUser = user;
     _currentUserId = userId;
@@ -89,13 +75,14 @@ class MockDataService {
   }
 
   // Get all documents from a collection
-  static Future<List<Map<String, dynamic>>> getCollection(
-      String collection) async {
+  static Future<List<Map<String, dynamic>>> getCollection(String collection) async {
     try {
-      final String? data = _prefs?.getString(collection);
-      if (data == null) return [];
-
-      return List<Map<String, dynamic>>.from(jsonDecode(data));
+      final snapshot = await _firestore.collection(collection).get();
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
     } catch (e) {
       Logger.error('Error getting collection $collection', e);
       return [];
@@ -103,12 +90,15 @@ class MockDataService {
   }
 
   // Get a document by ID
-  static Future<Map<String, dynamic>?> getDocument(
-      String collection, String id) async {
+  static Future<Map<String, dynamic>?> getDocument(String collection, String id) async {
     try {
-      final List<Map<String, dynamic>> documents =
-          await getCollection(collection);
-      return documents.firstWhere((doc) => doc['id'] == id, orElse: () => {});
+      final doc = await _firestore.collection(collection).doc(id).get();
+      if (!doc.exists) return null;
+      final data = doc.data();
+      if (data != null) {
+        data['id'] = doc.id;
+      }
+      return data;
     } catch (e) {
       Logger.error('Error getting document $id from $collection', e);
       return null;
@@ -116,27 +106,24 @@ class MockDataService {
   }
 
   // Add a document to a collection
-  static Future<String> addDocument(
-      String collection, Map<String, dynamic> data) async {
+  static Future<String> addDocument(String collection, Map<String, dynamic> data) async {
     try {
-      final List<Map<String, dynamic>> documents =
-          await getCollection(collection);
-
-      // Generate a unique ID
-      final String id = DateTime.now().millisecondsSinceEpoch.toString();
-
-      // Add ID to the document
-      final Map<String, dynamic> newDoc = {
-        'id': id,
-        ...data,
-        'createdAt': DateTime.now().toIso8601String(),
-      };
-
-      documents.add(newDoc);
-
-      await _prefs?.setString(collection, jsonEncode(documents));
-
-      return id;
+      // If document has an ID, use it; otherwise let Firestore generate one
+      final String? existingId = data['id']?.toString();
+      
+      if (existingId != null) {
+        await _firestore.collection(collection).doc(existingId).set({
+          ...data,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        return existingId;
+      } else {
+        final docRef = await _firestore.collection(collection).add({
+          ...data,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        return docRef.id;
+      }
     } catch (e) {
       Logger.error('Error adding document to $collection', e);
       return '';
@@ -144,23 +131,12 @@ class MockDataService {
   }
 
   // Update a document in a collection
-  static Future<bool> updateDocument(
-      String collection, String id, Map<String, dynamic> data) async {
+  static Future<bool> updateDocument(String collection, String id, Map<String, dynamic> data) async {
     try {
-      final List<Map<String, dynamic>> documents =
-          await getCollection(collection);
-
-      final int index = documents.indexWhere((doc) => doc['id'] == id);
-      if (index == -1) return false;
-
-      documents[index] = {
-        ...documents[index],
+      await _firestore.collection(collection).doc(id).update({
         ...data,
-        'updatedAt': DateTime.now().toIso8601String(),
-      };
-
-      await _prefs?.setString(collection, jsonEncode(documents));
-
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
       return true;
     } catch (e) {
       Logger.error('Error updating document $id in $collection', e);
@@ -171,16 +147,7 @@ class MockDataService {
   // Delete a document from a collection
   static Future<bool> deleteDocument(String collection, String id) async {
     try {
-      final List<Map<String, dynamic>> documents =
-          await getCollection(collection);
-
-      final int index = documents.indexWhere((doc) => doc['id'] == id);
-      if (index == -1) return false;
-
-      documents.removeAt(index);
-
-      await _prefs?.setString(collection, jsonEncode(documents));
-
+      await _firestore.collection(collection).doc(id).delete();
       return true;
     } catch (e) {
       Logger.error('Error deleting document $id from $collection', e);
@@ -188,103 +155,10 @@ class MockDataService {
     }
   }
 
-  // Get users collection
-  static Future<List<Map<String, dynamic>>> getUsers() async {
-    return await getCollection(_usersCollection);
-  }
-
-  // Get alerts collection
-  static Future<List<Map<String, dynamic>>> getAlerts() async {
-    return await getCollection(_alertsCollection);
-  }
-
-  // Get products collection
-  static Future<List<Map<String, dynamic>>> getProducts() async {
-    return await getCollection(_productsCollection);
-  }
-
-  // Get incidents collection
-  static Future<List<Map<String, dynamic>>> getIncidents() async {
-    return await getCollection(_incidentsCollection);
-  }
-
-  // Get safety tips collection
-  static Future<List<Map<String, dynamic>>> getSafetyTips() async {
-    return await getCollection(_safetyTipsCollection);
-  }
-
-  // Default products data
-  static List<Map<String, dynamic>> _getDefaultProducts() {
-    return [
-      {
-        'id': '1',
-        'name': 'Guardian Bracelet',
-        'description':
-            'Stylish bracelet with emergency trigger button and Bluetooth connectivity. Water-resistant and long battery life.',
-        'price': 1999.0,
-        'imageUrl': 'https://via.placeholder.com/300',
-        'colors': ['Black', 'Silver', 'Rose Gold'],
-        'category': 'Bracelet',
-        'isAvailable': true,
-        'rating': 4.5,
-        'reviewCount': 128,
-      },
-      {
-        'id': '2',
-        'name': 'Safety Ring',
-        'description':
-            'Discreet ring with panic button. Connects to your phone via Bluetooth. Available in multiple sizes.',
-        'price': 2499.0,
-        'imageUrl': 'https://via.placeholder.com/300',
-        'colors': ['Silver', 'Gold', 'Black'],
-        'category': 'Ring',
-        'isAvailable': true,
-        'rating': 4.2,
-        'reviewCount': 85,
-      },
-      {
-        'id': '3',
-        'name': 'Guardian Pendant',
-        'description':
-            'Elegant pendant necklace with hidden SOS button. Perfect for formal occasions.',
-        'price': 1799.0,
-        'imageUrl': 'https://via.placeholder.com/300',
-        'colors': ['Silver', 'Gold'],
-        'category': 'Necklace',
-        'isAvailable': true,
-        'rating': 4.0,
-        'reviewCount': 62,
-      },
-    ];
-  }
-
-  // Default safety tips data
-  static List<Map<String, dynamic>> _getDefaultSafetyTips() {
-    return [
-      {
-        'id': '1',
-        'title': 'Stay Aware of Your Surroundings',
-        'content':
-            'Always be aware of your surroundings. Avoid using your phone while walking alone, especially at night.',
-        'category': 'General',
-        'imageUrl': 'https://via.placeholder.com/300',
-      },
-      {
-        'id': '2',
-        'title': 'Share Your Location',
-        'content':
-            'Let someone know where you are going and when you expect to arrive, especially when meeting someone new.',
-        'category': 'Travel',
-        'imageUrl': 'https://via.placeholder.com/300',
-      },
-      {
-        'id': '3',
-        'title': 'Trust Your Instincts',
-        'content':
-            'If something doesn\'t feel right, trust your instincts and remove yourself from the situation.',
-        'category': 'General',
-        'imageUrl': 'https://via.placeholder.com/300',
-      },
-    ];
-  }
+  // Convenience methods for specific collections
+  static Future<List<Map<String, dynamic>>> getUsers() async => getCollection('users');
+  static Future<List<Map<String, dynamic>>> getAlerts() async => getCollection('alerts');
+  static Future<List<Map<String, dynamic>>> getProducts() async => getCollection('products');
+  static Future<List<Map<String, dynamic>>> getIncidents() async => getCollection('incidents');
+  static Future<List<Map<String, dynamic>>> getSafetyTips() async => getCollection('safetyTips');
 }

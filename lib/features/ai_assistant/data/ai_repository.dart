@@ -11,7 +11,6 @@ import 'package:guardian/core/services/ai_service.dart' as ai_service;
 import 'package:guardian/core/utils/logger.dart';
 import 'package:guardian/core/utils/location_utils.dart';
 import 'package:guardian/features/ai_assistant/data/models/ai_model.dart';
-import 'package:guardian/features/safe_zones/data/safe_zone_repository.dart';
 
 /// Repository for handling AI assistant functionality
 class AIRepository {
@@ -20,7 +19,6 @@ class AIRepository {
   static const String _alertsCollection = 'safety_alerts';
 
   final ai_service.AIService _aiService = ai_service.AIService();
-  final SafeZoneRepository _safeZoneRepository;
 
   /// Stream controller for safety alerts
   final StreamController<SafetyAlert> _alertController =
@@ -29,9 +27,7 @@ class AIRepository {
   /// Stream of safety alerts
   Stream<SafetyAlert> get alertStream => _alertController.stream;
 
-  AIRepository({
-    required SafeZoneRepository safeZoneRepository,
-  }) : _safeZoneRepository = safeZoneRepository;
+  AIRepository();
 
   /// Get all safety advice for the user
   Future<List<SafetyAdvice>> getSafetyAdvice() async {
@@ -415,11 +411,8 @@ class AIRepository {
         throw Exception('Failed to get current location');
       }
 
-      // Get safety level for current location
-      final safetyLevel = await _safeZoneRepository.getSafetyLevelForLocation(
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
+      // TODO: Integrate with SafeZoneProvider for safety level
+      const safetyLevel = 'moderate';
 
       // Get address
       final address = await LocationUtils.getAddressFromPosition(position);
@@ -428,7 +421,7 @@ class AIRepository {
       final advice = await _aiService.generateLocationAdvice(
         latitude: position.latitude,
         longitude: position.longitude,
-        safetyLevel: safetyLevel['level'] as String,
+        safetyLevel: safetyLevel,
         address: address,
       );
 
@@ -438,14 +431,14 @@ class AIRepository {
         title: 'Safety Advice for ${address ?? 'Current Location'}',
         content: advice,
         type: AdviceType.location,
-        riskLevel: _getRiskLevelFromSafetyLevel(safetyLevel['level'] as String),
+        riskLevel: _getRiskLevelFromSafetyLevel(safetyLevel),
         isPersonalized: true,
         tags: ['location_based', 'ai_generated'],
         locationContext: {
           'latitude': position.latitude,
           'longitude': position.longitude,
           'address': address,
-          'safetyLevel': safetyLevel['level'],
+          'safetyLevel': safetyLevel,
         },
       );
 
@@ -472,15 +465,11 @@ class AIRepository {
         throw Exception('Failed to get current location');
       }
 
-      // Get safety level for current location
-      final safetyLevel = await _safeZoneRepository.getSafetyLevelForLocation(
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
+      // TODO: Integrate with SafeZoneProvider for safety level
+      const safetyLevel = 'moderate';
 
       // Only generate alert for unsafe areas
-      if (safetyLevel['level'] == 'safe' ||
-          safetyLevel['level'] == 'very_safe') {
+      if (safetyLevel == 'safe' || safetyLevel == 'very_safe') {
         return null;
       }
 
@@ -491,7 +480,7 @@ class AIRepository {
       final alertContent = await _aiService.generateSafetyAlert(
         latitude: position.latitude,
         longitude: position.longitude,
-        safetyLevel: safetyLevel['level'] as String,
+        safetyLevel: safetyLevel,
         address: address,
       );
 
@@ -500,12 +489,12 @@ class AIRepository {
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         title: 'Safety Alert for ${address ?? 'Current Location'}',
         content: alertContent,
-        riskLevel: _getRiskLevelFromSafetyLevel(safetyLevel['level'] as String),
+        riskLevel: _getRiskLevelFromSafetyLevel(safetyLevel),
         locationContext: {
           'latitude': position.latitude,
           'longitude': position.longitude,
           'address': address,
-          'safetyLevel': safetyLevel['level'],
+          'safetyLevel': safetyLevel,
         },
         actionText: 'View Safe Routes',
         actionData: {

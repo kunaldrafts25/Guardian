@@ -21,7 +21,7 @@ import 'package:guardian/features/store/data/mock_store_repository.dart';
 import 'package:guardian/features/community/data/mock_community_repository.dart';
 import 'package:guardian/features/guardian_mode/data/guardian_repository.dart';
 import 'package:guardian/features/guardian_circle/data/guardian_circle_repository.dart';
-import 'package:guardian/features/safe_zones/data/safe_zone_repository.dart';
+// SafeZoneRepository removed - using SafeZoneProvider instead
 import 'package:guardian/features/ai_assistant/data/ai_repository.dart';
 import 'package:guardian/features/voice_commands/data/voice_command_service.dart';
 import 'package:guardian/features/ngo_integration/data/ngo_repository.dart';
@@ -58,10 +58,8 @@ Future<void> setupServiceLocator() async {
   sl.registerLazySingleton<GuardianRepository>(() => GuardianRepository());
   sl.registerLazySingleton<GuardianCircleRepository>(
       () => GuardianCircleRepository());
-  sl.registerLazySingleton<SafeZoneRepository>(() => SafeZoneRepository());
-  sl.registerLazySingleton<AIRepository>(() => AIRepository(
-        safeZoneRepository: sl<SafeZoneRepository>(),
-      ));
+  // SafeZone uses Riverpod provider instead of service locator
+  sl.registerLazySingleton<AIRepository>(() => AIRepository());
   sl.registerLazySingleton<VoiceCommandService>(() => VoiceCommandService());
   sl.registerLazySingleton<NGORepository>(() => NGORepository());
   sl.registerLazySingleton<IncidentRepository>(() => IncidentRepository());
@@ -117,10 +115,8 @@ void setupTestServiceLocator({
   sl.registerLazySingleton<GuardianRepository>(() => GuardianRepository());
   sl.registerLazySingleton<GuardianCircleRepository>(
       () => GuardianCircleRepository());
-  sl.registerLazySingleton<SafeZoneRepository>(() => SafeZoneRepository());
-  sl.registerLazySingleton<AIRepository>(() => AIRepository(
-        safeZoneRepository: sl<SafeZoneRepository>(),
-      ));
+  // SafeZone uses Riverpod provider instead of service locator
+  sl.registerLazySingleton<AIRepository>(() => AIRepository());
   sl.registerLazySingleton<VoiceCommandService>(() => VoiceCommandService());
   sl.registerLazySingleton<NGORepository>(() => NGORepository());
   sl.registerLazySingleton<IncidentRepository>(() => IncidentRepository());

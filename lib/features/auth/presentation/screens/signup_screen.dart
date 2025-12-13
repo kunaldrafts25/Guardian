@@ -5,13 +5,13 @@
  */
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
+import 'package:go_router/go_router.dart';
+import 'package:guardian/app/routes.dart';
 import 'package:guardian/core/constants/app_colors.dart';
 import 'package:guardian/core/constants/app_strings.dart';
 import 'package:guardian/core/widgets/custom_button.dart';
 import 'package:guardian/core/widgets/custom_text_field.dart';
 import 'package:guardian/features/auth/data/auth_repository.dart';
-import 'package:guardian/features/dashboard/presentation/screens/dashboard_screen.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -74,38 +74,17 @@ class _SignupScreenState extends State<SignupScreen> {
           ),
         );
 
-        // Navigate to the dashboard
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
-        );
+        // Navigate to the dashboard using GoRouter
+        context.go(Routes.dashboard);
       } else if (mounted) {
-        // In development mode on web, we might be using mock authentication
-        // which returns null but is still considered successful
-        if (kIsWeb) {
-          debugPrint('Using mock authentication for development');
-
-          // Show success message
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Development mode: Proceeding with mock account'),
-              backgroundColor: AppColors.info,
-            ),
-          );
-
-          // Navigate to the dashboard
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const DashboardScreen()),
-          );
-        } else {
-          // Handle the case where user is null but no exception was thrown
-          debugPrint('User creation failed but no exception was thrown');
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to create account. Please try again.'),
-              backgroundColor: AppColors.danger,
-            ),
-          );
-        }
+        // Handle the case where user is null but no exception was thrown
+        debugPrint('User creation failed but no exception was thrown');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to create account. Please try again.'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -138,7 +117,7 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   void _navigateBack() {
-    Navigator.of(context).pop();
+    context.pop();
   }
 
   @override

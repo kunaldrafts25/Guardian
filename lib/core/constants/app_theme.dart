@@ -88,10 +88,10 @@ class AppTheme {
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     ),
-    cardTheme: CardTheme(
+    cardTheme: const CardThemeData(
       elevation: 2,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.all(Radius.circular(12)),
       ),
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
@@ -186,11 +186,11 @@ class AppTheme {
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     ),
-    cardTheme: CardTheme(
-      color: const Color(0xFF2C2C2C),
+    cardTheme: const CardThemeData(
+      color: Color(0xFF2C2C2C),
       elevation: 2,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.all(Radius.circular(12)),
       ),
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(

@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "989440136848",
-    "project_id": "guardian-e787e",
-    "storage_bucket": "guardian-e787e.firebasestorage.app"
+    "project_number": "1007199571452",
+    "project_id": "guardian-64640",
+    "storage_bucket": "guardian-64640.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:989440136848:android:a7bea848a712eea0026a15",
+        "mobilesdk_app_id": "1:1007199571452:android:4c51825e5413c1a7ef7679",
         "android_client_info": {
           "package_name": "com.company.guardian"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBPw1Xn8WYZVSkHyHiUxx0R4KG-aWPcE4w"
+          "current_key": "AIzaSyAPx-kzvA0mP2F5VdrPHsvuiMAWRTtQKf4"
         }
       ],
       "services": {

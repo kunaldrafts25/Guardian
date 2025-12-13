@@ -1,284 +1,226 @@
 /*
- * Guardian - Women's Safety App
+ * Guardian 2.0 - Women's Safety App
  * © 2025 All Rights Reserved - Kunal Singh
- * Contact: kunalsingh2514@gmail.com
+ * 
+ * Settings Screen
  */
 
 import 'package:flutter/material.dart';
-import 'package:guardian/core/constants/app_colors.dart';
-import 'package:guardian/core/constants/app_strings.dart';
-import 'package:guardian/features/auth/data/auth_repository.dart';
-import 'package:guardian/features/auth/presentation/screens/login_screen.dart';
-import 'package:guardian/features/settings/presentation/screens/emergency_contacts_screen.dart';
-import 'package:guardian/features/settings/presentation/screens/profile_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:guardian/app/theme/app_theme.dart';
+import 'package:guardian/app/routes.dart';
+import 'package:guardian/core/models/user_model.dart';
+import 'package:guardian/core/providers/settings_provider.dart';
+import 'package:guardian/core/providers/auth_provider.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+    final locationMode = ref.watch(locationModeProvider);
 
-class _SettingsScreenState extends State<SettingsScreen> {
-  final _authRepository = AuthRepository();
-  bool _isDarkMode = false;
-  bool _notificationsEnabled = true;
-  bool _locationTrackingEnabled = true;
-  bool _recordAudioEnabled = true;
-  bool _recordVideoEnabled = false;
-
-  Future<void> _signOut() async {
-    try {
-      await _authRepository.signOut();
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-          (route) => false,
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error signing out: $e'),
-            backgroundColor: AppColors.danger,
-          ),
-        );
-      }
-    }
-  }
-
-  void _showSignOutDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sign Out'),
-        content: const Text('Are you sure you want to sign out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _signOut();
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.danger,
-            ),
-            child: const Text('Sign Out'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _navigateToProfile() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const ProfileScreen(),
-      ),
-    );
-  }
-
-  void _navigateToEmergencyContacts() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const EmergencyContactsScreen(),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(AppStrings.settings),
+        title: const Text('Settings'),
       ),
       body: ListView(
         children: [
-          // Profile section
-          ListTile(
-            leading: const CircleAvatar(
-              backgroundColor: AppColors.primary,
-              child: Icon(
-                Icons.person,
-                color: Colors.white,
-              ),
-            ),
-            title: const Text(
-              AppStrings.profile,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            subtitle: const Text('Edit your profile information'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _navigateToProfile,
-          ),
-          const Divider(),
-
-          // Account settings
-          const Padding(
-            padding: EdgeInsets.only(left: 16, top: 16, bottom: 8),
-            child: Text(
-              'Account',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.contacts),
-            title: const Text(AppStrings.emergencyContacts),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _navigateToEmergencyContacts,
-          ),
-          const Divider(),
-
-          // App settings
-          const Padding(
-            padding: EdgeInsets.only(left: 16, top: 16, bottom: 8),
-            child: Text(
-              'App Settings',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
-          SwitchListTile(
-            title: const Text(AppStrings.notifications),
-            subtitle: const Text('Receive alerts and notifications'),
-            secondary: const Icon(Icons.notifications),
-            value: _notificationsEnabled,
-            onChanged: (value) {
-              setState(() {
-                _notificationsEnabled = value;
-              });
-            },
-          ),
-          const Divider(),
-          SwitchListTile(
-            title: const Text(AppStrings.theme),
-            subtitle: const Text('Dark mode'),
-            secondary: const Icon(Icons.dark_mode),
-            value: _isDarkMode,
-            onChanged: (value) {
-              setState(() {
-                _isDarkMode = value;
-              });
-              // TODO: Implement theme switching
-            },
-          ),
-          const Divider(),
-
-          // Privacy settings
-          const Padding(
-            padding: EdgeInsets.only(left: 16, top: 16, bottom: 8),
-            child: Text(
-              'Privacy',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
-          SwitchListTile(
-            title: const Text('Location Tracking'),
-            subtitle: const Text('Allow background location tracking'),
-            secondary: const Icon(Icons.location_on),
-            value: _locationTrackingEnabled,
-            onChanged: (value) {
-              setState(() {
-                _locationTrackingEnabled = value;
-              });
-            },
-          ),
-          const Divider(),
-          SwitchListTile(
-            title: const Text('Record Audio'),
-            subtitle: const Text('Record audio during emergency'),
-            secondary: const Icon(Icons.mic),
-            value: _recordAudioEnabled,
-            onChanged: (value) {
-              setState(() {
-                _recordAudioEnabled = value;
-              });
-            },
-          ),
-          const Divider(),
-          SwitchListTile(
-            title: const Text('Record Video'),
-            subtitle: const Text('Record video during emergency'),
-            secondary: const Icon(Icons.videocam),
-            value: _recordVideoEnabled,
-            onChanged: (value) {
-              setState(() {
-                _recordVideoEnabled = value;
-              });
-            },
-          ),
-          const Divider(),
-
-          // Help and support
-          const Padding(
-            padding: EdgeInsets.only(left: 16, top: 16, bottom: 8),
-            child: Text(
-              'Help & Support',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.help),
-            title: const Text(AppStrings.help),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              // TODO: Navigate to help screen
-            },
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.info),
-            title: const Text(AppStrings.about),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              // TODO: Navigate to about screen
-            },
-          ),
-          const Divider(),
-
-          // Sign out
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: ElevatedButton(
-              onPressed: _showSignOutDialog,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.danger,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              child: const Text(
-                AppStrings.logout,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+          // Location Mode Section
+          _SectionHeader(title: 'Privacy & Location'),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: Icon(Icons.location_off, color: locationMode == LocationMode.ghost ? AppColors.primary : Colors.grey),
+                  title: const Text('Ghost Mode'),
+                  subtitle: const Text('Location only during SOS'),
+                  trailing: Radio<LocationMode>(
+                    value: LocationMode.ghost,
+                    groupValue: locationMode,
+                    onChanged: (value) => ref.read(locationModeProvider.notifier).setLocationMode(value!),
+                  ),
                 ),
-              ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: Icon(Icons.smart_toy, color: locationMode == LocationMode.smart ? AppColors.primary : Colors.grey),
+                  title: const Text('Smart Mode'),
+                  subtitle: const Text('Auto-activate at night'),
+                  trailing: Radio<LocationMode>(
+                    value: LocationMode.smart,
+                    groupValue: locationMode,
+                    onChanged: (value) => ref.read(locationModeProvider.notifier).setLocationMode(value!),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: Icon(Icons.shield, color: locationMode == LocationMode.guardian ? AppColors.primary : Colors.grey),
+                  title: const Text('Guardian Mode'),
+                  subtitle: const Text('Always on (higher battery use)'),
+                  trailing: Radio<LocationMode>(
+                    value: LocationMode.guardian,
+                    groupValue: locationMode,
+                    onChanged: (value) => ref.read(locationModeProvider.notifier).setLocationMode(value!),
+                  ),
+                ),
+              ],
             ),
           ),
+          
+          // Appearance Section
+          _SectionHeader(title: 'Appearance'),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.brightness_6),
+                  title: const Text('Theme'),
+                  subtitle: Text(_getThemeName(themeMode)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showThemeDialog(context, ref, themeMode),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.language),
+                  title: const Text('Language'),
+                  subtitle: const Text('English'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {},
+                ),
+              ],
+            ),
+          ),
+          
+          // Safety Section
+          _SectionHeader(title: 'Safety'),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              children: [
+                SwitchListTile(
+                  secondary: const Icon(Icons.vibration),
+                  title: const Text('Shake to SOS'),
+                  subtitle: const Text('Shake phone to trigger emergency'),
+                  value: true,
+                  onChanged: (value) {},
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.place),
+                  title: const Text('Safe Zones'),
+                  subtitle: const Text('Manage your safe locations'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push(Routes.safeZones),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.flash_on),
+                  title: const Text('Quick Actions'),
+                  subtitle: const Text('Fake call, check-in timer'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push(Routes.quickActions),
+                ),
+              ],
+            ),
+          ),
+          
+          // Account Section
+          _SectionHeader(title: 'Account'),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.help_outline),
+                  title: const Text('Help & Support'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {},
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('About Guardian'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {},
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: Icon(Icons.logout, color: AppColors.error),
+                  title: Text('Sign Out', style: TextStyle(color: AppColors.error)),
+                  onTap: () async {
+                    await ref.read(signOutProvider)();
+                  },
+                ),
+              ],
+            ),
+          ),
+          
+          const SizedBox(height: 24),
+          Center(
+            child: Text(
+              'Guardian v2.0.0',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+            ),
+          ),
+          const SizedBox(height: 24),
         ],
+      ),
+    );
+  }
+
+  String _getThemeName(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return 'Light';
+      case ThemeMode.dark:
+        return 'Dark';
+      case ThemeMode.system:
+        return 'System default';
+    }
+  }
+
+  void _showThemeDialog(BuildContext context, WidgetRef ref, ThemeMode currentMode) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Choose Theme'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: ThemeMode.values.map((mode) {
+            return RadioListTile<ThemeMode>(
+              title: Text(_getThemeName(mode)),
+              value: mode,
+              groupValue: currentMode,
+              onChanged: (value) {
+                ref.read(themeModeProvider.notifier).setThemeMode(value!);
+                Navigator.pop(context);
+              },
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  const _SectionHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+          color: Colors.grey,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }

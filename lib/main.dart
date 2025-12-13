@@ -1,96 +1,50 @@
 /*
- * Guardian - Women's Safety App
+ * Guardian 2.0 - Women's Safety App
  * © 2025 All Rights Reserved - Kunal Singh
- * Contact: kunalsingh2514@gmail.com
+ * 
+ * Main Application Entry Point
  */
 
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:provider/provider.dart';
-import 'package:guardian/core/constants/app_strings.dart';
-import 'package:guardian/core/di/service_locator.dart';
-import 'package:guardian/core/localization/app_localizations.dart';
-import 'package:guardian/core/services/analytics_service.dart';
-import 'package:guardian/core/services/connectivity_service.dart';
-import 'package:guardian/core/services/language_service.dart';
-import 'package:guardian/core/services/safety_notification_manager.dart';
-import 'package:guardian/core/services/theme_service.dart';
-import 'package:guardian/core/utils/logger.dart';
-import 'package:guardian/features/onboarding/data/onboarding_service.dart';
-import 'package:guardian/features/splash/presentation/screens/splash_screen.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'firebase_options.dart';
+import 'app/app.dart';
+import 'core/utils/logger.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Set preferred orientations
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
+  // Load environment variables
   try {
-    // Initialize service locator
-    await setupServiceLocator();
-
-    // Initialize analytics
-    await AnalyticsService.init();
-
-    // Initialize services
-    final themeService = sl<ThemeService>();
-    await themeService.init();
-
-    final languageService = sl<LanguageService>();
-    await languageService.init();
-
-    final connectivityService = sl<ConnectivityService>();
-    connectivityService.init();
-
-    final onboardingService = sl<OnboardingService>();
-    await onboardingService.init();
-
-    // Initialize safety notification manager
-    final safetyManager = sl<SafetyNotificationManager>();
-    await safetyManager.initialize();
-
-    // Run the app
-    runApp(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeService>.value(value: themeService),
-          ChangeNotifierProvider<LanguageService>.value(value: languageService),
-          ChangeNotifierProvider<ConnectivityService>.value(
-              value: connectivityService),
-          ChangeNotifierProvider<OnboardingService>.value(
-              value: onboardingService),
-        ],
-        child: const MyApp(),
-      ),
-    );
+    await dotenv.load(fileName: '.env');
+    Logger.info('Environment variables loaded successfully');
   } catch (e) {
-    Logger.error('Error initializing app', e);
-    // Run app with minimal services if initialization fails
-    runApp(const MaterialApp(home: SplashScreen()));
+    Logger.warning('Could not load .env file: $e');
   }
-}
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final themeService = Provider.of<ThemeService>(context);
-    final languageService = Provider.of<LanguageService>(context);
-
-    return MaterialApp(
-      title: AppStrings.appName,
-      theme: themeService.themeData,
-      locale: languageService.locale,
-      supportedLocales: languageService.supportedLocales,
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      navigatorObservers: [
-        if (AnalyticsService.observer != null) AnalyticsService.observer!,
-      ],
-      home: const SplashScreen(),
-      debugShowCheckedModeBanner: false,
+  // Initialize Firebase
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
     );
+    Logger.info('Firebase initialized successfully');
+  } catch (e) {
+    Logger.error('Failed to initialize Firebase', e);
   }
+
+  // Run the app with Riverpod
+  runApp(
+    const ProviderScope(
+      child: GuardianApp(),
+    ),
+  );
 }

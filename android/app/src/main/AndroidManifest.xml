@@ -34,8 +34,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <application
         android:label="Guardian"
-        android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:name="android.app.Application"
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name="com.company.guardian.MainActivity"
             android:exported="true"
@@ -67,7 +68,7 @@
         <!-- Google Maps API Key -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyDGqK9Iy_hWEPd_Gv0nnUQqP9xBXHwj1Oc" />
+            android:value="AIzaSyAPx-kzvA0mP2F5VdrPHsvuiMAWRTtQKf4" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

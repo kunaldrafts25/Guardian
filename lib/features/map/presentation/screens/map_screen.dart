@@ -1,810 +1,758 @@
 /*
- * Guardian - Women's Safety App
+ * Guardian 2.0 - Women's Safety App
  * © 2025 All Rights Reserved - Kunal Singh
- * Contact: kunalsingh2514@gmail.com
+ * 
+ * Map Screen - Location display with privacy modes
  */
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:guardian/core/constants/app_colors.dart';
-import 'package:guardian/core/constants/app_strings.dart';
-import 'package:guardian/core/constants/app_typography.dart';
-import 'package:guardian/core/services/maps_service.dart';
-import 'package:guardian/core/utils/location_utils.dart';
-import 'package:guardian/core/utils/logger.dart';
-import 'package:guardian/core/widgets/emergency_button.dart';
-import 'package:guardian/features/community/presentation/screens/report_incident_screen.dart';
-import 'package:guardian/features/map/data/heatmap_data.dart';
-import 'package:guardian/features/map/presentation/widgets/heatmap_overlay.dart';
-import 'package:guardian/features/map/presentation/widgets/helper_marker.dart';
-import 'package:guardian/features/map/presentation/widgets/safe_route_polyline.dart';
+import 'package:guardian/app/theme/app_theme.dart';
+import 'package:guardian/core/models/user_model.dart';
+import 'package:guardian/core/models/safe_zone_model.dart';
+import 'package:guardian/core/providers/location_provider.dart';
+import 'package:guardian/core/providers/safe_zone_provider.dart';
+import 'package:guardian/core/providers/safe_route_provider.dart';
+import 'package:guardian/core/services/places_search_service.dart';
+import 'package:guardian/core/providers/settings_provider.dart' as settings;
+import 'package:guardian/app/routes.dart';
 
-class MapScreen extends StatefulWidget {
+class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
 
   @override
-  State<MapScreen> createState() => _MapScreenState();
+  ConsumerState<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
-  final Completer<GoogleMapController> _controller = Completer();
-  CameraPosition _initialCameraPosition = MapsService.defaultCameraPosition;
-  final Set<Marker> _markers = {};
-  final Set<Circle> _circles = {};
-  bool _isLoading = true;
-  bool _showSafeZones = true;
-  bool _showDangerZones = true;
-  bool _showNearbyUsers = true;
-  bool _showHeatmap = false;
-  bool _showSafeRoute = false;
-  bool _showHelpers = false;
-
-  // Heatmap data
-  List<HeatmapPoint> _heatmapPoints = [];
-
-  // Safe route data
-  List<LatLng> _safeRoutePoints = [];
-  LatLng? _destinationPoint;
-
-  // Helpers data
-  List<Map<String, dynamic>> _helpers = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _getCurrentLocation();
-  }
-
-  Future<void> _getCurrentLocation() async {
-    try {
-      final position = await LocationUtils.getCurrentPosition();
-      if (position != null) {
-        _updateCameraPosition(position);
-        _addUserMarker(position);
-        _addMockData(position);
-
-        // Initialize heatmap data
-        final latLng = LatLng(position.latitude, position.longitude);
-        _heatmapPoints = HeatmapData.generateMockCrimeData(latLng, count: 15);
-
-        // Initialize helpers data
-        _helpers = HeatmapData.generateMockHelpers(latLng, count: 8);
-
-        // Initialize safe route data (from current location to a random point)
-        _destinationPoint = LatLng(
-          position.latitude + 0.01,
-          position.longitude + 0.01,
-        );
-        if (_destinationPoint != null) {
-          _safeRoutePoints = HeatmapData.generateMockSafeRoute(
-            latLng,
-            _destinationPoint!,
-          );
-        }
-      }
-    } catch (e) {
-      Logger.error('Error getting current location', e);
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _updateCameraPosition(Position position) {
-    _initialCameraPosition = CameraPosition(
-      target: LatLng(position.latitude, position.longitude),
-      zoom: 15,
-    );
-    _animateToPosition(position);
-  }
-
-  Future<void> _animateToPosition(Position position) async {
-    final GoogleMapController controller = await _controller.future;
-    controller.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: LatLng(position.latitude, position.longitude),
-          zoom: 15,
-        ),
-      ),
-    );
-  }
-
-  void _addUserMarker(Position position) {
-    setState(() {
-      _markers.add(
-        Marker(
-          markerId: const MarkerId('user'),
-          position: LatLng(position.latitude, position.longitude),
-          infoWindow: const InfoWindow(title: 'Your Location'),
-          icon:
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-        ),
-      );
-    });
-  }
-
-  void _addMockData(Position position) {
-    // Add mock nearby users
-    if (_showNearbyUsers) {
-      _addMockNearbyUsers(position);
-    }
-
-    // Add mock safe zones
-    if (_showSafeZones) {
-      _addMockSafeZones(position);
-    }
-
-    // Add mock danger zones
-    if (_showDangerZones) {
-      _addMockDangerZones(position);
-    }
-  }
-
-  void _addMockNearbyUsers(Position position) {
-    // Add 5 mock nearby users
-    for (int i = 0; i < 5; i++) {
-      final double lat =
-          position.latitude + (0.002 * (i % 3)) * (i % 2 == 0 ? 1 : -1);
-      final double lng =
-          position.longitude + (0.002 * (i % 2)) * (i % 2 == 0 ? -1 : 1);
-
-      setState(() {
-        _markers.add(
-          Marker(
-            markerId: MarkerId('user_$i'),
-            position: LatLng(lat, lng),
-            infoWindow: InfoWindow(title: 'User ${i + 1}'),
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-                BitmapDescriptor.hueGreen),
-          ),
-        );
-      });
-    }
-  }
-
-  void _addMockSafeZones(Position position) {
-    // Add 3 mock safe zones
-    for (int i = 0; i < 3; i++) {
-      final double lat =
-          position.latitude + (0.005 * (i + 1)) * (i % 2 == 0 ? 1 : -1);
-      final double lng =
-          position.longitude + (0.005 * (i + 1)) * (i % 2 == 0 ? -1 : 1);
-
-      setState(() {
-        _circles.add(
-          Circle(
-            circleId: CircleId('safe_zone_$i'),
-            center: LatLng(lat, lng),
-            radius: 300, // 300 meters
-            fillColor: AppColors.safeZone.withOpacity(0.3),
-            strokeColor: AppColors.safeZone,
-            strokeWidth: 1,
-          ),
-        );
-
-        _markers.add(
-          Marker(
-            markerId: MarkerId('safe_zone_marker_$i'),
-            position: LatLng(lat, lng),
-            infoWindow: InfoWindow(title: 'Safe Zone ${i + 1}'),
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-                BitmapDescriptor.hueGreen),
-          ),
-        );
-      });
-    }
-  }
-
-  void _addMockDangerZones(Position position) {
-    // Add 2 mock danger zones
-    for (int i = 0; i < 2; i++) {
-      final double lat =
-          position.latitude + (0.008 * (i + 1)) * (i % 2 == 0 ? -1 : 1);
-      final double lng =
-          position.longitude + (0.008 * (i + 1)) * (i % 2 == 0 ? 1 : -1);
-
-      setState(() {
-        _circles.add(
-          Circle(
-            circleId: CircleId('danger_zone_$i'),
-            center: LatLng(lat, lng),
-            radius: 200, // 200 meters
-            fillColor: AppColors.dangerZone.withOpacity(0.3),
-            strokeColor: AppColors.dangerZone,
-            strokeWidth: 1,
-          ),
-        );
-
-        _markers.add(
-          Marker(
-            markerId: MarkerId('danger_zone_marker_$i'),
-            position: LatLng(lat, lng),
-            infoWindow: InfoWindow(title: 'Danger Zone ${i + 1}'),
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-          ),
-        );
-      });
-    }
-  }
-
-  void _toggleSafeZones(bool value) {
-    setState(() {
-      _showSafeZones = value;
-      _markers.removeWhere(
-          (marker) => marker.markerId.value.contains('safe_zone_marker'));
-      _circles
-          .removeWhere((circle) => circle.circleId.value.contains('safe_zone'));
-
-      if (value) {
-        LocationUtils.getCurrentPosition().then((position) {
-          if (position != null) {
-            _addMockSafeZones(position);
-          }
-        });
-      }
-    });
-  }
-
-  void _toggleDangerZones(bool value) {
-    setState(() {
-      _showDangerZones = value;
-      _markers.removeWhere(
-          (marker) => marker.markerId.value.contains('danger_zone_marker'));
-      _circles.removeWhere(
-          (circle) => circle.circleId.value.contains('danger_zone'));
-
-      if (value) {
-        LocationUtils.getCurrentPosition().then((position) {
-          if (position != null) {
-            _addMockDangerZones(position);
-          }
-        });
-      }
-    });
-  }
-
-  void _toggleNearbyUsers(bool value) {
-    setState(() {
-      _showNearbyUsers = value;
-      _markers.removeWhere((marker) => marker.markerId.value.contains('user_'));
-
-      if (value) {
-        LocationUtils.getCurrentPosition().then((position) {
-          if (position != null) {
-            _addMockNearbyUsers(position);
-          }
-        });
-      }
-    });
-  }
+class _MapScreenState extends ConsumerState<MapScreen> {
+  final Completer<GoogleMapController> _mapController = Completer();
+  
+  static const CameraPosition _defaultPosition = CameraPosition(
+    target: LatLng(18.5204, 73.8567), // Default to Pune, India
+    zoom: 14,
+  );
 
   @override
   Widget build(BuildContext context) {
+    final locationState = ref.watch(locationProvider);
+    final locationMode = ref.watch(settings.locationModeProvider);
+    final modeInfo = getLocationModeInfo(locationMode);
+    final safeZoneState = ref.watch(safeZoneProvider);
+    final routeState = ref.watch(safeRouteProvider);
+    final routePolylines = ref.watch(routePolylinesProvider);
+    final routeMarkers = ref.watch(routeMarkersProvider);
+
+    // Update camera when location changes
+    if (locationState.hasLocation) {
+      _updateCameraPosition(locationState.position!.latitude, locationState.position!.longitude);
+    }
+
+    // Build safe zone circles
+    final Set<Circle> circles = _buildSafeZoneCircles(safeZoneState);
+    
+    // Build markers including safe zone centers and route markers
+    final Set<Marker> markers = {
+      ..._buildMarkers(locationState, safeZoneState),
+      ...routeMarkers,
+    };
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text(AppStrings.map),
+        title: const Text('Safety Map'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.layers),
-            onPressed: _showMapLayersDialog,
-            tooltip: 'Map Layers',
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              ref.read(locationProvider.notifier).refreshLocation();
+            },
           ),
           IconButton(
-            icon: const Icon(Icons.my_location),
-            onPressed: () {
-              // Implement current location functionality
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Going to current location'),
-                  backgroundColor: AppColors.primary,
-                ),
-              );
-            },
-            tooltip: 'My Location',
+            icon: const Icon(Icons.layers),
+            onPressed: () {},
           ),
         ],
       ),
-      body: Stack(
+      body: Column(
         children: [
-          // Google Map
-          GoogleMap(
-            initialCameraPosition: _initialCameraPosition,
-            markers: _markers,
-            circles: _circles,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-            compassEnabled: true,
-            onMapCreated: (GoogleMapController controller) {
-              _controller.complete(controller);
-            },
-            onLongPress: null,
-          ),
-
-          // Heatmap overlay
-          if (_showHeatmap && _heatmapPoints.isNotEmpty)
-            HeatmapOverlay(
-              points: _heatmapPoints,
-              visible: _showHeatmap,
-            ),
-
-          // Safe route overlay
-          if (_showSafeRoute && _safeRoutePoints.isNotEmpty)
-            SafeRoutePolyline(
-              routePoints: _safeRoutePoints,
-              visible: _showSafeRoute,
-              color: AppColors.primary,
-              width: 5,
-            ),
-
-          // Helper markers
-          if (_showHelpers && _helpers.isNotEmpty)
-            HelperMarkers(
-              helpers: _helpers,
-              visible: _showHelpers,
-              onHelperTap: _showHelperDetails,
-            ),
-
-          // Loading indicator
-          if (_isLoading)
-            const Center(
-              child: CircularProgressIndicator(),
-            ),
-
-          // Map legend (when advanced features are enabled)
-          if (_showHeatmap || _showSafeRoute || _showHelpers)
-            Positioned(
-              top: 16,
-              left: 16,
-              child: Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_showHeatmap) ...[
-                        _buildLegendItem('High Risk', AppColors.danger),
-                        _buildLegendItem('Medium Risk', AppColors.warning),
-                        _buildLegendItem('Low Risk', AppColors.safeZone),
-                      ],
-                      if (_showSafeRoute) ...[
-                        _buildLegendItem('Safe Route', AppColors.primary),
-                      ],
-                      if (_showHelpers) ...[
-                        _buildLegendItem('Safety Volunteer', AppColors.primary),
-                        _buildLegendItem('Police', AppColors.secondary),
-                        _buildLegendItem('Medical', AppColors.danger),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-          // Map controls
-          Positioned(
-            right: 16,
-            bottom: 100,
-            child: Column(
+          // Location Mode Banner
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            color: _getModeColor(locationMode).withOpacity(0.1),
+            child: Row(
               children: [
-                FloatingActionButton(
-                  heroTag: 'btn_my_location',
-                  mini: true,
-                  backgroundColor: Colors.white,
-                  foregroundColor: AppColors.primary,
-                  onPressed: () {
-                    LocationUtils.getCurrentPosition().then((position) {
-                      if (position != null) {
-                        _animateToPosition(position);
-                      }
-                    });
-                  },
-                  child: const Icon(Icons.my_location),
-                ),
-                const SizedBox(height: 8),
-                FloatingActionButton(
-                  heroTag: 'btn_report',
-                  mini: true,
-                  backgroundColor: Colors.white,
-                  foregroundColor: AppColors.warning,
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const ReportIncidentScreen(),
-                      ),
-                    );
-                  },
-                  child: const Icon(Icons.report_problem),
-                ),
-              ],
-            ),
-          ),
-
-          // Emergency button
-          const Positioned(
-            right: 16,
-            bottom: 16,
-            child: EmergencyButton(
-              size: 60,
-              showLabel: false,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Removed unused method
-
-  /// Show helper details
-  void _showHelperDetails(Map<String, dynamic> helper) {
-    final String name = helper['name'] as String;
-    final String type = helper['type'] as String;
-    final double rating = helper['rating'] as double;
-    final int distance = helper['distance'] as int;
-    final bool isAvailable = helper['isAvailable'] as bool? ?? true;
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: _getHelperColor(type, isAvailable),
-                  child: Text(
-                    name.substring(0, 1),
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
+                Icon(_getModeIcon(locationMode), color: _getModeColor(locationMode)),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        name,
-                        style: AppTypography.heading4,
+                        modeInfo['name'] ?? 'Unknown',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: _getModeColor(locationMode),
+                        ),
                       ),
                       Text(
-                        _getHelperTypeLabel(type),
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.textSecondary,
+                        modeInfo['description'] ?? '',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey[600],
                         ),
                       ),
                     ],
                   ),
                 ),
-                if (isAvailable)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.safeZone.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Text(
-                      'Available',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.safeZone,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  )
-                else
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.textSecondary.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Text(
-                      'Unavailable',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.bold,
+                TextButton(
+                  onPressed: () => _showModeSelector(context, ref),
+                  child: const Text('Change'),
+                ),
+              ],
+            ),
+          ),
+          
+          // Google Map
+          Expanded(
+            child: Stack(
+              children: [
+                GoogleMap(
+                  initialCameraPosition: locationState.hasLocation
+                      ? CameraPosition(
+                          target: LatLng(locationState.position!.latitude, locationState.position!.longitude),
+                          zoom: 15,
+                        )
+                      : _defaultPosition,
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: true,
+                  zoomControlsEnabled: true,
+                  mapToolbarEnabled: false,
+                  onMapCreated: (GoogleMapController controller) {
+                    if (!_mapController.isCompleted) {
+                      _mapController.complete(controller);
+                    }
+                  },
+                  markers: markers,
+                  circles: circles,
+                  polylines: routePolylines,
+                ),
+                
+                // Bottom info card - show route info or default card
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 16,
+                  child: routeState.hasRoute
+                      ? _buildRouteInfoCard(context, ref, routeState)
+                      : _buildDefaultInfoCard(context, ref, safeZoneState),
+                ),
+                
+                // Loading indicator for route
+                if (routeState.isLoading)
+                  Positioned(
+                    top: 16,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Card(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                              SizedBox(width: 8),
+                              Text('Finding safe route...'),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 16),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getModeColor(LocationMode mode) {
+    switch (mode) {
+      case LocationMode.ghost:
+        return Colors.grey;
+      case LocationMode.smart:
+        return Colors.blue;
+      case LocationMode.guardian:
+        return AppColors.guardian;
+    }
+  }
+
+  IconData _getModeIcon(LocationMode mode) {
+    switch (mode) {
+      case LocationMode.ghost:
+        return Icons.visibility_off;
+      case LocationMode.smart:
+        return Icons.auto_awesome;
+      case LocationMode.guardian:
+        return Icons.visibility;
+    }
+  }
+
+  Future<void> _updateCameraPosition(double lat, double lng) async {
+    if (_mapController.isCompleted) {
+      final controller = await _mapController.future;
+      controller.animateCamera(
+        CameraUpdate.newLatLng(LatLng(lat, lng)),
+      );
+    }
+  }
+
+  void _showModeSelector(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Location Privacy Mode',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 16),
+              _buildModeOption(
+                context,
+                ref,
+                LocationMode.ghost,
+                'Ghost Mode',
+                'Share location only during emergencies',
+                Icons.visibility_off,
+                Colors.grey,
+              ),
+              _buildModeOption(
+                context,
+                ref,
+                LocationMode.smart,
+                'Smart Mode',
+                'Auto-share at night or in risky areas',
+                Icons.auto_awesome,
+                Colors.blue,
+              ),
+              _buildModeOption(
+                context,
+                ref,
+                LocationMode.guardian,
+                'Guardian Mode',
+                'Always visible to trusted contacts',
+                Icons.visibility,
+                AppColors.guardian,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeOption(
+    BuildContext context,
+    WidgetRef ref,
+    LocationMode modeValue,
+    String title,
+    String description,
+    IconData icon,
+    Color color,
+  ) {
+    final currentMode = ref.watch(settings.locationModeProvider);
+    final isSelected = currentMode == modeValue;
+    
+    return ListTile(
+      leading: Icon(icon, color: color),
+      title: Text(title),
+      subtitle: Text(description),
+      trailing: isSelected ? Icon(Icons.check_circle, color: color) : null,
+      onTap: () {
+        ref.read(settings.locationModeProvider.notifier).setLocationMode(modeValue);
+        Navigator.pop(context);
+      },
+    );
+  }
+
+  /// Build the route info card when a route is active
+  Widget _buildRouteInfoCard(BuildContext context, WidgetRef ref, SafeRouteState routeState) {
+    final route = routeState.currentRoute!;
+    
+    return Card(
+      color: AppColors.success.withValues(alpha: 0.1),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _buildHelperInfoItem(
-                  icon: Icons.star,
-                  label: 'Rating',
-                  value: rating.toStringAsFixed(1),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.directions_walk, color: AppColors.success),
                 ),
-                _buildHelperInfoItem(
-                  icon: Icons.location_on,
-                  label: 'Distance',
-                  value: '$distance m',
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Route to ${routeState.destinationName ?? "Destination"}',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      Row(
+                        children: [
+                          const Icon(Icons.access_time, size: 14, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Text(
+                            route.duration,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          const SizedBox(width: 12),
+                          const Icon(Icons.straighten, size: 14, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Text(
+                            route.distance,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-                _buildHelperInfoItem(
-                  icon: Icons.access_time,
-                  label: 'Response Time',
-                  value: '~${(distance / 80).ceil()} min',
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () {
+                    ref.read(safeRouteProvider.notifier).clearRoute();
+                  },
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            if (isAvailable) ...[
-              ElevatedButton(
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
                 onPressed: () {
-                  Navigator.pop(context);
+                  // TODO: Start navigation mode
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Request sent to helper'),
-                      backgroundColor: AppColors.primary,
-                    ),
+                    const SnackBar(content: Text('Navigation mode coming soon!')),
                   );
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  minimumSize: const Size(double.infinity, 48),
+                  backgroundColor: AppColors.success,
+                  foregroundColor: Colors.white,
                 ),
-                child: const Text('Request Assistance'),
+                icon: const Icon(Icons.navigation),
+                label: const Text('Start Navigation'),
               ),
-            ] else ...[
-              ElevatedButton(
-                onPressed: null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.textSecondary,
-                  disabledBackgroundColor:
-                      AppColors.textSecondary.withOpacity(0.5),
-                  minimumSize: const Size(double.infinity, 48),
-                ),
-                child: const Text('Helper Unavailable'),
-              ),
-            ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  /// Build a helper info item with icon, label, and value
-  Widget _buildHelperInfoItem({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Column(
-      children: [
-        Icon(
-          icon,
-          color: AppColors.primary,
-          size: 24,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: AppTypography.caption.copyWith(
-            color: AppColors.textSecondary,
-          ),
-        ),
-        Text(
-          value,
-          style: AppTypography.bodyMedium.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Get the color based on helper type
-  Color _getHelperColor(String type, bool isAvailable) {
-    if (!isAvailable) {
-      return AppColors.textSecondary;
-    }
-
-    switch (type) {
-      case 'police':
-        return AppColors.secondary;
-      case 'medical':
-        return AppColors.danger;
-      case 'security_guard':
-        return AppColors.warning;
-      case 'volunteer':
-        return AppColors.primary;
-      case 'community_member':
-        return AppColors.accent;
-      default:
-        return AppColors.primary;
-    }
-  }
-
-  /// Get a human-readable label for the helper type
-  String _getHelperTypeLabel(String type) {
-    switch (type) {
-      case 'police':
-        return 'Police Officer';
-      case 'medical':
-        return 'Medical Professional';
-      case 'security_guard':
-        return 'Security Guard';
-      case 'volunteer':
-        return 'Safety Volunteer';
-      case 'community_member':
-        return 'Community Member';
-      default:
-        return 'Helper';
-    }
-  }
-
-  /// Build a legend item with a color box and label
-  Widget _buildLegendItem(String label, Color color) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 16,
-            height: 16,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: AppTypography.caption,
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showMapLayersDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: Text(
-              'Map Layers',
-              style: AppTypography.heading3,
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
+  /// Build the default info card (no route active)
+  Widget _buildDefaultInfoCard(BuildContext context, WidgetRef ref, SafeZoneState safeZoneState) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
               children: [
-                // Basic layers
-                SwitchListTile(
-                  title: const Text('Safe Zones'),
-                  value: _showSafeZones,
-                  activeColor: AppColors.safeZone,
-                  onChanged: (value) {
-                    setDialogState(() {
-                      _showSafeZones = value;
-                    });
-                    _toggleSafeZones(value);
-                  },
-                ),
-                SwitchListTile(
-                  title: const Text('Danger Zones'),
-                  value: _showDangerZones,
-                  activeColor: AppColors.dangerZone,
-                  onChanged: (value) {
-                    setDialogState(() {
-                      _showDangerZones = value;
-                    });
-                    _toggleDangerZones(value);
-                  },
-                ),
-                SwitchListTile(
-                  title: const Text('Nearby Users'),
-                  value: _showNearbyUsers,
-                  activeColor: AppColors.primary,
-                  onChanged: (value) {
-                    setDialogState(() {
-                      _showNearbyUsers = value;
-                    });
-                    _toggleNearbyUsers(value);
-                  },
-                ),
-
-                const Divider(),
-
-                // Advanced layers
-                Text(
-                  'Advanced Features',
-                  style: AppTypography.bodyMedium.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textSecondary,
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.guardian.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(8),
                   ),
+                  child: const Icon(Icons.shield, color: AppColors.guardian),
                 ),
-                const SizedBox(height: 8),
-
-                SwitchListTile(
-                  title: const Text('Crime Heatmap'),
-                  subtitle: const Text('View high-risk areas'),
-                  value: _showHeatmap,
-                  activeColor: AppColors.accent,
-                  onChanged: (value) {
-                    setDialogState(() {
-                      _showHeatmap = value;
-                    });
-                    setState(() {
-                      _showHeatmap = value;
-                    });
-                  },
-                ),
-                SwitchListTile(
-                  title: const Text('Safe Route'),
-                  subtitle: const Text('Show recommended safe path'),
-                  value: _showSafeRoute,
-                  activeColor: AppColors.primary,
-                  onChanged: (value) {
-                    setDialogState(() {
-                      _showSafeRoute = value;
-                    });
-                    setState(() {
-                      _showSafeRoute = value;
-                    });
-                  },
-                ),
-                SwitchListTile(
-                  title: const Text('Safety Helpers'),
-                  subtitle: const Text('Show nearby volunteers and officials'),
-                  value: _showHelpers,
-                  activeColor: AppColors.secondary,
-                  onChanged: (value) {
-                    setDialogState(() {
-                      _showHelpers = value;
-                    });
-                    setState(() {
-                      _showHelpers = value;
-                    });
-                  },
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Safe Zones',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      Text(
+                        '${safeZoneState.zones.length} zones • ${safeZoneState.isInSafeZone ? "In safe zone" : "Outside zones"}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: safeZoneState.isInSafeZone ? AppColors.success : Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-                child: Text(
-                  'Close',
-                  style: AppTypography.buttonMedium,
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showSafeRouteDialog(context),
+                    icon: const Icon(Icons.route, size: 18),
+                    label: const Text('Safe Route'),
+                  ),
                 ),
-              ),
-            ],
-          );
-        },
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => context.push(Routes.safeZones),
+                    icon: const Icon(Icons.shield, size: 18),
+                    label: const Text('Safe Zones'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  /// Build circles for safe zones visualization
+  Set<Circle> _buildSafeZoneCircles(SafeZoneState safeZoneState) {
+    final circles = <Circle>{};
+    
+    for (final zone in safeZoneState.zones) {
+      if (!zone.isActive) continue;
+      
+      final isCurrentZone = safeZoneState.currentZone?.id == zone.id;
+      
+      circles.add(
+        Circle(
+          circleId: CircleId('zone_${zone.id}'),
+          center: LatLng(zone.latitude, zone.longitude),
+          radius: zone.radius,
+          fillColor: isCurrentZone 
+              ? AppColors.success.withValues(alpha: 0.2)
+              : AppColors.primary.withValues(alpha: 0.15),
+          strokeColor: isCurrentZone ? AppColors.success : AppColors.primary,
+          strokeWidth: 2,
+        ),
+      );
+    }
+    
+    return circles;
+  }
+
+  /// Build markers including user location and safe zone centers
+  Set<Marker> _buildMarkers(LocationState locationState, SafeZoneState safeZoneState) {
+    final markers = <Marker>{};
+    
+    // Add user location marker
+    if (locationState.hasLocation) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('current_location'),
+          position: LatLng(locationState.position!.latitude, locationState.position!.longitude),
+          infoWindow: InfoWindow(
+            title: 'Your Location',
+            snippet: locationState.displayCoordinates,
+          ),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRose),
+        ),
+      );
+    }
+    
+    // Add safe zone markers
+    for (final zone in safeZoneState.zones) {
+      if (!zone.isActive) continue;
+      
+      markers.add(
+        Marker(
+          markerId: MarkerId('zone_marker_${zone.id}'),
+          position: LatLng(zone.latitude, zone.longitude),
+          infoWindow: InfoWindow(
+            title: zone.name,
+            snippet: '${zone.radius.toInt()}m radius • ${zone.typeDisplayName}',
+          ),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            safeZoneState.currentZone?.id == zone.id 
+                ? BitmapDescriptor.hueGreen 
+                : BitmapDescriptor.hueAzure,
+          ),
+        ),
+      );
+    }
+    
+    return markers;
+  }
+
+  /// Show safe route destination picker dialog
+  void _showSafeRouteDialog(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Get Safe Route',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Navigate safely with well-lit paths and populated areas',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Quick destinations
+              Text(
+                'Quick Destinations',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              Consumer(
+                builder: (context, ref, child) {
+                  final zones = ref.watch(safeZoneProvider).zones;
+                  final locationState = ref.watch(locationProvider);
+                  
+                  if (zones.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Column(
+                        children: [
+                          const Text('No saved locations. Add Safe Zones first.'),
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              context.push(Routes.safeZones);
+                            },
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add Safe Zone'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  
+                  return Column(
+                    children: zones.take(3).map((zone) => ListTile(
+                      leading: Icon(_getZoneTypeIcon(zone.type)),
+                      title: Text(zone.name),
+                      subtitle: Text('${zone.radius.toInt()}m radius'),
+                      trailing: const Icon(Icons.directions, color: AppColors.primary),
+                      onTap: () {
+                        Navigator.pop(context);
+                        
+                        if (!locationState.hasLocation) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Current location not available')),
+                          );
+                          return;
+                        }
+                        
+                        // Fetch route using Directions API
+                        ref.read(safeRouteProvider.notifier).fetchRoute(
+                          origin: LatLng(
+                            locationState.position!.latitude,
+                            locationState.position!.longitude,
+                          ),
+                          destination: LatLng(zone.latitude, zone.longitude),
+                          destinationName: zone.name,
+                        );
+                        
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Getting route to ${zone.name}...')),
+                        );
+                      },
+                    )).toList(),
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+              const Divider(),
+              // Custom destination search
+              ListTile(
+                leading: const Icon(Icons.search),
+                title: const Text('Search destination'),
+                subtitle: const Text('Enter an address or place'),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showDestinationSearchDialog(context, ref);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  IconData _getZoneTypeIcon(SafeZoneType type) {
+    switch (type) {
+      case SafeZoneType.home:
+        return Icons.home;
+      case SafeZoneType.work:
+        return Icons.work;
+      case SafeZoneType.school:
+        return Icons.school;
+      case SafeZoneType.gym:
+        return Icons.fitness_center;
+      case SafeZoneType.custom:
+        return Icons.place;
+    }
+  }
+
+  /// Show destination search dialog with autocomplete
+  void _showDestinationSearchDialog(BuildContext context, WidgetRef ref) {
+    final searchController = TextEditingController();
+    Timer? debounce;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => Consumer(
+          builder: (context, ref, child) {
+            final searchState = ref.watch(placesSearchProvider);
+            final locationState = ref.watch(locationProvider);
+
+            return Column(
+              children: [
+                // Handle bar
+                Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                // Search input
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: TextField(
+                    controller: searchController,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: 'Search for a destination',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                searchController.clear();
+                                ref.read(placesSearchProvider.notifier).clearSearch();
+                              },
+                            )
+                          : null,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onChanged: (value) {
+                      // Debounce search
+                      debounce?.cancel();
+                      debounce = Timer(const Duration(milliseconds: 500), () {
+                        final location = locationState.hasLocation
+                            ? LatLng(locationState.position!.latitude, locationState.position!.longitude)
+                            : null;
+                        ref.read(placesSearchProvider.notifier).searchPlaces(value, location: location);
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Results
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    children: [
+                      if (searchState.isSearching)
+                        const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(32),
+                            child: CircularProgressIndicator(),
+                          ),
+                        )
+                      else if (searchState.predictions.isEmpty && searchController.text.isNotEmpty)
+                        const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(32),
+                            child: Text('No results found'),
+                          ),
+                        )
+                      else
+                        ...searchState.predictions.map((prediction) => ListTile(
+                          leading: const Icon(Icons.location_on),
+                          title: Text(prediction.mainText),
+                          subtitle: prediction.secondaryText != null
+                              ? Text(prediction.secondaryText!, maxLines: 1, overflow: TextOverflow.ellipsis)
+                              : null,
+                          onTap: () async {
+                            // Get place details
+                            final details = await ref
+                                .read(placesSearchProvider.notifier)
+                                .getPlaceDetails(prediction.placeId);
+
+                            if (details != null && locationState.hasLocation) {
+                              Navigator.pop(context);
+
+                              // Fetch route
+                              ref.read(safeRouteProvider.notifier).fetchRoute(
+                                origin: LatLng(
+                                  locationState.position!.latitude,
+                                  locationState.position!.longitude,
+                                ),
+                                destination: details.location,
+                                destinationName: details.name,
+                              );
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Getting route to ${details.name}...')),
+                              );
+                            }
+                          },
+                        )),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    ).then((_) {
+      // Clean up
+      debounce?.cancel();
+      searchController.dispose();
+    });
   }
 }
