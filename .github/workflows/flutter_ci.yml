@@ -95,11 +95,11 @@ jobs:
           mkdir -p ios/Runner
           touch ios/Runner/Config.xcconfig
 
-      - name: Build iOS
-        run: flutter build ios --release --no-codesign
+      - name: Build iOS (Simulator)
+        run: flutter build ios --simulator --no-codesign
 
       - name: Upload iOS build
         uses: actions/upload-artifact@v4
         with:
           name: ios-build
-          path: build/ios/iphoneos
+          path: build/ios/iphonesimulator
