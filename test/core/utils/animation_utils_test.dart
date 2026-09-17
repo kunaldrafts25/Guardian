@@ -31,7 +31,10 @@ void main() {
         child: const SizedBox(),
       );
 
-      await tester.pumpWidget(MaterialApp(home: widget));
+      await tester.pumpWidget(Directionality(
+        textDirection: TextDirection.ltr,
+        child: widget,
+      ));
       expect(find.byType(FadeTransition), findsOneWidget);
     });
 
@@ -41,7 +44,10 @@ void main() {
         child: const SizedBox(),
       );
 
-      await tester.pumpWidget(MaterialApp(home: widget));
+      await tester.pumpWidget(Directionality(
+        textDirection: TextDirection.ltr,
+        child: widget,
+      ));
       expect(find.byType(SlideTransition), findsOneWidget);
     });
 
@@ -51,7 +57,10 @@ void main() {
         child: const SizedBox(),
       );
 
-      await tester.pumpWidget(MaterialApp(home: widget));
+      await tester.pumpWidget(Directionality(
+        textDirection: TextDirection.ltr,
+        child: widget,
+      ));
       expect(find.byType(ScaleTransition), findsOneWidget);
     });
 
@@ -62,7 +71,10 @@ void main() {
         child: const SizedBox(),
       );
 
-      await tester.pumpWidget(MaterialApp(home: widget));
+      await tester.pumpWidget(Directionality(
+        textDirection: TextDirection.ltr,
+        child: widget,
+      ));
       expect(find.byType(FadeTransition), findsOneWidget);
       expect(find.byType(SlideTransition), findsOneWidget);
     });
@@ -74,7 +86,10 @@ void main() {
         child: const SizedBox(),
       );
 
-      await tester.pumpWidget(MaterialApp(home: widget));
+      await tester.pumpWidget(Directionality(
+        textDirection: TextDirection.ltr,
+        child: widget,
+      ));
       expect(find.byType(FadeTransition), findsOneWidget);
       expect(find.byType(ScaleTransition), findsOneWidget);
     });
