@@ -15,11 +15,11 @@ build/
 doc/api/
 
 # --- Generated files ---
-*.g.dart
+# Note: .g.dart files are committed so CI does not need to run build_runner for analyze.
+# Run: dart run build_runner build --delete-conflicting-outputs  to regenerate locally.
 *.freezed.dart
 *.gr.dart
 lib/generated/
-lib/**/*.g.dart
 lib/**/*.freezed.dart
 
 # --- Android ---
@@ -54,8 +54,8 @@ ios/Podfile.lock
 !.env.example
 *.env
 env.dart
-firebase_options.dart
-lib/firebase_options.dart
+# firebase_options.dart is committed as a stub (real values injected at runtime via env).
+# Replace lib/firebase_options.dart with output of `flutterfire configure` for production.
 
 # --- API Keys ---
 android/app/src/main/res/values/google_maps_api.xml
