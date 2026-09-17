@@ -1,143 +1,187 @@
 /*
- * Guardian - Women's Safety App
+ * Guardian 2.0 - Women's Safety App
  * © 2025 All Rights Reserved - Kunal Singh
- * Contact: kunalsingh2514@gmail.com
+ * 
+ * Voice Recognition Service - Native speech recognition for SOS trigger
  */
 
 import 'dart:async';
-import 'package:flutter/services.dart';
-import 'package:guardian/core/services/emergency_service.dart';
-import 'package:guardian/core/utils/logger.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:speech_to_text/speech_to_text.dart';
+import 'package:speech_to_text/speech_recognition_result.dart';
+import 'package:guardian/core/utils/logger.dart';
 
-/// A service for voice recognition and emergency trigger
+/// Callback for when trigger phrase is detected
+typedef TriggerCallback = void Function(String phrase);
+
+/// Voice Recognition Service using speech_to_text package
 class VoiceRecognitionService {
-  static const MethodChannel _channel = MethodChannel('com.guardian/voice_recognition');
-  static bool _isListening = false;
-  static final List<String> _triggerPhrases = [
+  static VoiceRecognitionService? _instance;
+  static VoiceRecognitionService get instance => 
+      _instance ??= VoiceRecognitionService._();
+
+  VoiceRecognitionService._();
+
+  final SpeechToText _speech = SpeechToText();
+  bool _isInitialized = false;
+  bool _isListening = false;
+  TriggerCallback? _onTriggerDetected;
+
+  /// Trigger phrases that will activate SOS
+  final List<String> _triggerPhrases = [
     'help',
+    'help me',
     'emergency',
     'sos',
     'save me',
     'danger',
-    'help me',
+    'bachao',  // Hindi
+    'madad',   // Hindi
   ];
-  
-  /// Check if the service is currently listening
-  static bool get isListening => _isListening;
-  
-  /// Get the list of trigger phrases
-  static List<String> get triggerPhrases => _triggerPhrases;
-  
-  /// Start listening for voice commands
-  static Future<bool> startListening() async {
-    if (_isListening) return true;
-    
+
+  /// Check if listening
+  bool get isListening => _isListening;
+
+  /// Get trigger phrases
+  List<String> get triggerPhrases => List.unmodifiable(_triggerPhrases);
+
+  /// Initialize speech recognition
+  Future<bool> initialize() async {
+    if (_isInitialized) return true;
+
     try {
-      // Check microphone permission
+      // Request microphone permission
       final status = await Permission.microphone.request();
       if (!status.isGranted) {
-        Logger.warning('Microphone permission not granted');
+        Logger.warning('🎤 Microphone permission denied');
         return false;
       }
-      
-      // Start listening
-      final bool result = await _channel.invokeMethod('startVoiceRecognition');
-      _isListening = result;
-      
-      if (result) {
-        Logger.info('Voice recognition started');
-        
-        // Set up method call handler
-        _channel.setMethodCallHandler(_handleMethodCall);
+
+      _isInitialized = await _speech.initialize(
+        onStatus: _onStatus,
+        onError: _onError,
+        debugLogging: false,
+      );
+
+      if (_isInitialized) {
+        Logger.info('🎤 Voice recognition initialized');
+      } else {
+        Logger.warning('🎤 Voice recognition not available on this device');
       }
-      
-      return result;
-    } on PlatformException catch (e) {
-      Logger.error('Failed to start voice recognition', e.message);
+
+      return _isInitialized;
+    } catch (e) {
+      Logger.error('🎤 Failed to initialize voice recognition', e);
       return false;
     }
   }
-  
-  /// Stop listening for voice commands
-  static Future<bool> stopListening() async {
-    if (!_isListening) return true;
-    
+
+  /// Start listening for voice commands
+  Future<bool> startListening({TriggerCallback? onTrigger}) async {
+    if (_isListening) return true;
+
+    if (!_isInitialized) {
+      final initialized = await initialize();
+      if (!initialized) return false;
+    }
+
+    _onTriggerDetected = onTrigger;
+
     try {
-      final bool result = await _channel.invokeMethod('stopVoiceRecognition');
-      _isListening = !result;
-      
-      if (result) {
-        Logger.info('Voice recognition stopped');
-      }
-      
-      return result;
-    } on PlatformException catch (e) {
-      Logger.error('Failed to stop voice recognition', e.message);
+      await _speech.listen(
+        onResult: _onSpeechResult,
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 3),
+        partialResults: true,
+        localeId: 'en_US',
+        cancelOnError: false,
+        listenMode: ListenMode.confirmation,
+      );
+
+      _isListening = true;
+      Logger.info('🎤 Voice recognition started');
+      return true;
+    } catch (e) {
+      Logger.error('🎤 Failed to start listening', e);
       return false;
     }
   }
-  
-  /// Add a custom trigger phrase
-  static void addTriggerPhrase(String phrase) {
-    if (phrase.isNotEmpty && !_triggerPhrases.contains(phrase.toLowerCase())) {
-      _triggerPhrases.add(phrase.toLowerCase());
-      Logger.info('Added trigger phrase: $phrase');
+
+  /// Stop listening
+  Future<void> stopListening() async {
+    if (!_isListening) return;
+
+    await _speech.stop();
+    _isListening = false;
+    Logger.info('🎤 Voice recognition stopped');
+  }
+
+  /// Add custom trigger phrase
+  void addTriggerPhrase(String phrase) {
+    final lower = phrase.toLowerCase().trim();
+    if (lower.isNotEmpty && !_triggerPhrases.contains(lower)) {
+      _triggerPhrases.add(lower);
+      Logger.info('🎤 Added trigger phrase: $lower');
     }
   }
-  
-  /// Remove a trigger phrase
-  static void removeTriggerPhrase(String phrase) {
-    if (_triggerPhrases.contains(phrase.toLowerCase())) {
-      _triggerPhrases.remove(phrase.toLowerCase());
-      Logger.info('Removed trigger phrase: $phrase');
+
+  /// Remove trigger phrase
+  void removeTriggerPhrase(String phrase) {
+    final lower = phrase.toLowerCase().trim();
+    if (_triggerPhrases.remove(lower)) {
+      Logger.info('🎤 Removed trigger phrase: $lower');
     }
   }
-  
-  /// Handle method calls from the platform
-  static Future<dynamic> _handleMethodCall(MethodCall call) async {
-    switch (call.method) {
-      case 'onSpeechRecognized':
-        final String text = call.arguments['text'];
-        return _processSpeechResult(text);
-      default:
-        Logger.warning('Unknown method ${call.method}');
-    }
-  }
-  
-  /// Process speech recognition result
-  static Future<void> _processSpeechResult(String text) async {
-    Logger.info('Speech recognized: $text');
-    
-    // Check if the text contains any trigger phrases
-    final lowerText = text.toLowerCase();
+
+  /// Handle speech recognition result
+  void _onSpeechResult(SpeechRecognitionResult result) {
+    final text = result.recognizedWords.toLowerCase();
+    Logger.debug('🎤 Heard: $text');
+
+    // Check for trigger phrases
     for (final phrase in _triggerPhrases) {
-      if (lowerText.contains(phrase)) {
-        Logger.info('Trigger phrase detected: $phrase');
-        await _triggerEmergency();
+      if (text.contains(phrase)) {
+        Logger.info('🎤 TRIGGER PHRASE DETECTED: $phrase');
+        _onTriggerDetected?.call(phrase);
+        
+        // Stop listening after trigger to prevent repeated triggers
+        stopListening();
         break;
       }
     }
-  }
-  
-  /// Trigger emergency alert
-  static Future<void> _triggerEmergency() async {
-    try {
-      final alertId = await EmergencyService.triggerEmergencyAlert();
-      if (alertId != null) {
-        Logger.info('Emergency alert triggered by voice: $alertId');
-      } else {
-        Logger.error('Failed to trigger emergency alert by voice');
-      }
-    } catch (e) {
-      Logger.error('Error triggering emergency alert by voice', e);
+
+    // Auto-restart listening if it stops
+    if (result.finalResult && _isListening) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (!_speech.isListening && _isListening) {
+          startListening(onTrigger: _onTriggerDetected);
+        }
+      });
     }
   }
-  
-  /// Simulate voice recognition for testing
-  static Future<void> simulateVoiceRecognition(String text) async {
-    Logger.info('Simulating voice recognition: $text');
-    await _processSpeechResult(text);
+
+  /// Handle status changes
+  void _onStatus(String status) {
+    Logger.debug('🎤 Status: $status');
+    if (status == 'notListening' && _isListening) {
+      // Restart if we should still be listening
+      Future.delayed(const Duration(seconds: 1), () {
+        if (_isListening) {
+          startListening(onTrigger: _onTriggerDetected);
+        }
+      });
+    }
+  }
+
+  /// Handle errors
+  void _onError(dynamic error) {
+    Logger.error('🎤 Error: $error');
+  }
+
+  /// Dispose resources
+  void dispose() {
+    stopListening();
+    _instance = null;
   }
 }
 

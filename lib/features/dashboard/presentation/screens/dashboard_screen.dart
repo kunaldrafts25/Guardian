@@ -12,6 +12,11 @@ import '../../../../app/theme/app_theme.dart';
 import '../../../../app/routes.dart';
 import '../../../../core/providers/auth_provider.dart';
 import '../../../../core/providers/settings_provider.dart';
+import '../../../../core/providers/emergency_provider.dart';
+import '../../../../core/services/ble_emergency_mesh.dart';
+import '../../../../core/services/sos_service.dart';
+import '../widgets/agent_observability_card.dart';
+import '../widgets/emergency_simulator_sheet.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -83,11 +88,39 @@ class DashboardScreen extends ConsumerWidget {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          Text(
-                            '47 Guardians nearby',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey,
-                            ),
+                          Consumer(
+                            builder: (context, ref, _) {
+                              final mesh = ref.watch(bleMeshProvider);
+                              final isScanning = mesh.isScanning;
+                              return Row(
+                                children: [
+                                  Icon(
+                                    isScanning
+                                        ? Icons.bluetooth_searching
+                                        : Icons.bluetooth_disabled,
+                                    size: 14,
+                                    color: isScanning
+                                        ? Colors.blue
+                                        : Colors.grey,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    isScanning
+                                        ? 'Mesh active'
+                                        : 'Mesh offline',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          color: isScanning
+                                              ? Colors.blue
+                                              : Colors.grey,
+                                          fontSize: 12,
+                                        ),
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                         ],
                       ),
@@ -98,14 +131,17 @@ class DashboardScreen extends ConsumerWidget {
               
               const SizedBox(height: 24),
               
+              // AWS Bedrock Agent Observability & Live State Card
+              const AgentObservabilityCard(),
+              
               // SOS Button (Large, Prominent)
               Center(
                 child: GestureDetector(
                   onTap: () => context.push(Routes.emergency),
                   onLongPress: () {
-                    // TODO: Trigger actual SOS
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('SOS would be triggered here!')),
+                    // Trigger actual SOS via provider
+                    ref.read(emergencyProvider.notifier).triggerEmergency(
+                      source: SosTriggerSource.button,
                     );
                   },
                   child: Container(
@@ -219,6 +255,22 @@ class DashboardScreen extends ConsumerWidget {
               ),
             ],
           ),
+        ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => const EmergencySimulatorSheet(),
+          );
+        },
+        backgroundColor: AppColors.primary,
+        icon: const Icon(Icons.psychology, color: Colors.white),
+        label: const Text(
+          'Simulate Incident',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
     );

@@ -7,7 +7,6 @@
 import 'package:flutter/material.dart';
 import 'package:guardian/core/constants/app_colors.dart';
 import 'package:guardian/core/constants/app_typography.dart';
-import 'package:guardian/core/di/service_locator.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:guardian/core/widgets/custom_app_bar.dart';
 import 'package:guardian/core/widgets/custom_button.dart';
@@ -21,7 +20,7 @@ class AddCircleScreen extends StatefulWidget {
 }
 
 class _AddCircleScreenState extends State<AddCircleScreen> {
-  final GuardianCircleRepository _repository = sl<GuardianCircleRepository>();
+  final GuardianCircleRepository _repository = GuardianCircleRepository();
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -152,3 +151,4 @@ class _AddCircleScreenState extends State<AddCircleScreen> {
     );
   }
 }
+

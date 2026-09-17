@@ -30,9 +30,9 @@ class ShakeDetectionService {
   bool _isEnabled = false;
   bool _isListening = false;
   
-  // Shake detection parameters
-  static const double _shakeThreshold = 15.0; // m/s²
-  static const int _shakesRequired = 3;
+  // Shake detection parameters - ADJUSTED FOR BETTER SENSITIVITY
+  static const double _shakeThreshold = 12.0; // m/s² (lowered from 15)
+  static const int _shakesRequired = 2; // Shakes needed (lowered from 3)
   static const Duration _shakeWindow = Duration(seconds: 2);
   static const Duration _cooldown = Duration(seconds: 5);
   

@@ -5,7 +5,7 @@
  */
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:guardian/core/services/maps_service.dart';
 import 'package:guardian/core/utils/api_keys.dart';
 import 'package:http/http.dart' as http;

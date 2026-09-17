@@ -6,9 +6,10 @@
  */
 
 import 'dart:async';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:guardian/core/services/notification_service.dart';
 import 'package:guardian/core/providers/contacts_provider.dart';
+import 'package:guardian/core/services/notification_service.dart';
 import 'package:guardian/core/utils/logger.dart';
 
 /// Check-in timer state

@@ -5,7 +5,8 @@
  */
 
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:guardian/core/constants/app_colors.dart';
 import 'package:guardian/core/constants/app_typography.dart';
 
@@ -64,7 +65,7 @@ class HelperMarker extends StatelessWidget {
 
   /// Get the color based on helper type
   Color _getHelperColor() {
-    final String type = helper['type'] as String;
+    final String type = (helper['type'] as String?) ?? 'volunteer';
     final bool isAvailable = helper['isAvailable'] as bool? ?? true;
 
     if (!isAvailable) {
@@ -89,7 +90,7 @@ class HelperMarker extends StatelessWidget {
 
   /// Get the initials from the helper name
   String _getInitials() {
-    final String name = helper['name'] as String;
+    final String name = (helper['name'] as String?) ?? 'H';
     final List<String> nameParts = name.split(' ');
 
     if (nameParts.length > 1) {
@@ -102,7 +103,7 @@ class HelperMarker extends StatelessWidget {
   }
 }
 
-/// A widget that displays a list of helper markers on the map
+/// A widget that displays a list of helper markers on the map using flutter_map MarkerLayer
 class HelperMarkers extends StatelessWidget {
   /// The list of helpers
   final List<Map<String, dynamic>> helpers;
@@ -126,90 +127,19 @@ class HelperMarkers extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    // Convert helpers to markers
-    final Set<Marker> markers = {};
-
-    for (final helper in helpers) {
-      final LatLng location = helper['location'] as LatLng;
-      final String id = helper['id'] as String;
-      final String name = helper['name'] as String;
-      final String type = helper['type'] as String;
-      final bool isAvailable = helper['isAvailable'] as bool? ?? true;
-
-      markers.add(
-        Marker(
-          markerId: MarkerId(id),
-          position: location,
-          infoWindow: InfoWindow(
-            title: name,
-            snippet: '${_getHelperTypeLabel(type)} ${isAvailable ? '(Available)' : '(Unavailable)'}',
+    return MarkerLayer(
+      markers: helpers.map((helper) {
+        final location = helper['location'] as LatLng;
+        return Marker(
+          point: location,
+          width: 44,
+          height: 44,
+          child: HelperMarker(
+            helper: helper,
+            onTap: onHelperTap,
           ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(_getHelperHue(type, isAvailable)),
-          onTap: () {
-            if (onHelperTap != null) {
-              onHelperTap!(helper);
-            }
-          },
-        ),
-      );
-    }
-
-    return Stack(
-      children: [
-        // Render markers on the map
-        GoogleMap(
-          initialCameraPosition: const CameraPosition(
-            target: LatLng(0, 0),
-            zoom: 15,
-          ),
-          markers: markers,
-          zoomControlsEnabled: false,
-          mapToolbarEnabled: false,
-          myLocationButtonEnabled: false,
-          compassEnabled: false,
-          mapType: MapType.none,
-        ),
-      ],
+        );
+      }).toList(),
     );
-  }
-
-  /// Get the hue for the marker based on helper type
-  double _getHelperHue(String type, bool isAvailable) {
-    if (!isAvailable) {
-      return BitmapDescriptor.hueAzure; // Using hueAzure instead of hueGrey which doesn't exist
-    }
-
-    switch (type) {
-      case 'police':
-        return BitmapDescriptor.hueBlue;
-      case 'medical':
-        return BitmapDescriptor.hueRed;
-      case 'security_guard':
-        return BitmapDescriptor.hueYellow;
-      case 'volunteer':
-        return BitmapDescriptor.hueViolet;
-      case 'community_member':
-        return BitmapDescriptor.hueCyan;
-      default:
-        return BitmapDescriptor.hueAzure;
-    }
-  }
-
-  /// Get a human-readable label for the helper type
-  String _getHelperTypeLabel(String type) {
-    switch (type) {
-      case 'police':
-        return 'Police Officer';
-      case 'medical':
-        return 'Medical Professional';
-      case 'security_guard':
-        return 'Security Guard';
-      case 'volunteer':
-        return 'Safety Volunteer';
-      case 'community_member':
-        return 'Community Member';
-      default:
-        return 'Helper';
-    }
   }
 }

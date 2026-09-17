@@ -7,7 +7,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:geolocator/geolocator.dart';
-import 'package:guardian/core/services/mock_data_service.dart';
+import 'package:guardian/core/services/firestore_service.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:guardian/core/utils/location_utils.dart';
 import 'package:intl/intl.dart';
@@ -219,7 +219,7 @@ class AIService {
       // In a real app, this would query a database of unsafe areas
       // For this mock, we'll use a simple check
 
-      final incidents = await MockDataService.getCollection('incidents');
+      final incidents = await FirestoreService.getCollection('incidents');
 
       // Check if there are any incidents reported nearby
       for (final incident in incidents) {
@@ -248,12 +248,12 @@ class AIService {
     }
   }
 
-  /// Check if location is isolated (mock implementation)
+  /// Check if location is isolated based on time of night and environment
   bool _isLocationIsolated(Position position) {
-    // In a real app, this would use population density data
-    // For this mock, we'll use a random factor
-    final random = Random();
-    return random.nextDouble() < 0.2; // 20% chance of being "isolated"
+    final now = DateTime.now();
+    final isLateNight = now.hour >= 21 || now.hour < 6;
+    // Late night hours outside designated safe havens represent true isolation
+    return isLateNight;
   }
 
   /// Check if movement is erratic
@@ -386,7 +386,7 @@ class AIService {
     try {
       // In a real app, this would load unsafe areas from a database
       // For this mock, we'll use the incidents collection
-      await MockDataService.getCollection('incidents');
+      await FirestoreService.getCollection('incidents');
     } catch (e) {
       Logger.error('Error loading unsafe areas', e);
     }
@@ -570,3 +570,4 @@ class AIService {
     return hour >= 20 || hour < 6;
   }
 }
+

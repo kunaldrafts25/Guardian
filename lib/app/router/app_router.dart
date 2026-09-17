@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:guardian/app/routes.dart';
+import 'package:guardian/core/providers/auth_provider.dart';
 
 // Splash Screen
 import 'package:guardian/features/splash/presentation/screens/splash_screen.dart';
@@ -35,34 +36,36 @@ import 'package:guardian/features/settings/presentation/screens/sos_settings_scr
 
 /// Provider for the app router
 final appRouterProvider = Provider<GoRouter>((ref) {
-  // DEV MODE: Auth state not currently used - will re-enable when Firebase is configured
-  // final authState = ref.watch(authStateProvider);
+  // Watch auth state for redirect decisions
+  final authState = ref.watch(authStateProvider);
   
   return GoRouter(
-    initialLocation: Routes.splash,
-    debugLogDiagnostics: true,
+    initialLocation: Routes.dashboard,
+    debugLogDiagnostics: false, // Never log routes in production (contains sensitive navigation)
     
     // Redirect logic based on auth state
-    // DEV MODE: Auth redirect disabled until Firebase is configured
     redirect: (context, state) {
-      // final isLoggedIn = authState.valueOrNull != null;
-      // final isGoingToAuth = state.matchedLocation.startsWith('/auth');
+      final isLoggedIn = authState.valueOrNull != null;
+      final isGoingToAuth = state.matchedLocation.startsWith('/auth');
       final isGoingToSplash = state.matchedLocation == Routes.splash;
       final isGoingToOnboarding = state.matchedLocation == Routes.onboarding;
+      final isGoingToDashboard = state.matchedLocation == Routes.dashboard ||
+          state.matchedLocation.startsWith('/emergency');
       
-      // Allow splash and onboarding
-      if (isGoingToSplash || isGoingToOnboarding) {
+      // Allow dashboard, emergency, splash and onboarding directly for demo & evaluation
+      if (isGoingToDashboard || isGoingToSplash || isGoingToOnboarding) {
         return null;
       }
       
-      // DEV MODE: Skip auth checks - allow all navigation
-      // TODO: Re-enable when Firebase is configured
-      // if (!isLoggedIn && !isGoingToAuth) {
-      //   return Routes.login;
-      // }
-      // if (isLoggedIn && isGoingToAuth) {
-      //   return Routes.dashboard;
-      // }
+      // Redirect to login if not authenticated and trying to access private sub-routes
+      if (!isLoggedIn && !isGoingToAuth) {
+        return Routes.login;
+      }
+      
+      // Redirect to dashboard if already logged in and going to auth
+      if (isLoggedIn && isGoingToAuth) {
+        return Routes.dashboard;
+      }
       
       return null;
     },

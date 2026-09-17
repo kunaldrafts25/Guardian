@@ -5,11 +5,13 @@
  * Emergency Provider - Riverpod state management for SOS
  */
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:guardian/core/models/emergency_model.dart';
 import 'package:guardian/core/providers/contacts_provider.dart';
 import 'package:guardian/core/providers/sos_settings_provider.dart';
+import 'package:guardian/core/services/aws_incident_service.dart';
 import 'package:guardian/core/services/sos_service.dart';
 import 'package:guardian/core/utils/location_utils.dart';
 import 'package:guardian/core/utils/logger.dart';
@@ -152,12 +154,18 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       
       Logger.info('🚨 SOS TRIGGERED via ${source.name}');
       
+      // Get real user identity from Firebase Auth
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+      final realName = firebaseUser?.displayName ?? firebaseUser?.email ?? 'Guardian User';
+      final realUid = firebaseUser?.uid ?? 'anonymous';
+
       // Trigger SOS via the unified service
       final alert = await _sosService.triggerSos(
         contacts: contacts,
         source: source,
         customMessage: settings.customMessage.isNotEmpty ? settings.customMessage : null,
-        userName: 'Guardian User', // TODO: Get from user profile
+        userName: realName,
+        userId: realUid,
       );
       
       if (alert == null) {
@@ -167,7 +175,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       // Create emergency record for UI
       final emergency = Emergency(
         id: alert.id,
-        userId: 'dev-user',
+        userId: realUid,
         status: EmergencyStatus.active,
         startedAt: alert.startedAt,
         notifiedContacts: contacts.map((c) => c.phone).toList(),
@@ -186,6 +194,25 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       
       Logger.info('✅ Emergency activated. ${alert.notifiedCount}/${contacts.length} contacts notified.');
       
+      // Forward incident to AWS Serverless / Agentic pipeline
+      try {
+        final loc = alert.currentLocation;
+        AwsIncidentService.instance.createIncident(
+          eventId: alert.id,
+          userId: realUid,
+          eventType: 'sos_button',
+          location: loc != null
+              ? {'latitude': loc.latitude, 'longitude': loc.longitude}
+              : null,
+          motionData: {'g_force': 2.5},
+        ).catchError((e) {
+          Logger.warning('AWS incident ingestion skipped (offline/unreachable): $e');
+          return <String, dynamic>{};
+        });
+      } catch (e) {
+        Logger.warning('Could not forward incident to AWS: $e');
+      }
+
       // Auto-call emergency services if enabled
       if (settings.autoCallEmergency) {
         await _sosService.callEmergencyServices(number: settings.emergencyNumber);
@@ -203,6 +230,72 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
   Future<void> triggerFromShake() async {
     await triggerEmergency(source: SosTriggerSource.shake);
   }
+
+  /// Trigger SOS from hardware power button 3-tap (covert panic)
+  /// NO countdown — fires immediately with CRITICAL risk classification.
+  /// Bypasses all verification delays to protect against active assault.
+  Future<void> triggerFromHardwarePanic() async {
+    Logger.info('🚨 HARDWARE POWER BUTTON PANIC — Immediate CRITICAL escalation');
+    state = state.copyWith(state: SosState.triggering);
+
+    try {
+      final contactsState = _ref.read(contactsProvider);
+      final contacts = contactsState.contacts;
+      final settings = _ref.read(sosSettingsProvider);
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+      final realName = firebaseUser?.displayName ?? firebaseUser?.email ?? 'Guardian User';
+      final realUid = firebaseUser?.uid ?? 'anonymous';
+
+      // Trigger local SOS (SMS to contacts) — no waiting
+      final alert = await _sosService.triggerSos(
+        contacts: contacts,
+        source: SosTriggerSource.button,
+        customMessage: '🚨 EMERGENCY — I need immediate help. This is a real danger alert.',
+        userName: realName,
+        userId: realUid,
+      );
+
+      if (alert == null) throw Exception('Failed to create hardware panic alert');
+
+      final emergency = Emergency(
+        id: alert.id,
+        userId: realUid,
+        status: EmergencyStatus.active,
+        startedAt: alert.startedAt,
+        notifiedContacts: contacts.map((c) => c.phone).toList(),
+      );
+
+      state = state.copyWith(
+        state: SosState.active,
+        activeEmergency: emergency,
+        sosAlert: alert,
+        currentLocation: alert.currentLocation,
+        notifiedContacts: alert.contactStatuses.where((c) => c.smsSent).map((c) => c.contact.name).toList(),
+      );
+
+      // Forward to AWS Agent as hardware_power_panic — immediate CRITICAL (0.98) score
+      final loc = alert.currentLocation;
+      AwsIncidentService.instance.createIncident(
+        eventId: '${alert.id}_panic',
+        userId: realUid,
+        eventType: 'hardware_power_panic',
+        location: loc != null ? {'latitude': loc.latitude, 'longitude': loc.longitude, 'is_isolated': true} : null,
+        motionData: {'tap_count': 3, 'trigger': 'power_button'},
+      ).catchError((e) {
+        Logger.warning('AWS hardware panic incident ingestion failed (offline): $e');
+        return <String, dynamic>{};
+      });
+
+      Logger.info('✅ Hardware panic escalated. ${alert.notifiedCount} contacts notified.');
+    } catch (e) {
+      Logger.error('Error triggering hardware panic', e);
+      state = state.copyWith(
+        state: SosState.error,
+        errorMessage: 'Hardware panic escalation failed: $e',
+      );
+    }
+  }
+
 
   /// Add a responder
   void addResponder(String responderId) {

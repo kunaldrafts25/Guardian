@@ -6,7 +6,6 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:guardian/core/di/service_locator.dart';
 import 'package:guardian/core/services/ai_service.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:guardian/core/widgets/safety_alert.dart';
@@ -16,7 +15,7 @@ class SafetyNotificationManager {
   static final SafetyNotificationManager _instance = SafetyNotificationManager._internal();
   
   /// AI service for risk assessment
-  final AIService _aiService = sl<AIService>();
+  final AIService _aiService = AIService();
   
   /// Stream subscription for risk level updates
   StreamSubscription<RiskLevel>? _riskLevelSubscription;

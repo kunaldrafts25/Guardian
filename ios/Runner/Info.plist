@@ -2,6 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- ═══════════════════════════════════════════════════
+	     App Identity
+	     ═══════════════════════════════════════════════════ -->
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -24,6 +27,75 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>MinimumOSVersion</key>
+	<string>14.0</string>
+
+	<!-- ═══════════════════════════════════════════════════
+	     PRIVACY USAGE STRINGS — Required or app crashes
+	     on first permission request on real iOS device
+	     ═══════════════════════════════════════════════════ -->
+
+	<!-- Location — always on for background safety monitoring -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Guardian needs your location to include it in emergency alerts sent to your trusted contacts.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Guardian uses your location in the background to keep emergency alerts accurate even when your screen is off.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Guardian uses your location in the background to provide accurate location in emergency alerts.</string>
+
+	<!-- Microphone — for voice SOS triggers and audio threat detection -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Guardian uses the microphone to detect voice SOS commands and listen for sounds that may indicate danger.</string>
+
+	<!-- Camera — for environment safety classification and evidence capture -->
+	<key>NSCameraUsageDescription</key>
+	<string>Guardian can capture photos or video as evidence during an emergency alert.</string>
+
+	<!-- Contacts — for emergency contact phone number validation -->
+	<key>NSContactsUsageDescription</key>
+	<string>Guardian can import phone numbers from your contacts to set up your emergency contact list faster.</string>
+
+	<!-- Motion — for shake and fall detection -->
+	<key>NSMotionUsageDescription</key>
+	<string>Guardian uses motion sensors to detect shake gestures and falls that may trigger an emergency alert.</string>
+
+	<!-- Bluetooth — for BLE mesh offline alert relay -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Guardian uses Bluetooth to relay emergency alerts to nearby Guardian users even when there is no internet connection.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Guardian uses Bluetooth to connect to safety wearables and nearby Guardian users.</string>
+
+	<!-- Local Network — for WiFi Direct P2P mesh -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Guardian uses your local network to relay emergency alerts to nearby Guardian users when the internet is unavailable.</string>
+
+	<!-- Face ID — for biometric lock of sensitive settings -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>Use Face ID to quickly authenticate and access Guardian settings.</string>
+
+	<!-- ═══════════════════════════════════════════════════
+	     BACKGROUND MODES — Critical for safety monitoring
+	     ═══════════════════════════════════════════════════ -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>fetch</string>
+		<string>remote-notification</string>
+		<string>audio</string>
+		<string>bluetooth-central</string>
+		<string>bluetooth-peripheral</string>
+		<string>processing</string>
+	</array>
+
+	<!-- ═══════════════════════════════════════════════════
+	     Google Maps API Key — injected from xcconfig
+	     ═══════════════════════════════════════════════════ -->
+	<key>GOOGLE_MAPS_API_KEY</key>
+	<string>$(GOOGLE_MAPS_API_KEY)</string>
+
+	<!-- ═══════════════════════════════════════════════════
+	     UI Configuration
+	     ═══════════════════════════════════════════════════ -->
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -45,8 +117,5 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	<!-- Google Maps API Key (from Config.xcconfig) -->
-	<key>GOOGLE_MAPS_API_KEY</key>
-	<string>$(GOOGLE_MAPS_API_KEY)</string>
 </dict>
 </plist>

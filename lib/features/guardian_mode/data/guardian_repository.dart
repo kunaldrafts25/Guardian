@@ -5,10 +5,11 @@
  */
 
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:guardian/core/services/mock_auth_service.dart';
-import 'package:guardian/core/services/mock_data_service.dart';
+import 'package:guardian/core/services/auth_service.dart';
+import 'package:guardian/core/services/firestore_service.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:guardian/features/guardian_mode/data/models/guardian_contact_model.dart';
 import 'package:guardian/features/guardian_mode/data/models/guardian_session_model.dart';
@@ -41,12 +42,12 @@ class GuardianRepository {
   /// Get all guardian contacts for the current user
   Future<List<GuardianContact>> getGuardianContacts() async {
     try {
-      final user = MockAuthService.currentUser;
+      final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }
       
-      final userData = await MockDataService.getDocument('users', user.uid);
+      final userData = await FirestoreService.getDocument('users', user.uid);
       if (userData == null) {
         return [];
       }
@@ -59,7 +60,7 @@ class GuardianRepository {
       final contacts = <GuardianContact>[];
       
       for (final contactId in contactIds) {
-        final contactData = await MockDataService.getDocument(
+        final contactData = await FirestoreService.getDocument(
           _guardianContactsCollection, 
           contactId
         );
@@ -79,13 +80,13 @@ class GuardianRepository {
   /// Add a new guardian contact
   Future<String?> addGuardianContact(GuardianContact contact) async {
     try {
-      final user = MockAuthService.currentUser;
+      final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }
       
       // Add contact to collection
-      final contactId = await MockDataService.addDocument(
+      final contactId = await FirestoreService.addDocument(
         _guardianContactsCollection,
         contact.toMap(),
       );
@@ -95,7 +96,7 @@ class GuardianRepository {
       }
       
       // Update user's guardian contacts list
-      final userData = await MockDataService.getDocument('users', user.uid);
+      final userData = await FirestoreService.getDocument('users', user.uid);
       if (userData == null) {
         throw Exception('User data not found');
       }
@@ -106,7 +107,7 @@ class GuardianRepository {
       
       contactIds.add(contactId);
       
-      await MockDataService.updateDocument(
+      await FirestoreService.updateDocument(
         'users',
         user.uid,
         {'guardianContacts': contactIds},
@@ -122,7 +123,7 @@ class GuardianRepository {
   /// Update a guardian contact
   Future<bool> updateGuardianContact(GuardianContact contact) async {
     try {
-      return await MockDataService.updateDocument(
+      return await FirestoreService.updateDocument(
         _guardianContactsCollection,
         contact.id,
         contact.toMap(),
@@ -136,13 +137,13 @@ class GuardianRepository {
   /// Remove a guardian contact
   Future<bool> removeGuardianContact(String contactId) async {
     try {
-      final user = MockAuthService.currentUser;
+      final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }
       
       // Update user's guardian contacts list
-      final userData = await MockDataService.getDocument('users', user.uid);
+      final userData = await FirestoreService.getDocument('users', user.uid);
       if (userData == null) {
         throw Exception('User data not found');
       }
@@ -154,7 +155,7 @@ class GuardianRepository {
       final List<String> contactIds = List<String>.from(userData['guardianContacts']);
       contactIds.remove(contactId);
       
-      await MockDataService.updateDocument(
+      await FirestoreService.updateDocument(
         'users',
         user.uid,
         {'guardianContacts': contactIds},
@@ -175,7 +176,7 @@ class GuardianRepository {
         throw Exception('A guardian session is already active');
       }
       
-      final user = MockAuthService.currentUser;
+      final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }
@@ -197,7 +198,7 @@ class GuardianRepository {
       );
       
       // Save session to database
-      final sessionId = await MockDataService.addDocument(
+      final sessionId = await FirestoreService.addDocument(
         _guardianSessionsCollection,
         session.toMap(),
       );
@@ -240,7 +241,7 @@ class GuardianRepository {
         notes: notes,
       );
       
-      final success = await MockDataService.updateDocument(
+      final success = await FirestoreService.updateDocument(
         _guardianSessionsCollection,
         _activeSession!.id,
         updatedSession.toMap(),
@@ -330,7 +331,7 @@ class GuardianRepository {
       );
       
       // Update in database
-      await MockDataService.updateDocument(
+      await FirestoreService.updateDocument(
         _guardianSessionsCollection,
         sessionId,
         {
@@ -367,7 +368,7 @@ class GuardianRepository {
       );
       
       // Update in database
-      await MockDataService.updateDocument(
+      await FirestoreService.updateDocument(
         _guardianSessionsCollection,
         sessionId,
         {
@@ -411,3 +412,6 @@ class GuardianRepository {
     _activeSessionController.close();
   }
 }
+
+
+

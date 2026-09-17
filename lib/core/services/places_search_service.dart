@@ -2,37 +2,46 @@
  * Guardian 2.0 - Women's Safety App
  * © 2025 All Rights Reserved - Kunal Singh
  * 
- * Places Search Service - Google Places API integration
+ * Places Search Service - OpenStreetMap Nominatim (Free, No API key needed)
  */
 
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:guardian/core/utils/logger.dart';
 
-/// A place prediction from Places API autocomplete
+/// A place prediction / result
 class PlacePrediction {
   final String placeId;
   final String description;
   final String mainText;
   final String? secondaryText;
+  final LatLng? location;
 
   const PlacePrediction({
     required this.placeId,
     required this.description,
     required this.mainText,
     this.secondaryText,
+    this.location,
   });
 
-  factory PlacePrediction.fromJson(Map<String, dynamic> json) {
-    final structuredFormatting = json['structured_formatting'] as Map<String, dynamic>?;
+  factory PlacePrediction.fromOsmJson(Map<String, dynamic> json) {
+    final displayName = json['display_name'] as String? ?? '';
+    final parts = displayName.split(',');
+    final main = parts.isNotEmpty ? parts.first.trim() : displayName;
+    final sec = parts.length > 1 ? parts.sublist(1).join(',').trim() : null;
+    final lat = double.tryParse(json['lat']?.toString() ?? '');
+    final lon = double.tryParse(json['lon']?.toString() ?? '');
+
     return PlacePrediction(
-      placeId: json['place_id'] as String,
-      description: json['description'] as String,
-      mainText: structuredFormatting?['main_text'] as String? ?? json['description'] as String,
-      secondaryText: structuredFormatting?['secondary_text'] as String?,
+      placeId: json['place_id']?.toString() ??
+          DateTime.now().microsecondsSinceEpoch.toString(),
+      description: displayName,
+      mainText: main,
+      secondaryText: sec,
+      location: (lat != null && lon != null) ? LatLng(lat, lon) : null,
     );
   }
 }
@@ -85,21 +94,13 @@ class PlacesSearchState {
   }
 }
 
-/// Places search notifier
+/// Places search notifier using OpenStreetMap Nominatim (Free, no quota limits)
 class PlacesSearchNotifier extends StateNotifier<PlacesSearchState> {
   PlacesSearchNotifier() : super(const PlacesSearchState());
 
-  String get _apiKey {
-    try {
-      return dotenv.env['GOOGLE_MAPS_API_KEY_WEB'] ?? '';
-    } catch (e) {
-      return '';
-    }
-  }
-
-  /// Search for places using autocomplete
+  /// Search for places using OSM Nominatim API
   Future<void> searchPlaces(String query, {LatLng? location}) async {
-    if (query.isEmpty) {
+    if (query.trim().isEmpty) {
       state = state.copyWith(predictions: [], isSearching: false);
       return;
     }
@@ -107,95 +108,98 @@ class PlacesSearchNotifier extends StateNotifier<PlacesSearchState> {
     state = state.copyWith(isSearching: true, errorMessage: null);
 
     try {
-      final apiKey = _apiKey;
-      if (apiKey.isEmpty) {
-        throw Exception('API key not configured');
-      }
+      var urlStr = 'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&addressdetails=1&limit=6';
 
-      var url = 'https://maps.googleapis.com/maps/api/place/autocomplete/json'
-          '?input=${Uri.encodeComponent(query)}'
-          '&key=$apiKey';
-
-      // Add location bias if available
       if (location != null) {
-        url += '&location=${location.latitude},${location.longitude}'
-            '&radius=50000';  // 50km radius
+        // Bias search to near user
+        final left = location.longitude - 0.5;
+        final right = location.longitude + 0.5;
+        final top = location.latitude + 0.5;
+        final bottom = location.latitude - 0.5;
+        urlStr += '&viewbox=$left,$top,$right,$bottom';
       }
 
-      final response = await http.get(Uri.parse(url));
+      final response = await http.get(
+        Uri.parse(urlStr),
+        headers: {
+          'User-Agent': 'GuardianSafetyApp/2.0 (contact@guardian-safety.app)',
+          'Accept-Language': 'en',
+        },
+      ).timeout(const Duration(seconds: 6));
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        
-        if (data['status'] == 'OK') {
-          final predictions = (data['predictions'] as List)
-              .map((p) => PlacePrediction.fromJson(p))
-              .toList();
-          
-          state = state.copyWith(
-            predictions: predictions,
-            isSearching: false,
-          );
-        } else if (data['status'] == 'ZERO_RESULTS') {
-          state = state.copyWith(predictions: [], isSearching: false);
-        } else {
-          throw Exception(data['status']);
-        }
+        final List<dynamic> data = json.decode(response.body);
+        final predictions = data
+            .map((p) => PlacePrediction.fromOsmJson(p as Map<String, dynamic>))
+            .toList();
+
+        state = state.copyWith(
+          predictions: predictions,
+          isSearching: false,
+        );
       } else {
-        throw Exception('Failed to search places');
+        state = state.copyWith(isSearching: false, predictions: []);
       }
     } catch (e) {
-      Logger.error('Places search error', e);
+      Logger.warning('OSM Places search error: $e');
       state = state.copyWith(
         isSearching: false,
-        errorMessage: e.toString(),
+        errorMessage: 'Search offline or unavailable',
       );
     }
   }
 
   /// Get place details including coordinates
-  Future<PlaceDetails?> getPlaceDetails(String placeId) async {
+  Future<PlaceDetails?> getPlaceDetails(String placeId, {PlacePrediction? prediction}) async {
     state = state.copyWith(isLoadingDetails: true, errorMessage: null);
 
     try {
-      final apiKey = _apiKey;
-      if (apiKey.isEmpty) {
-        throw Exception('API key not configured');
+      // If we already have coordinates from prediction, use it directly
+      if (prediction != null && prediction.location != null) {
+        final details = PlaceDetails(
+          placeId: prediction.placeId,
+          name: prediction.mainText,
+          address: prediction.description,
+          location: prediction.location!,
+        );
+        state = state.copyWith(
+          selectedPlace: details,
+          isLoadingDetails: false,
+        );
+        return details;
       }
 
-      final url = 'https://maps.googleapis.com/maps/api/place/details/json'
-          '?place_id=$placeId'
-          '&fields=name,formatted_address,geometry'
-          '&key=$apiKey';
-
-      final response = await http.get(Uri.parse(url));
+      // Query Nominatim lookup
+      final url = 'https://nominatim.openstreetmap.org/lookup?osm_ids=N$placeId,W$placeId,R$placeId&format=json';
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'User-Agent': 'GuardianSafetyApp/2.0 (contact@guardian-safety.app)',
+        },
+      ).timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        
-        if (data['status'] == 'OK') {
-          final result = data['result'];
-          final location = result['geometry']['location'];
-          
+        final List<dynamic> data = json.decode(response.body);
+        if (data.isNotEmpty) {
+          final first = data[0];
+          final lat = double.parse(first['lat']);
+          final lon = double.parse(first['lon']);
           final details = PlaceDetails(
             placeId: placeId,
-            name: result['name'] ?? '',
-            address: result['formatted_address'] ?? '',
-            location: LatLng(location['lat'], location['lng']),
+            name: first['name'] ?? first['display_name'],
+            address: first['display_name'],
+            location: LatLng(lat, lon),
           );
-          
           state = state.copyWith(
             selectedPlace: details,
             isLoadingDetails: false,
           );
-          
           return details;
-        } else {
-          throw Exception(data['status']);
         }
-      } else {
-        throw Exception('Failed to get place details');
       }
+
+      state = state.copyWith(isLoadingDetails: false);
+      return null;
     } catch (e) {
       Logger.error('Place details error', e);
       state = state.copyWith(

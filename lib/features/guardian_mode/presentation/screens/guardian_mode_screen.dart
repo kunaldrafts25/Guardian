@@ -6,10 +6,10 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:guardian/core/constants/app_colors.dart';
 import 'package:guardian/core/constants/app_typography.dart';
-import 'package:guardian/core/di/service_locator.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:guardian/core/widgets/custom_app_bar.dart';
 import 'package:guardian/core/widgets/loading_indicator.dart';
@@ -27,8 +27,8 @@ class GuardianModeScreen extends StatefulWidget {
 }
 
 class _GuardianModeScreenState extends State<GuardianModeScreen> {
-  final GuardianRepository _repository = sl<GuardianRepository>();
-  final Completer<GoogleMapController> _mapController = Completer();
+  final GuardianRepository _repository = GuardianRepository();
+  final MapController _mapController = MapController();
 
   List<GuardianContact> _contacts = [];
   List<GuardianContact> _selectedContacts = [];
@@ -36,8 +36,8 @@ class _GuardianModeScreenState extends State<GuardianModeScreen> {
   bool _isStartingSession = false;
   GuardianSession? _activeSession;
 
-  Set<Marker> _markers = {};
-  Set<Polyline> _polylines = {};
+  List<Marker> _markers = [];
+  List<Polyline> _polylines = [];
 
   StreamSubscription<GuardianSession?>? _sessionSubscription;
 
@@ -89,16 +89,16 @@ class _GuardianModeScreenState extends State<GuardianModeScreen> {
     if (session.locationHistory.isEmpty) return;
 
     // Create markers
-    final markers = <Marker>{};
+    final markers = <Marker>[];
     final lastLocation = session.lastLocation;
 
     if (lastLocation != null) {
       markers.add(
         Marker(
-          markerId: const MarkerId('current_location'),
-          position:
-              LatLng(lastLocation['latitude']!, lastLocation['longitude']!),
-          infoWindow: const InfoWindow(title: 'Current Location'),
+          point: LatLng(lastLocation['latitude']!, lastLocation['longitude']!),
+          width: 40,
+          height: 40,
+          child: const Icon(Icons.my_location, color: AppColors.primary, size: 36),
         ),
       );
     }
@@ -112,14 +112,13 @@ class _GuardianModeScreenState extends State<GuardianModeScreen> {
       );
     }
 
-    final polylines = <Polyline>{
+    final polylines = <Polyline>[
       Polyline(
-        polylineId: const PolylineId('route'),
         points: polylinePoints,
         color: AppColors.primary,
-        width: 5,
+        strokeWidth: 5,
       ),
-    };
+    ];
 
     setState(() {
       _markers = markers;
@@ -134,9 +133,10 @@ class _GuardianModeScreenState extends State<GuardianModeScreen> {
     }
   }
 
-  Future<void> _moveCamera(LatLng target) async {
-    final GoogleMapController controller = await _mapController.future;
-    controller.animateCamera(CameraUpdate.newLatLngZoom(target, 15));
+  void _moveCamera(LatLng target) {
+    try {
+      _mapController.move(target, 15.0);
+    } catch (_) {}
   }
 
   Future<void> _startGuardianSession() async {
@@ -344,20 +344,20 @@ class _GuardianModeScreenState extends State<GuardianModeScreen> {
     return Column(
       children: [
         Expanded(
-          child: GoogleMap(
-            initialCameraPosition: const CameraPosition(
-              target: LatLng(20.5937, 78.9629), // Default to India
-              zoom: 5,
+          child: FlutterMap(
+            mapController: _mapController,
+            options: const MapOptions(
+              initialCenter: LatLng(20.5937, 78.9629),
+              initialZoom: 5,
             ),
-            markers: _markers,
-            polylines: _polylines,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: true,
-            mapToolbarEnabled: false,
-            zoomControlsEnabled: true,
-            onMapCreated: (GoogleMapController controller) {
-              _mapController.complete(controller);
-            },
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.company.guardian',
+              ),
+              PolylineLayer(polylines: _polylines),
+              MarkerLayer(markers: _markers),
+            ],
           ),
         ),
         if (_activeSession != null)
@@ -405,3 +405,4 @@ class _GuardianModeScreenState extends State<GuardianModeScreen> {
     );
   }
 }
+

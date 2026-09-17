@@ -8,14 +8,44 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:guardian/core/constants/app_colors.dart';
-import 'package:guardian/core/utils/api_keys.dart';
 import 'package:guardian/core/utils/location_utils.dart';
 import 'package:guardian/core/utils/logger.dart';
+import 'package:guardian/core/utils/api_keys.dart';
 import 'package:http/http.dart' as http;
 
-/// A service for Google Maps functionality
+/// Camera position representation
+class CameraPosition {
+  final LatLng target;
+  final double zoom;
+  const CameraPosition({required this.target, this.zoom = 15});
+}
+
+/// LatLng bounds representation
+class LatLngBounds {
+  final LatLng southwest;
+  final LatLng northeast;
+  const LatLngBounds({required this.southwest, required this.northeast});
+}
+
+/// Bitmap descriptor placeholder for markers
+class BitmapDescriptor {
+  final dynamic val;
+  const BitmapDescriptor(this.val);
+  static const defaultMarker = BitmapDescriptor('default');
+  static const hueRed = 0.0;
+  static const hueBlue = 240.0;
+  static const hueGreen = 120.0;
+  static const hueYellow = 60.0;
+  static const hueOrange = 30.0;
+  static const hueViolet = 270.0;
+  static const hueCyan = 180.0;
+  static const hueAzure = 210.0;
+  static BitmapDescriptor defaultMarkerWithHue(double hue) => BitmapDescriptor(hue);
+}
+
+/// A service for Maps functionality
 class MapsService {
   static final Map<String, BitmapDescriptor> _markerCache = {};
   static final Map<String, dynamic> _locationCache = {};

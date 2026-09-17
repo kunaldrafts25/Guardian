@@ -10,9 +10,9 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:guardian/core/utils/logger.dart';
 
 /// Route information
@@ -73,21 +73,13 @@ class SafeRouteState {
   bool get hasRoute => currentRoute != null;
 }
 
-/// Safe route notifier
+/// Safe route notifier — uses FREE OSRM routing (replaces Google Directions API)
 class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
   SafeRouteNotifier() : super(const SafeRouteState());
 
-  /// Get API key from environment
-  String get _apiKey {
-    // Try to get from dotenv first, then fallback
-    try {
-      return dotenv.env['GOOGLE_MAPS_API_KEY_WEB'] ?? '';
-    } catch (e) {
-      return '';
-    }
-  }
+  static const String _osrmBase = 'https://router.project-osrm.org';
 
-  /// Fetch route from Google Directions API
+  /// Fetch walking route from OSRM (free, no API key needed)
   Future<void> fetchRoute({
     required LatLng origin,
     required LatLng destination,
@@ -102,95 +94,67 @@ class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
     );
 
     try {
-      final apiKey = _apiKey;
-      if (apiKey.isEmpty) {
-        throw Exception('Google Maps API key not configured');
-      }
-
-      // On web, CORS blocks direct API calls - use fallback route
-      if (kIsWeb) {
-        Logger.info('🗺️ Web platform detected - using estimated route');
-        final fallbackRoute = _generateFallbackRoute(origin, destination, destinationName);
-        state = state.copyWith(
-          isLoading: false,
-          currentRoute: fallbackRoute,
-        );
-        Logger.info('🗺️ Estimated route: ${fallbackRoute.distance}, ${fallbackRoute.duration}');
-        return;
-      }
-
+      // OSRM uses lon,lat order
       final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/directions/json'
-        '?origin=${origin.latitude},${origin.longitude}'
-        '&destination=${destination.latitude},${destination.longitude}'
-        '&mode=walking'  // Prefer walking for safety
-        '&alternatives=true'  // Get alternative routes
-        '&key=$apiKey'
+        '$_osrmBase/route/v1/foot/'
+        '${origin.longitude},${origin.latitude};'
+        '${destination.longitude},${destination.latitude}'
+        '?overview=full&geometries=geojson&steps=false',
       );
 
-      Logger.info('🗺️ Fetching route from Directions API');
-      
-      final response = await http.get(url);
-      
+      Logger.info('🗺️ Fetching route from OSRM (free)');
+      final response = await http.get(url).timeout(const Duration(seconds: 10));
+
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        
-        if (data['status'] == 'OK' && data['routes'].isNotEmpty) {
-          final route = data['routes'][0];
-          final leg = route['legs'][0];
-          
-          // Decode polyline
-          final polylinePoints = _decodePolyline(
-            route['overview_polyline']['points'],
-          );
-          
-          // Extract steps
-          final steps = <String>[];
-          for (final step in leg['steps']) {
-            // Remove HTML tags from instructions
-            final instruction = step['html_instructions']
-                .replaceAll(RegExp(r'<[^>]*>'), '');
-            steps.add(instruction);
-          }
-          
+        final data = json.decode(response.body) as Map<String, dynamic>;
+
+        if (data['code'] == 'Ok' && (data['routes'] as List).isNotEmpty) {
+          final route = data['routes'][0] as Map<String, dynamic>;
+          final geometry = route['geometry'] as Map<String, dynamic>;
+          final coords = geometry['coordinates'] as List;
+
+          final polylinePoints = coords.map((c) {
+            final coord = c as List;
+            return LatLng(coord[1] as double, coord[0] as double);
+          }).toList();
+
+          final distanceM = (route['distance'] as num).toDouble();
+          final durationS = (route['duration'] as num).toInt();
+          final distanceText = distanceM < 1000
+              ? '${distanceM.round()} m'
+              : '${(distanceM / 1000).toStringAsFixed(1)} km';
+          final durationText = '${(durationS / 60).ceil()} min walk';
+
           final routeInfo = RouteInfo(
             polylinePoints: polylinePoints,
-            distance: leg['distance']['text'],
-            duration: leg['duration']['text'],
-            startAddress: leg['start_address'],
-            endAddress: leg['end_address'],
-            steps: steps,
+            distance: distanceText,
+            duration: durationText,
+            startAddress: 'Current Location',
+            endAddress: destinationName ?? 'Destination',
+            steps: [],
           );
-          
+
           state = state.copyWith(
             isLoading: false,
             currentRoute: routeInfo,
           );
-          
-          Logger.info('🗺️ Route found: ${routeInfo.distance}, ${routeInfo.duration}');
-        } else {
-          throw Exception(data['status'] ?? 'No route found');
+
+          Logger.info('🗺️ OSRM route: $distanceText, $durationText');
+          return;
         }
-      } else {
-        throw Exception('Failed to fetch route: ${response.statusCode}');
       }
+
+      throw Exception('No route found (OSRM)');
     } catch (e) {
-      Logger.error('Failed to fetch route', e);
-      
-      // Fallback to estimated route on error
-      if (state.origin != null && state.destination != null) {
-        final fallbackRoute = _generateFallbackRoute(origin, destination, destinationName);
-        state = state.copyWith(
-          isLoading: false,
-          currentRoute: fallbackRoute,
-          errorMessage: 'Using estimated route (API unavailable)',
-        );
-      } else {
-        state = state.copyWith(
-          isLoading: false,
-          errorMessage: e.toString(),
-        );
-      }
+      Logger.warning('OSRM routing failed, using fallback: $e');
+
+      // Always fallback to straight-line estimate
+      final fallbackRoute = _generateFallbackRoute(origin, destination, destinationName);
+      state = state.copyWith(
+        isLoading: false,
+        currentRoute: fallbackRoute,
+        errorMessage: 'Using estimated route',
+      );
     }
   }
 
@@ -306,56 +270,46 @@ final safeRouteProvider = StateNotifierProvider<SafeRouteNotifier, SafeRouteStat
 });
 
 /// Current route polyline provider (for map display)
-final routePolylinesProvider = Provider<Set<Polyline>>((ref) {
+final routePolylinesProvider = Provider<List<Polyline>>((ref) {
   final routeState = ref.watch(safeRouteProvider);
   
   if (!routeState.hasRoute) {
-    return {};
+    return [];
   }
   
-  return {
+  return [
     Polyline(
-      polylineId: const PolylineId('safe_route'),
       points: routeState.currentRoute!.polylinePoints,
       color: const Color(0xFF4CAF50), // Green for safe route
-      width: 5,
-      patterns: [
-        PatternItem.dash(20),
-        PatternItem.gap(10),
-      ],
+      strokeWidth: 5,
     ),
-  };
+  ];
 });
 
 /// Route markers provider (start and end)
-final routeMarkersProvider = Provider<Set<Marker>>((ref) {
+final routeMarkersProvider = Provider<List<Marker>>((ref) {
   final routeState = ref.watch(safeRouteProvider);
   
   if (!routeState.hasRoute) {
-    return {};
+    return [];
   }
   
   final points = routeState.currentRoute!.polylinePoints;
-  if (points.isEmpty) return {};
+  if (points.isEmpty) return [];
   
-  return {
+  return [
     Marker(
-      markerId: const MarkerId('route_start'),
-      position: points.first,
-      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-      infoWindow: InfoWindow(
-        title: 'Start',
-        snippet: routeState.currentRoute!.startAddress,
-      ),
+      point: points.first,
+      width: 40,
+      height: 40,
+      child: const Icon(Icons.my_location, color: Colors.green, size: 28),
     ),
     Marker(
-      markerId: const MarkerId('route_end'),
-      position: points.last,
-      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-      infoWindow: InfoWindow(
-        title: routeState.destinationName ?? 'Destination',
-        snippet: routeState.currentRoute!.duration,
-      ),
+      point: points.last,
+      width: 40,
+      height: 40,
+      child: const Icon(Icons.location_on, color: Colors.red, size: 36),
     ),
-  };
+  ];
 });
+

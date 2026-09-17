@@ -12,8 +12,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:guardian/app/theme/app_theme.dart';
 import 'package:guardian/core/providers/emergency_provider.dart';
 import 'package:guardian/core/providers/sos_settings_provider.dart';
+import 'package:guardian/core/providers/contacts_provider.dart';
 import 'package:guardian/core/providers/sos_trigger_provider.dart';
-import 'package:guardian/core/providers/user_provider.dart';
+import 'package:guardian/core/services/sos_sound_service.dart';
 
 class EmergencyScreen extends ConsumerStatefulWidget {
   const EmergencyScreen({super.key});
@@ -65,11 +66,19 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
         if (settings.vibrationEnabled) {
           HapticFeedback.lightImpact();
         }
+        // Sound beep
+        if (settings.soundEnabled) {
+          SosSoundService.instance.playCountdownBeep();
+        }
       } else {
         timer.cancel();
         // Heavy haptic for trigger
         if (settings.vibrationEnabled) {
           HapticFeedback.heavyImpact();
+        }
+        // Alarm sound on activation
+        if (settings.soundEnabled) {
+          SosSoundService.instance.playSOSActivation();
         }
         // Trigger emergency
         ref.read(emergencyProvider.notifier).triggerEmergency();
@@ -103,7 +112,7 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
   @override
   Widget build(BuildContext context) {
     final emergencyState = ref.watch(emergencyProvider);
-    final contacts = ref.watch(emergencyContactsProvider);
+    final contacts = ref.watch(contactsProvider).contacts;
     final isActive = emergencyState.isActive;
 
     return Scaffold(
@@ -260,6 +269,41 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
                   ),
                   child: const Text('I\'m Safe - Cancel'),
+                ),
+              ] else if (emergencyState.state == SosState.error) ...[
+                // Error State
+                const SizedBox(height: 40),
+                Icon(
+                  Icons.error_outline,
+                  size: 80,
+                  color: AppColors.sos,
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Error',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: AppColors.sos,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  emergencyState.errorMessage ?? 'Something went wrong',
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Colors.grey[700],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton(
+                  onPressed: () {
+                    ref.read(emergencyProvider.notifier).clearError();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  ),
+                  child: const Text('Try Again'),
                 ),
               ] else ...[
                 // Normal State

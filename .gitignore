@@ -1,64 +1,95 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.buildlog/
-.history
-.svn/
-migrate_working_dir/
+# ============================================================
+# Guardian Safety App — .gitignore
+# ============================================================
 
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# --- Flutter / Dart ---
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
+.packages
 .pub-cache/
 .pub/
-/build/
+build/
+*.dart_snapshot
+*.dart_flow
+doc/api/
 
-# Symbolication related
-app.*.symbols
+# --- Generated files ---
+*.g.dart
+*.freezed.dart
+*.gr.dart
+lib/generated/
+lib/**/*.g.dart
+lib/**/*.freezed.dart
 
-# Obfuscation related
-app.*.map.json
-
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
-/android/app/.cxx
-
-# Firebase debug logs
-firebase-debug.log
-firestore-debug.log
-
-# IDE files
-*.iml
+# --- Android ---
+android/.gradle
+android/.kotlin/
+android/captures/
+android/gradlew
+android/gradlew.bat
 android/local.properties
-android/**/local.properties
+android/key.properties
+android/*.jks
+android/**/*.jks
+**/android/app/google-services.json
+**/android/app/src/*/google-services.json
 
-# Environment variables (secrets)
+# --- iOS / macOS ---
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Pods/
+ios/Podfile.lock
+**/ios/Runner/GoogleService-Info.plist
+*.ipa
+
+# --- Web ---
+
+# --- Environment & Secrets ---
 .env
-.env.local
-.env.*.local
-ios/Runner/Config.xcconfig
-
-# Firebase configuration files (contain API keys)
-android/app/google-services.json
-ios/Runner/GoogleService-Info.plist
+.env.*
+!.env.example
+*.env
+env.dart
+firebase_options.dart
 lib/firebase_options.dart
+
+# --- API Keys ---
+android/app/src/main/res/values/google_maps_api.xml
+ios/Runner/Config.xcconfig
+ios/Runner/GoogleService-Info.plist
+GoogleService-Info.plist
+google-services.json
+
+# --- Build artifacts ---
+*.apk
+*.aab
+*.ipa
+*.zip
+*.tar.gz
+*.dSYM
+
+# --- IDE ---
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+*.suo
+*.user
+.DS_Store
+Thumbs.db
+
+# --- Testing & Python ---
+coverage/
+test/.test_coverage.dart
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# --- Misc ---
+pubspec.lock
+!pubspec.lock

@@ -1,0 +1,152 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Guardian - Agentic Emergency Response System
+  Production AWS Serverless Backend Stack
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.12
+    Environment:
+      Variables:
+        DYNAMODB_INCIDENTS_TABLE: !Ref IncidentsTable
+        DYNAMODB_EVENTS_TABLE: !Ref IncidentEventsTable
+        EVENTBUS_NAME: default
+        SNS_TOPIC_ARN: !Ref EmergencyAlertsTopic
+        BEDROCK_MODEL_ID: anthropic.claude-3-haiku-20240307-v1:0
+
+Resources:
+  # ============================================================================
+  # 1. DynamoDB Tables
+  # ============================================================================
+  IncidentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: guardian-incidents
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: incident_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: incident_id
+          KeyType: HASH
+
+  IncidentEventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: guardian-incident-events
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: incident_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: incident_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+
+  # ============================================================================
+  # 2. SNS Alert Topic
+  # ============================================================================
+  EmergencyAlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: guardian-trusted-contact-alerts
+      DisplayName: Guardian Emergency Response Alerts
+
+  # ============================================================================
+  # 3. Incident Ingestion Lambda & API Gateway
+  # ============================================================================
+  IncidentHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: aws.incident_handler.handler.lambda_handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref IncidentsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref IncidentEventsTable
+        - EventBridgePutEventsPolicy:
+            EventBusName: default
+      Events:
+        CreateIncident:
+          Type: Api
+          Properties:
+            Path: /incidents
+            Method: post
+        GetIncident:
+          Type: Api
+          Properties:
+            Path: /incidents/{id}
+            Method: get
+        UpdateStatus:
+          Type: Api
+          Properties:
+            Path: /incidents/{id}/status
+            Method: put
+        GetTimeline:
+          Type: Api
+          Properties:
+            Path: /incidents/{id}/timeline
+            Method: get
+        GetNearbyResponders:
+          Type: Api
+          Properties:
+            Path: /incidents/{id}/nearby
+            Method: get
+        AcceptRescueMission:
+          Type: Api
+          Properties:
+            Path: /incidents/{id}/accept
+            Method: post
+        ResponderHeartbeat:
+          Type: Api
+          Properties:
+            Path: /responders/heartbeat
+            Method: post
+
+  # ============================================================================
+  # 4. Guardian Autonomous Agent Lambda (Bedrock + Strands)
+  # ============================================================================
+  GuardianAgentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: aws.agent.guardian_agent.lambda_handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref IncidentsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref IncidentEventsTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt EmergencyAlertsTopic.TopicName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: "*"
+      Events:
+        IncidentCreatedEvent:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - "guardian.incident"
+              detail-type:
+                - "incident.created"
+
+Outputs:
+  ApiEndpoint:
+    Description: "API Gateway endpoint URL for Prod environment"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+  IncidentsTableName:
+    Description: "DynamoDB Incidents Table"
+    Value: !Ref IncidentsTable
+  AlertsTopicArn:
+    Description: "SNS Emergency Alerts Topic ARN"
+    Value: !Ref EmergencyAlertsTopic

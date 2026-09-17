@@ -7,7 +7,6 @@
 import 'package:flutter/material.dart';
 import 'package:guardian/core/constants/app_colors.dart';
 import 'package:guardian/core/constants/app_typography.dart';
-import 'package:guardian/core/di/service_locator.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:guardian/features/guardian_circle/data/guardian_circle_repository.dart';
 import 'package:guardian/features/guardian_circle/data/models/guardian_circle_model.dart';
@@ -31,7 +30,7 @@ class EmergencyAlertButton extends StatefulWidget {
 }
 
 class _EmergencyAlertButtonState extends State<EmergencyAlertButton> {
-  final GuardianCircleRepository _repository = sl<GuardianCircleRepository>();
+  final GuardianCircleRepository _repository = GuardianCircleRepository();
 
   bool _isLoading = false;
 
@@ -357,3 +356,4 @@ class _AlertDetailsDialogState extends State<AlertDetailsDialog> {
     );
   }
 }
+

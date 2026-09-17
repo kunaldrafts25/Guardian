@@ -268,6 +268,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   
                   const SizedBox(height: 24),
                   
+                  // Quick Testing Direct Access Button
+                  ElevatedButton.icon(
+                    onPressed: () => context.go(Routes.dashboard),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.indigo.shade600,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    icon: const Icon(Icons.rocket_launch, color: Colors.amber),
+                    label: const Text(
+                      '⚡ Quick Access (Testing Mode)',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
                   // Google Sign In
                   OutlinedButton.icon(
                     onPressed: _signInWithGoogle,

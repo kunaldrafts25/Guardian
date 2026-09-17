@@ -9,7 +9,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:guardian/app/theme/app_theme.dart';
 import 'package:guardian/core/models/user_model.dart';
 import 'package:guardian/core/models/safe_zone_model.dart';
@@ -28,12 +29,9 @@ class MapScreen extends ConsumerStatefulWidget {
 }
 
 class _MapScreenState extends ConsumerState<MapScreen> {
-  final Completer<GoogleMapController> _mapController = Completer();
+  final MapController _mapController = MapController();
   
-  static const CameraPosition _defaultPosition = CameraPosition(
-    target: LatLng(18.5204, 73.8567), // Default to Pune, India
-    zoom: 14,
-  );
+  static const LatLng _defaultPosition = LatLng(18.5204, 73.8567); // Default to Pune, India
 
   @override
   Widget build(BuildContext context) {
@@ -51,13 +49,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
 
     // Build safe zone circles
-    final Set<Circle> circles = _buildSafeZoneCircles(safeZoneState);
+    final List<CircleMarker> circles = _buildSafeZoneCircles(safeZoneState);
     
     // Build markers including safe zone centers and route markers
-    final Set<Marker> markers = {
+    final List<Marker> markers = [
       ..._buildMarkers(locationState, safeZoneState),
       ...routeMarkers,
-    };
+    ];
 
     return Scaffold(
       appBar: AppBar(
@@ -117,25 +115,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           Expanded(
             child: Stack(
               children: [
-                GoogleMap(
-                  initialCameraPosition: locationState.hasLocation
-                      ? CameraPosition(
-                          target: LatLng(locationState.position!.latitude, locationState.position!.longitude),
-                          zoom: 15,
-                        )
-                      : _defaultPosition,
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: true,
-                  zoomControlsEnabled: true,
-                  mapToolbarEnabled: false,
-                  onMapCreated: (GoogleMapController controller) {
-                    if (!_mapController.isCompleted) {
-                      _mapController.complete(controller);
-                    }
-                  },
-                  markers: markers,
-                  circles: circles,
-                  polylines: routePolylines,
+                FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: locationState.hasLocation
+                        ? LatLng(locationState.position!.latitude, locationState.position!.longitude)
+                        : _defaultPosition,
+                    initialZoom: 15,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.company.guardian',
+                    ),
+                    CircleLayer(circles: circles),
+                    PolylineLayer(polylines: routePolylines),
+                    MarkerLayer(markers: markers),
+                  ],
                 ),
                 
                 // Bottom info card - show route info or default card
@@ -204,13 +200,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-  Future<void> _updateCameraPosition(double lat, double lng) async {
-    if (_mapController.isCompleted) {
-      final controller = await _mapController.future;
-      controller.animateCamera(
-        CameraUpdate.newLatLng(LatLng(lat, lng)),
-      );
-    }
+  void _updateCameraPosition(double lat, double lng) {
+    try {
+      _mapController.move(LatLng(lat, lng), 15);
+    } catch (_) {}
   }
 
   void _showModeSelector(BuildContext context, WidgetRef ref) {
@@ -433,8 +426,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   /// Build circles for safe zones visualization
-  Set<Circle> _buildSafeZoneCircles(SafeZoneState safeZoneState) {
-    final circles = <Circle>{};
+  List<CircleMarker> _buildSafeZoneCircles(SafeZoneState safeZoneState) {
+    final circles = <CircleMarker>[];
     
     for (final zone in safeZoneState.zones) {
       if (!zone.isActive) continue;
@@ -442,15 +435,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       final isCurrentZone = safeZoneState.currentZone?.id == zone.id;
       
       circles.add(
-        Circle(
-          circleId: CircleId('zone_${zone.id}'),
-          center: LatLng(zone.latitude, zone.longitude),
+        CircleMarker(
+          point: LatLng(zone.latitude, zone.longitude),
           radius: zone.radius,
-          fillColor: isCurrentZone 
+          useRadiusInMeter: true,
+          color: isCurrentZone 
               ? AppColors.success.withValues(alpha: 0.2)
               : AppColors.primary.withValues(alpha: 0.15),
-          strokeColor: isCurrentZone ? AppColors.success : AppColors.primary,
-          strokeWidth: 2,
+          borderColor: isCurrentZone ? AppColors.success : AppColors.primary,
+          borderStrokeWidth: 2,
         ),
       );
     }
@@ -459,20 +452,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   /// Build markers including user location and safe zone centers
-  Set<Marker> _buildMarkers(LocationState locationState, SafeZoneState safeZoneState) {
-    final markers = <Marker>{};
+  List<Marker> _buildMarkers(LocationState locationState, SafeZoneState safeZoneState) {
+    final markers = <Marker>[];
     
     // Add user location marker
     if (locationState.hasLocation) {
       markers.add(
         Marker(
-          markerId: const MarkerId('current_location'),
-          position: LatLng(locationState.position!.latitude, locationState.position!.longitude),
-          infoWindow: InfoWindow(
-            title: 'Your Location',
-            snippet: locationState.displayCoordinates,
+          point: LatLng(locationState.position!.latitude, locationState.position!.longitude),
+          width: 44,
+          height: 44,
+          child: const Icon(
+            Icons.my_location,
+            color: Colors.blueAccent,
+            size: 34,
           ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRose),
         ),
       );
     }
@@ -481,18 +475,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     for (final zone in safeZoneState.zones) {
       if (!zone.isActive) continue;
       
+      final isCurrent = safeZoneState.currentZone?.id == zone.id;
       markers.add(
         Marker(
-          markerId: MarkerId('zone_marker_${zone.id}'),
-          position: LatLng(zone.latitude, zone.longitude),
-          infoWindow: InfoWindow(
-            title: zone.name,
-            snippet: '${zone.radius.toInt()}m radius • ${zone.typeDisplayName}',
-          ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            safeZoneState.currentZone?.id == zone.id 
-                ? BitmapDescriptor.hueGreen 
-                : BitmapDescriptor.hueAzure,
+          point: LatLng(zone.latitude, zone.longitude),
+          width: 36,
+          height: 36,
+          child: Icon(
+            Icons.shield,
+            color: isCurrent ? AppColors.success : AppColors.primary,
+            size: 32,
           ),
         ),
       );

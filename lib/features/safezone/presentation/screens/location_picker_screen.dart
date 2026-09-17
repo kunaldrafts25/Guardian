@@ -2,13 +2,14 @@
  * Guardian 2.0 - Women's Safety App
  * © 2025 All Rights Reserved - Kunal Singh
  * 
- * Location Picker Screen - Select any location on the map
+ * Location Picker Screen - Select any location on the OpenStreetMap
  */
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:guardian/app/theme/app_theme.dart';
 import 'package:guardian/core/providers/location_provider.dart';
 import 'package:geocoding/geocoding.dart';
@@ -42,7 +43,7 @@ class LocationPickerScreen extends ConsumerStatefulWidget {
 }
 
 class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
-  final Completer<GoogleMapController> _mapController = Completer();
+  final MapController _mapController = MapController();
   final TextEditingController _searchController = TextEditingController();
   LatLng? _selectedLocation;
   String? _address;
@@ -121,30 +122,35 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
           Expanded(
             child: Stack(
               children: [
-                // Map
-                GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                    target: initialPosition,
-                    zoom: 15,
+                // OpenStreetMap
+                FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: initialPosition,
+                    initialZoom: 15,
+                    onTap: (tapPosition, point) => _onMapTapped(point),
                   ),
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: false,
-                  zoomControlsEnabled: true,
-                  onMapCreated: (controller) {
-                    if (!_mapController.isCompleted) {
-                      _mapController.complete(controller);
-                    }
-                  },
-                  onTap: _onMapTapped,
-                  markers: _selectedLocation != null
-                      ? {
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.company.guardian',
+                    ),
+                    if (_selectedLocation != null)
+                      MarkerLayer(
+                        markers: [
                           Marker(
-                            markerId: const MarkerId('selected'),
-                            position: _selectedLocation!,
-                            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRose),
+                            point: _selectedLocation!,
+                            width: 44,
+                            height: 44,
+                            child: const Icon(
+                              Icons.location_pin,
+                              color: Colors.pink,
+                              size: 40,
+                            ),
                           ),
-                        }
-                      : {},
+                        ],
+                      ),
+                  ],
                 ),
                 
                 // Search results overlay
@@ -159,7 +165,7 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(8),
-                        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                       ),
                       child: _isSearching
                           ? const Center(
@@ -367,11 +373,10 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
     }
   }
 
-  Future<void> _moveToLocation(LatLng position) async {
-    if (_mapController.isCompleted) {
-      final controller = await _mapController.future;
-      controller.animateCamera(CameraUpdate.newLatLngZoom(position, 16));
-    }
+  void _moveToLocation(LatLng position) {
+    try {
+      _mapController.move(position, 16);
+    } catch (_) {}
     _onMapTapped(position);
   }
 
@@ -388,4 +393,3 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
     }
   }
 }
-

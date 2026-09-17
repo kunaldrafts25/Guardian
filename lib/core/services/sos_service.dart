@@ -9,15 +9,22 @@
  * - SMS alerts
  * - Push notifications
  * - Emergency state management
+ * - Firebase alert storage
  */
 
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:guardian/core/models/user_model.dart';
 import 'package:guardian/core/utils/location_utils.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+// Method channel to native SmsManager (automatic SMS — no user tap)
+const MethodChannel _smsChannel = MethodChannel('com.guardian/sms');
+const MethodChannel _serviceChannel = MethodChannel('com.guardian/service');
 
 /// SOS trigger source
 enum SosTriggerSource {
@@ -180,15 +187,18 @@ class SosService {
   }
 
   /// Trigger SOS alert
-  /// 
+  ///
   /// [contacts] - List of emergency contacts to notify
   /// [source] - What triggered the SOS
-  /// [customMessage] - Optional custom message to include
+  /// [customMessage] - Optional custom message
+  /// [userName] - Display name for SMS message
+  /// [userId] - Firebase Auth UID for Firestore storage
   Future<SosAlert?> triggerSos({
     required List<EmergencyContact> contacts,
     required SosTriggerSource source,
     String? customMessage,
     String? userName,
+    String? userId,
   }) async {
     if (hasActiveAlert) {
       Logger.warning('SOS already active, ignoring trigger');
@@ -197,14 +207,27 @@ class SosService {
 
     Logger.info('🚨 SOS TRIGGERED via ${source.name}');
 
-    // Get current location
+    // Get current location — try Geolocator first, fall back to native service cache
     Position? position;
     try {
       position = await LocationUtils.getCurrentPosition();
       if (position != null) {
-        Logger.info('📍 Location acquired: ${position.latitude}, ${position.longitude}');
+        Logger.info('📍 Location acquired (accuracy: ${position.accuracy.toStringAsFixed(0)}m)');
       } else {
-        Logger.warning('📍 Could not get location');
+        // Fallback: request last-known location from foreground service
+        Logger.warning('📍 Could not get fresh GPS — using cached location');
+        final cached = await _serviceChannel.invokeMethod<Map>('getLastLocation');
+        if (cached != null) {
+          position = Position(
+            latitude: (cached['latitude'] as num).toDouble(),
+            longitude: (cached['longitude'] as num).toDouble(),
+            accuracy: (cached['accuracy'] as num).toDouble(),
+            altitude: 0, heading: 0, speed: 0, speedAccuracy: 0,
+            altitudeAccuracy: 0, headingAccuracy: 0,
+            timestamp: DateTime.now(),
+          );
+          Logger.info('📍 Using cached location (accuracy: ${position.accuracy.toStringAsFixed(0)}m)');
+        }
       }
     } catch (e) {
       Logger.error('📍 Location error', e);
@@ -232,7 +255,7 @@ class SosService {
       final result = await _sendAlertToContact(
         contact: contactStatus.contact,
         position: position,
-        userName: userName ?? 'Guardian User',
+        userName: userName ?? 'Guardian',
         customMessage: customMessage,
       );
       updatedStatuses.add(result);
@@ -245,6 +268,9 @@ class SosService {
     );
 
     _notifyAlertListeners();
+
+    // Save alert to Firebase (with real userId)
+    await saveAlertToFirebase(_activeAlert!, userId: userId);
 
     // Start location tracking
     _startLocationTracking();
@@ -272,20 +298,20 @@ class SosService {
         customMessage: customMessage,
       );
 
-      // Send SMS via URL launcher
-      smsSent = await _sendSms(
+      // Send SMS automatically via native SmsManager — no user tap required
+      smsSent = await _sendSmsNative(
         phone: contact.phone,
         message: message,
       );
 
       if (smsSent) {
-        Logger.info('📱 SMS sent to ${contact.name}');
+        Logger.info('📱 Emergency SMS dispatched to contact');
       } else {
-        Logger.warning('📱 SMS failed for ${contact.name}');
+        Logger.warning('📱 SMS failed for a contact');
         error = 'Failed to send SMS';
       }
     } catch (e) {
-      Logger.error('📱 SMS error for ${contact.name}', e);
+      Logger.error('📱 SMS error for a contact', e);
       error = e.toString();
     }
 
@@ -328,38 +354,61 @@ class SosService {
     return buffer.toString();
   }
 
-  /// Send SMS using URL launcher
-  Future<bool> _sendSms({
+  /// Send SMS automatically via Android SmsManager method channel.
+  /// No user interaction required — SMS is dispatched silently.
+  /// On iOS: falls back to url_launcher (iOS limitation, no SmsManager equivalent).
+  Future<bool> _sendSmsNative({
+    required String phone,
+    required String message,
+  }) async {
+    if (kIsWeb) {
+      Logger.debug('📱 [WEB] SMS not available on web');
+      return false;
+    }
+
+    try {
+      // Android: use SmsManager for automatic silent sending
+      final result = await _smsChannel.invokeMethod<Map>(
+        'sendEmergencySms',
+        {'phones': [phone], 'message': message},
+      );
+
+      if (result != null && result['allSuccess'] == true) {
+        Logger.info('📱 Emergency SMS dispatched via SmsManager');
+        return true;
+      } else {
+        // Fallback to url_launcher (iOS or SmsManager error)
+        return _sendSmsUrlLauncher(phone: phone, message: message);
+      }
+    } on MissingPluginException {
+      // Running on iOS or test — fall back to url_launcher
+      return _sendSmsUrlLauncher(phone: phone, message: message);
+    } catch (e) {
+      Logger.error('SMS native send error', e);
+      return _sendSmsUrlLauncher(phone: phone, message: message);
+    }
+  }
+
+  /// iOS / web fallback: open SMS app with pre-filled message.
+  /// This requires user to tap Send — unavoidable on iOS.
+  Future<bool> _sendSmsUrlLauncher({
     required String phone,
     required String message,
   }) async {
     try {
-      // Clean phone number
       final cleanPhone = phone.replaceAll(RegExp(r'[^\d+]'), '');
-      
-      // Build SMS URI
       final smsUri = Uri(
         scheme: 'sms',
         path: cleanPhone,
         queryParameters: {'body': message},
       );
-
-      // On web, we just log
-      if (kIsWeb) {
-        Logger.info('📱 [WEB] Would send SMS to $cleanPhone');
-        return true;
-      }
-
-      // Try to launch SMS app
       if (await canLaunchUrl(smsUri)) {
         await launchUrl(smsUri);
         return true;
-      } else {
-        Logger.warning('Cannot launch SMS for $cleanPhone');
-        return false;
       }
+      return false;
     } catch (e) {
-      Logger.error('SMS launch error', e);
+      Logger.error('SMS url_launcher fallback error', e);
       return false;
     }
   }
@@ -388,7 +437,7 @@ class SosService {
             callback(position);
           }
           
-          Logger.debug('📍 Location updated: ${position.latitude}, ${position.longitude}');
+          Logger.debug('📍 Location updated (accuracy: ${position.accuracy.toStringAsFixed(0)}m)');
         }
       },
       onError: (error) {
@@ -423,10 +472,19 @@ class SosService {
   }
 
   /// Mark as safe - resolve active emergency
-  Future<void> markAsSafe() async {
+  Future<void> markAsSafe({String? userName}) async {
     if (_activeAlert == null) return;
 
     Logger.info('✅ User marked as safe');
+
+    // Get alert ID before nullifying
+    final alertId = _activeAlert!.id;
+
+    // Get contacts that were notified
+    final notifiedContacts = _activeAlert!.contactStatuses
+        .where((c) => c.smsSent)
+        .map((c) => c.contact)
+        .toList();
 
     _activeAlert = _activeAlert!.copyWith(
       status: SosAlertStatus.resolved,
@@ -436,10 +494,40 @@ class SosService {
     _notifyAlertListeners();
     _stopLocationTracking();
 
-    // TODO: Send "I'm safe" notification to contacts
+    // Update status in Firebase
+    await updateAlertStatusInFirebase(alertId, SosAlertStatus.resolved);
+
+    // Send "I'm safe" notification to all contacts that were notified
+    for (final contact in notifiedContacts) {
+      await _sendSafetyConfirmation(
+        contact: contact,
+        userName: userName ?? 'Guardian',
+      );
+    }
+
+    Logger.info('✅ Safety confirmation sent to ${notifiedContacts.length} contacts');
 
     _activeAlert = null;
   }
+
+  /// Send safety confirmation SMS
+  Future<void> _sendSafetyConfirmation({
+    required EmergencyContact contact,
+    required String userName,
+  }) async {
+    final message = '✅ SAFE NOW\n\n'
+        '$userName is now safe.\n\n'
+        'The emergency alert has been resolved.\n\n'
+        '- Guardian Safety App';
+
+    try {
+      await _sendSmsNative(phone: contact.phone, message: message);
+      Logger.info('✅ Safety confirmation SMS dispatched');
+    } catch (e) {
+      Logger.error('Failed to send safety SMS', e);
+    }
+  }
+
 
   /// Share live location link
   Future<void> shareLiveLocation() async {
@@ -460,6 +548,90 @@ class SosService {
     if (await canLaunchUrl(phoneUri)) {
       await launchUrl(phoneUri);
       Logger.info('📞 Calling emergency services: $number');
+    }
+  }
+
+  // ============ FIREBASE STORAGE ============
+
+  /// Firestore collection reference
+  CollectionReference get _alertsCollection => 
+      FirebaseFirestore.instance.collection('sos_alerts');
+
+  /// Save alert to Firebase Firestore
+  Future<void> saveAlertToFirebase(SosAlert alert, {String? userId}) async {
+    try {
+      final alertData = {
+        'id': alert.id,
+        'userId': userId ?? 'unknown',  // Callers must pass real Firebase Auth UID
+        'source': alert.source.name,
+        'status': alert.status.name,
+        'startedAt': Timestamp.fromDate(alert.startedAt),
+        'resolvedAt': alert.resolvedAt != null 
+            ? Timestamp.fromDate(alert.resolvedAt!) 
+            : null,
+        'initialLocation': alert.initialLocation != null
+            ? GeoPoint(
+                alert.initialLocation!.latitude,
+                alert.initialLocation!.longitude,
+              )
+            : null,
+        'currentLocation': alert.currentLocation != null
+            ? GeoPoint(
+                alert.currentLocation!.latitude,
+                alert.currentLocation!.longitude,
+              )
+            : null,
+        'customMessage': alert.customMessage,
+        'notifiedContacts': alert.contactStatuses
+            .where((c) => c.smsSent)
+            .map((c) => {
+                  'name': c.contact.name,
+                  'phone': c.contact.phone,
+                  'sentAt': c.sentAt != null 
+                      ? Timestamp.fromDate(c.sentAt!) 
+                      : null,
+                })
+            .toList(),
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      await _alertsCollection.doc(alert.id).set(alertData);
+      Logger.info('☁️ Alert saved to Firebase: ${alert.id}');
+    } catch (e) {
+      Logger.error('☁️ Failed to save alert to Firebase', e);
+    }
+  }
+
+  /// Update alert status in Firebase
+  Future<void> updateAlertStatusInFirebase(String alertId, SosAlertStatus status) async {
+    try {
+      await _alertsCollection.doc(alertId).update({
+        'status': status.name,
+        'updatedAt': FieldValue.serverTimestamp(),
+        if (status == SosAlertStatus.resolved)
+          'resolvedAt': FieldValue.serverTimestamp(),
+      });
+      Logger.info('☁️ Alert status updated in Firebase: $status');
+    } catch (e) {
+      Logger.error('☁️ Failed to update alert in Firebase', e);
+    }
+  }
+
+  /// Get user's alert history from Firebase
+  Future<List<Map<String, dynamic>>> getAlertHistory(String userId, {int limit = 10}) async {
+    try {
+      final snapshot = await _alertsCollection
+          .where('userId', isEqualTo: userId)
+          .orderBy('startedAt', descending: true)
+          .limit(limit)
+          .get();
+      
+      return snapshot.docs
+          .map((doc) => doc.data() as Map<String, dynamic>)
+          .toList();
+    } catch (e) {
+      Logger.error('☁️ Failed to get alert history', e);
+      return [];
     }
   }
 

@@ -1,0 +1,59 @@
+"""
+Integration test for Guardian FastAPI server (mirrors API Gateway)
+"""
+
+import pytest
+from fastapi.testclient import TestClient
+from aws.server import app
+
+
+client = TestClient(app)
+
+
+def test_health_endpoint():
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.json()["status"] == "online"
+
+
+def test_e2e_fall_simulation_flow():
+    # 1. Simulate Fall
+    sim_resp = client.post("/simulate/fall")
+    assert sim_resp.status_code == 200
+    data = sim_resp.json()
+    incident_id = data["incident"]["incident_id"]
+    assert incident_id.startswith("inc_")
+
+    # 2. Get incident details
+    inc_resp = client.get(f"/incidents/{incident_id}")
+    assert inc_resp.status_code == 200
+    inc_data = inc_resp.json()
+    assert inc_data["event_type"] == "fall_detected"
+
+    # 3. Trigger Agent Step
+    agent_resp = client.post(f"/incidents/{incident_id}/agent-step")
+    assert agent_resp.status_code == 200
+    agent_data = agent_resp.json()
+    assert agent_data["decision"] in (
+        "REQUEST_USER_VERIFICATION",
+        "ESCALATE_IMMEDIATELY",
+        "ESCALATE_IMMEDIATELY_WITH_COMMUNITY",
+    )
+
+    # 4. User confirms I'M OK
+    ok_resp = client.put(
+        f"/incidents/{incident_id}/status",
+        json={"state": "RESOLVED", "actor": "USER", "note": "User clicked I'M OK"},
+    )
+    assert ok_resp.status_code == 200
+    assert ok_resp.json()["state"] == "RESOLVED"
+
+    # 5. Verify Timeline has audit steps
+    t_resp = client.get(f"/incidents/{incident_id}/timeline")
+    assert t_resp.status_code == 200
+    timeline = t_resp.json()["timeline"]
+    assert len(timeline) >= 2
+
+
+if __name__ == "__main__":
+    pytest.main([__file__])

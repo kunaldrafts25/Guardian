@@ -7,7 +7,6 @@
 import 'package:flutter/material.dart';
 import 'package:guardian/core/constants/app_colors.dart';
 import 'package:guardian/core/constants/app_typography.dart';
-import 'package:guardian/core/di/service_locator.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:guardian/core/widgets/custom_app_bar.dart';
 import 'package:guardian/core/widgets/loading_indicator.dart';
@@ -26,7 +25,7 @@ class GuardianCircleScreen extends StatefulWidget {
 }
 
 class _GuardianCircleScreenState extends State<GuardianCircleScreen> {
-  final GuardianCircleRepository _repository = sl<GuardianCircleRepository>();
+  final GuardianCircleRepository _repository = GuardianCircleRepository();
 
   List<GuardianCircle> _circles = [];
   bool _isLoading = true;
@@ -244,3 +243,4 @@ class _GuardianCircleScreenState extends State<GuardianCircleScreen> {
     );
   }
 }
+

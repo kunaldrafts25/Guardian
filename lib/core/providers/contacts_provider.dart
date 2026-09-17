@@ -5,9 +5,11 @@
  * Contacts Provider - Emergency contacts management
  */
 
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:guardian/core/models/user_model.dart';
 import 'package:guardian/core/utils/logger.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Contact state with list management
 class ContactsState {
@@ -47,17 +49,63 @@ class ContactsState {
   bool get canAddMore => contacts.length < maxContacts;
 }
 
-/// Contacts state notifier
+/// Contacts state notifier with persistent storage
 class ContactsNotifier extends StateNotifier<ContactsState> {
-  ContactsNotifier() : super(const ContactsState()) {
+  static const String _storageKey = 'guardian_emergency_contacts';
+
+  static const List<EmergencyContact> defaultContacts = [
+    EmergencyContact(
+      id: '1',
+      name: 'Mom',
+      phone: '+91 98765 43210',
+      relation: 'Parent',
+      isPrimary: true,
+    ),
+    EmergencyContact(
+      id: '2',
+      name: 'Dad',
+      phone: '+91 98765 43211',
+      relation: 'Parent',
+      isPrimary: false,
+    ),
+  ];
+
+  ContactsNotifier() : super(const ContactsState(contacts: defaultContacts)) {
+    _loadContacts();
+  }
+
+  Future<void> _loadContacts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final storedJson = prefs.getString(_storageKey);
+      if (storedJson != null && storedJson.isNotEmpty) {
+        final List<dynamic> list = jsonDecode(storedJson) as List<dynamic>;
+        final contacts = list
+            .map((item) => EmergencyContact.fromJson(item as Map<String, dynamic>))
+            .toList();
+        state = state.copyWith(contacts: contacts);
+        return;
+      }
+    } catch (e) {
+      Logger.error('Failed to load contacts from storage, using defaults', e);
+    }
     _loadSampleContacts();
   }
 
-  /// Load sample contacts for demo
+  Future<void> _persistContacts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = state.contacts.map((c) => c.toJson()).toList();
+      await prefs.setString(_storageKey, jsonEncode(list));
+    } catch (e) {
+      Logger.error('Failed to persist contacts to storage', e);
+    }
+  }
+
+  /// Load sample contacts for initial setup
   void _loadSampleContacts() {
-    // For dev mode, load some sample contacts
     state = state.copyWith(
-      contacts: [
+      contacts: const [
         EmergencyContact(
           id: '1',
           name: 'Mom',
@@ -74,6 +122,7 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
         ),
       ],
     );
+    _persistContacts();
   }
 
   /// Add a new contact
@@ -83,10 +132,8 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
       return;
     }
     
-    // If this is the first contact or marked as primary, make it primary
     final isPrimary = state.contacts.isEmpty || contact.isPrimary;
     
-    // If setting as primary, unset others
     List<EmergencyContact> updatedContacts = state.contacts;
     if (isPrimary) {
       updatedContacts = state.contacts.map((c) => 
@@ -101,7 +148,7 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     }
     
     final newContact = EmergencyContact(
-      id: contact.id,
+      id: contact.id.isEmpty ? DateTime.now().millisecondsSinceEpoch.toString() : contact.id,
       name: contact.name,
       phone: contact.phone,
       relation: contact.relation,
@@ -109,6 +156,7 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     );
     
     state = state.copyWith(contacts: [...updatedContacts, newContact]);
+    _persistContacts();
     Logger.info('📱 Contact added: ${contact.name}');
   }
 
@@ -118,7 +166,6 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     
     final updatedContacts = [...state.contacts];
     
-    // If setting as primary, unset others
     if (contact.isPrimary) {
       for (int i = 0; i < updatedContacts.length; i++) {
         if (i != index) {
@@ -135,6 +182,7 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     
     updatedContacts[index] = contact;
     state = state.copyWith(contacts: updatedContacts);
+    _persistContacts();
     Logger.info('📱 Contact updated: ${contact.name}');
   }
 
@@ -145,7 +193,6 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     final removedName = state.contacts[index].name;
     final updatedContacts = [...state.contacts]..removeAt(index);
     
-    // If removed was primary and there are others, make first one primary
     if (state.contacts[index].isPrimary && updatedContacts.isNotEmpty) {
       updatedContacts[0] = EmergencyContact(
         id: updatedContacts[0].id,
@@ -157,6 +204,7 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     }
     
     state = state.copyWith(contacts: updatedContacts);
+    _persistContacts();
     Logger.info('📱 Contact removed: $removedName');
   }
 
@@ -175,12 +223,14 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     }).toList();
     
     state = state.copyWith(contacts: updatedContacts);
+    _persistContacts();
     Logger.info('📱 Primary contact set: ${state.contacts[index].name}');
   }
 
   /// Clear all contacts
   void clearContacts() {
     state = state.copyWith(contacts: []);
+    _persistContacts();
     Logger.info('📱 All contacts cleared');
   }
 }

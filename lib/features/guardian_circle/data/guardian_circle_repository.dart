@@ -5,8 +5,9 @@
  */
 
 import 'dart:async';
-import 'package:guardian/core/services/mock_auth_service.dart';
-import 'package:guardian/core/services/mock_data_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:guardian/core/services/auth_service.dart';
+import 'package:guardian/core/services/firestore_service.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:guardian/core/utils/location_utils.dart';
 import 'package:guardian/features/guardian_circle/data/models/guardian_circle_model.dart';
@@ -28,12 +29,12 @@ class GuardianCircleRepository {
   /// Get all guardian circles for the current user
   Future<List<GuardianCircle>> getGuardianCircles() async {
     try {
-      final user = MockAuthService.currentUser;
+      final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }
 
-      final circles = await MockDataService.getCollection(_circlesCollection);
+      final circles = await FirestoreService.getCollection(_circlesCollection);
 
       return circles
           .where((circle) => circle['ownerId'] == user.uid)
@@ -49,7 +50,7 @@ class GuardianCircleRepository {
   Future<GuardianCircle?> getGuardianCircle(String id) async {
     try {
       final circleData =
-          await MockDataService.getDocument(_circlesCollection, id);
+          await FirestoreService.getDocument(_circlesCollection, id);
 
       if (circleData == null) {
         return null;
@@ -70,7 +71,7 @@ class GuardianCircleRepository {
     bool isDefault = false,
   }) async {
     try {
-      final user = MockAuthService.currentUser;
+      final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }
@@ -100,7 +101,7 @@ class GuardianCircleRepository {
         isDefault: isDefault,
       );
 
-      final circleId = await MockDataService.addDocument(
+      final circleId = await FirestoreService.addDocument(
         _circlesCollection,
         circle.toMap(),
       );
@@ -115,7 +116,7 @@ class GuardianCircleRepository {
   /// Update an existing guardian circle
   Future<bool> updateGuardianCircle(GuardianCircle circle) async {
     try {
-      return await MockDataService.updateDocument(
+      return await FirestoreService.updateDocument(
         _circlesCollection,
         circle.id,
         circle.toMap(),
@@ -129,7 +130,7 @@ class GuardianCircleRepository {
   /// Delete a guardian circle
   Future<bool> deleteGuardianCircle(String id) async {
     try {
-      return await MockDataService.deleteDocument(_circlesCollection, id);
+      return await FirestoreService.deleteDocument(_circlesCollection, id);
     } catch (e) {
       Logger.error('Failed to delete guardian circle', e);
       return false;
@@ -260,12 +261,12 @@ class GuardianCircleRepository {
   /// Get all emergency alerts for the current user
   Future<List<EmergencyAlert>> getEmergencyAlerts() async {
     try {
-      final user = MockAuthService.currentUser;
+      final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }
 
-      final alerts = await MockDataService.getCollection(_alertsCollection);
+      final alerts = await FirestoreService.getCollection(_alertsCollection);
 
       return alerts
           .where((alert) => alert['userId'] == user.uid)
@@ -281,7 +282,7 @@ class GuardianCircleRepository {
   Future<EmergencyAlert?> getEmergencyAlert(String id) async {
     try {
       final alertData =
-          await MockDataService.getDocument(_alertsCollection, id);
+          await FirestoreService.getDocument(_alertsCollection, id);
 
       if (alertData == null) {
         return null;
@@ -301,7 +302,7 @@ class GuardianCircleRepository {
     required List<String> circleIds,
   }) async {
     try {
-      final user = MockAuthService.currentUser;
+      final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }
@@ -332,7 +333,7 @@ class GuardianCircleRepository {
         responses: [],
       );
 
-      final alertId = await MockDataService.addDocument(
+      final alertId = await FirestoreService.addDocument(
         _alertsCollection,
         alert.toMap(),
       );
@@ -380,7 +381,7 @@ class GuardianCircleRepository {
       );
 
       // Add response to database
-      final responseId = await MockDataService.addDocument(
+      final responseId = await FirestoreService.addDocument(
         _responsesCollection,
         response.toMap(),
       );
@@ -397,7 +398,7 @@ class GuardianCircleRepository {
             updatedAt: DateTime.now(),
           );
 
-          await MockDataService.updateDocument(
+          await FirestoreService.updateDocument(
             _alertsCollection,
             alertId,
             updatedAlert.toMap(),
@@ -455,7 +456,7 @@ class GuardianCircleRepository {
       );
 
       // Update response in database
-      await MockDataService.updateDocument(
+      await FirestoreService.updateDocument(
         _responsesCollection,
         responseId,
         updatedResponse.toMap(),
@@ -470,7 +471,7 @@ class GuardianCircleRepository {
         updatedAt: DateTime.now(),
       );
 
-      final success = await MockDataService.updateDocument(
+      final success = await FirestoreService.updateDocument(
         _alertsCollection,
         alertId,
         updatedAlert.toMap(),
@@ -502,7 +503,7 @@ class GuardianCircleRepository {
         updatedAt: DateTime.now(),
       );
 
-      final success = await MockDataService.updateDocument(
+      final success = await FirestoreService.updateDocument(
         _alertsCollection,
         alertId,
         updatedAlert.toMap(),
@@ -525,3 +526,6 @@ class GuardianCircleRepository {
     _alertsController.close();
   }
 }
+
+
+
