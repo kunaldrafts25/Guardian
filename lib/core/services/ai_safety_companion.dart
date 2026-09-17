@@ -168,6 +168,7 @@ class AISafetyCompanion {
   bool _initialized = false;
 
   // System prompt that grounds the AI as a safety companion
+  // ignore: unused_field
   static const String _systemPrompt = '''You are Guardian, a personal safety companion app.
 Your purpose is to help people stay safe and respond effectively to dangerous situations.
 

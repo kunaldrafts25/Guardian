@@ -8,7 +8,6 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:guardian/core/services/auth_service.dart';
 import 'package:guardian/core/services/firestore_service.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:guardian/features/guardian_mode/data/models/guardian_contact_model.dart';

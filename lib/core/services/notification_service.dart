@@ -61,6 +61,7 @@ class NotificationService {
   }) async {
     try {
       final locationLink = 'https://maps.google.com/?q=$latitude,$longitude';
+      // ignore: unused_local_variable
       final body = customMessage != null
           ? '$userName needs help! $customMessage\n$locationLink'
           : '$userName triggered an SOS alert! Location: $locationLink';

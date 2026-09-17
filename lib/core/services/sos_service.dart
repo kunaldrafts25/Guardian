@@ -378,14 +378,14 @@ class SosService {
         return true;
       } else {
         // Fallback to url_launcher (iOS or SmsManager error)
-        return _sendSmsUrlLauncher(phone: phone, message: message);
+        return await _sendSmsUrlLauncher(phone: phone, message: message);
       }
     } on MissingPluginException {
       // Running on iOS or test — fall back to url_launcher
-      return _sendSmsUrlLauncher(phone: phone, message: message);
+      return await _sendSmsUrlLauncher(phone: phone, message: message);
     } catch (e) {
       Logger.error('SMS native send error', e);
-      return _sendSmsUrlLauncher(phone: phone, message: message);
+      return await _sendSmsUrlLauncher(phone: phone, message: message);
     }
   }
 

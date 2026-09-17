@@ -241,6 +241,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     try {
       final contactsState = _ref.read(contactsProvider);
       final contacts = contactsState.contacts;
+      // ignore: unused_local_variable
       final settings = _ref.read(sosSettingsProvider);
       final firebaseUser = FirebaseAuth.instance.currentUser;
       final realName = firebaseUser?.displayName ?? firebaseUser?.email ?? 'Guardian User';

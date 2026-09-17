@@ -46,6 +46,7 @@ final phoneVerificationProvider = StateNotifierProvider<PhoneVerificationNotifie
 class PhoneVerificationNotifier extends StateNotifier<PhoneVerificationState> {
   final AuthService _authService;
   String? _verificationId;
+  // ignore: unused_field
   int? _resendToken;
   String? _errorMessage;
   

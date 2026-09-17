@@ -6,7 +6,6 @@
 
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:guardian/core/services/auth_service.dart';
 import 'package:guardian/core/services/firestore_service.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:guardian/core/utils/location_utils.dart';

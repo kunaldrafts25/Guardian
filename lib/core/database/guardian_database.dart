@@ -14,11 +14,8 @@
  *   - local_incidents     — community incidents pending sync
  */
 
-import 'dart:io';
 import 'package:drift/drift.dart';
 import 'connection/connection.dart' as impl;
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 part 'guardian_database.g.dart';
 

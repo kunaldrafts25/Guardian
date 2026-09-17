@@ -7,7 +7,6 @@
 
 import 'dart:convert';
 import 'dart:math' as math;
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -212,7 +211,9 @@ class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
 
   double _toRadians(double degrees) => degrees * math.pi / 180;
 
+  // ignore: unused_element
   /// Decode Google's encoded polyline format
+  // ignore: unused_element
   List<LatLng> _decodePolyline(String encoded) {
     final List<LatLng> points = [];
     int index = 0;
