@@ -23,7 +23,7 @@ jobs:
 
       - name: Generate code artifacts required for analysis/tests
         run: |
-          dart run build_runner build --delete-conflicting-outputs
+          dart run build_runner build --delete-conflicting-outputs --build-filter=lib/core/database/guardian_database.g.dart
           if [ ! -f lib/firebase_options.dart ]; then
             cat > lib/firebase_options.dart <<'EOF'
             import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
@@ -138,7 +138,7 @@ jobs:
 
       - name: Generate code artifacts required for build
         run: |
-          dart run build_runner build --delete-conflicting-outputs
+          dart run build_runner build --delete-conflicting-outputs --build-filter=lib/core/database/guardian_database.g.dart
           if [ ! -f lib/firebase_options.dart ]; then
             cat > lib/firebase_options.dart <<'EOF'
             import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
@@ -232,7 +232,7 @@ jobs:
 
       - name: Generate code artifacts required for build
         run: |
-          dart run build_runner build --delete-conflicting-outputs
+          dart run build_runner build --delete-conflicting-outputs --build-filter=lib/core/database/guardian_database.g.dart
           if [ ! -f lib/firebase_options.dart ]; then
             cat > lib/firebase_options.dart <<'EOF'
             import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
