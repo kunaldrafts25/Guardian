@@ -84,14 +84,19 @@ class LocalSafeZones extends Table {
 /// Check-ins — scheduled safety check-ins with escalation
 class LocalCheckIns extends Table {
   IntColumn get id => integer().autoIncrement()();
+  TextColumn get ownerUserId => text().withDefault(const Constant(''))();
+  TextColumn get operationId => text().withDefault(const Constant(''))();
   TextColumn get title => text()();
   DateTimeColumn get scheduledAt => dateTime()();
+  DateTimeColumn get graceDeadlineAt => dateTime().nullable()();
   DateTimeColumn get confirmedAt => dateTime().nullable()();
   TextColumn get status => text().withDefault(const Constant('pending'))();
   IntColumn get escalationMinutes => integer().withDefault(const Constant(5))();
   BoolColumn get escalated => boolean().withDefault(const Constant(false))();
   TextColumn get location =>
       text().nullable()(); // Description of where user is
+  TextColumn get escalationAlertId => text().nullable()();
+  DateTimeColumn get updatedAt => dateTime().nullable()();
 }
 
 /// Location log — rolling window of GPS positions for dead reckoning
@@ -215,7 +220,7 @@ class GuardianDatabase extends _$GuardianDatabase {
   GuardianDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -253,6 +258,15 @@ class GuardianDatabase extends _$GuardianDatabase {
               localAlerts,
               localAlerts.cloudIncidentId,
             );
+          }
+          if (from < 6 && to >= 6) {
+            await migrator.addColumn(localCheckIns, localCheckIns.ownerUserId);
+            await migrator.addColumn(localCheckIns, localCheckIns.operationId);
+            await migrator.addColumn(
+                localCheckIns, localCheckIns.graceDeadlineAt);
+            await migrator.addColumn(
+                localCheckIns, localCheckIns.escalationAlertId);
+            await migrator.addColumn(localCheckIns, localCheckIns.updatedAt);
           }
         },
       );
@@ -673,15 +687,85 @@ class GuardianDatabase extends _$GuardianDatabase {
   // Check-ins
   // ─────────────────────────────────────────────────
 
-  Future<List<LocalCheckIn>> getPendingCheckIns() => (select(localCheckIns)
-        ..where((t) => t.status.equals('pending'))
-        ..orderBy([(t) => OrderingTerm.asc(t.scheduledAt)]))
-      .get();
+  Future<List<LocalCheckIn>> getPendingCheckIns([String? ownerUserId]) =>
+      (select(localCheckIns)
+            ..where((t) =>
+                t.status.isIn(const ['active', 'awaiting_confirmation']) &
+                (ownerUserId == null
+                    ? const Constant(true)
+                    : t.ownerUserId.equals(ownerUserId)))
+            ..orderBy([(t) => OrderingTerm.asc(t.scheduledAt)]))
+          .get();
 
-  Stream<List<LocalCheckIn>> watchCheckIns() => select(localCheckIns).watch();
+  Future<LocalCheckIn?> getActiveCheckIn(String ownerUserId) =>
+      (select(localCheckIns)
+            ..where((t) =>
+                t.ownerUserId.equals(ownerUserId) &
+                t.status.isIn(const ['active', 'awaiting_confirmation']))
+            ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)])
+            ..limit(1))
+          .getSingleOrNull();
+
+  Stream<List<LocalCheckIn>> watchCheckIns([String? ownerUserId]) =>
+      (select(localCheckIns)
+            ..where((t) => ownerUserId == null
+                ? const Constant(true)
+                : t.ownerUserId.equals(ownerUserId)))
+          .watch();
 
   Future<int> upsertCheckIn(LocalCheckInsCompanion entry) =>
       into(localCheckIns).insert(entry, mode: InsertMode.insertOrReplace);
+
+  Future<int> createCheckIn(LocalCheckInsCompanion entry) =>
+      transaction(() async {
+        final owner = entry.ownerUserId.value;
+        await (update(localCheckIns)
+              ..where((row) =>
+                  row.ownerUserId.equals(owner) &
+                  row.status.isIn(const ['active', 'awaiting_confirmation'])))
+            .write(LocalCheckInsCompanion(
+          status: const Value('cancelled'),
+          updatedAt: Value(DateTime.now()),
+        ));
+        return into(localCheckIns).insert(entry);
+      });
+
+  Future<bool> transitionCheckIn({
+    required int id,
+    required List<String> fromStatuses,
+    required String status,
+    DateTime? confirmedAt,
+    String? escalationAlertId,
+  }) async {
+    final affected = await (update(localCheckIns)
+          ..where((row) => row.id.equals(id) & row.status.isIn(fromStatuses)))
+        .write(LocalCheckInsCompanion(
+      status: Value(status),
+      confirmedAt: Value(confirmedAt),
+      escalated: Value(status == 'escalated'),
+      escalationAlertId: Value(escalationAlertId),
+      updatedAt: Value(DateTime.now()),
+    ));
+    return affected == 1;
+  }
+
+  Future<bool> extendCheckIn({
+    required int id,
+    required DateTime scheduledAt,
+    required DateTime graceDeadlineAt,
+  }) async {
+    final affected = await (update(localCheckIns)
+          ..where((row) =>
+              row.id.equals(id) &
+              row.status.isIn(const ['active', 'awaiting_confirmation'])))
+        .write(LocalCheckInsCompanion(
+      scheduledAt: Value(scheduledAt),
+      graceDeadlineAt: Value(graceDeadlineAt),
+      status: const Value('active'),
+      updatedAt: Value(DateTime.now()),
+    ));
+    return affected == 1;
+  }
 
   // ─────────────────────────────────────────────────
   // BLE Mesh beacons

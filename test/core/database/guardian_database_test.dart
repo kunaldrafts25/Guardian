@@ -271,4 +271,88 @@ void main() {
     expect((await database.getActiveAlert('user-a'))?.alertId, 'user-a-alert');
     expect(await database.getActiveAlert('user-b'), isNull);
   });
+
+  test('check-in is durable, account scoped, and replaces an active timer',
+      () async {
+    final now = DateTime.utc(2026, 9, 19, 10);
+    final firstId = await database.createCheckIn(
+      LocalCheckInsCompanion.insert(
+        ownerUserId: const Value('user-a'),
+        operationId: const Value('check-in-1'),
+        title: 'Trip home',
+        scheduledAt: now.add(const Duration(minutes: 30)),
+        graceDeadlineAt: Value(now.add(const Duration(minutes: 35))),
+        status: const Value('active'),
+      ),
+    );
+    final secondId = await database.createCheckIn(
+      LocalCheckInsCompanion.insert(
+        ownerUserId: const Value('user-a'),
+        operationId: const Value('check-in-2'),
+        title: 'Replacement trip',
+        scheduledAt: now.add(const Duration(minutes: 45)),
+        graceDeadlineAt: Value(now.add(const Duration(minutes: 50))),
+        status: const Value('active'),
+      ),
+    );
+
+    expect((await database.getActiveCheckIn('user-a'))?.id, secondId);
+    expect(await database.getActiveCheckIn('user-b'), isNull);
+    final first = await (database.select(database.localCheckIns)
+          ..where((row) => row.id.equals(firstId)))
+        .getSingle();
+    expect(first.status, 'cancelled');
+  });
+
+  test('check-in transitions are compare-and-set and cannot be reopened',
+      () async {
+    final now = DateTime.utc(2026, 9, 19, 10);
+    final id = await database.createCheckIn(LocalCheckInsCompanion.insert(
+      ownerUserId: const Value('user-a'),
+      operationId: const Value('check-in-cas'),
+      title: 'Walk',
+      scheduledAt: now,
+      graceDeadlineAt: Value(now.add(const Duration(minutes: 5))),
+      status: const Value('active'),
+    ));
+
+    expect(
+      await database.transitionCheckIn(
+        id: id,
+        fromStatuses: const ['active'],
+        status: 'awaiting_confirmation',
+      ),
+      isTrue,
+    );
+    expect(
+      await database.transitionCheckIn(
+        id: id,
+        fromStatuses: const ['active'],
+        status: 'cancelled',
+      ),
+      isFalse,
+    );
+    expect(
+      await database.transitionCheckIn(
+        id: id,
+        fromStatuses: const ['awaiting_confirmation'],
+        status: 'escalated',
+        escalationAlertId: 'alert-from-check-in',
+      ),
+      isTrue,
+    );
+    expect(
+      await database.extendCheckIn(
+        id: id,
+        scheduledAt: now.add(const Duration(hours: 1)),
+        graceDeadlineAt: now.add(const Duration(hours: 1, minutes: 5)),
+      ),
+      isFalse,
+    );
+    final row = await (database.select(database.localCheckIns)
+          ..where((entry) => entry.id.equals(id)))
+        .getSingle();
+    expect(row.status, 'escalated');
+    expect(row.escalationAlertId, 'alert-from-check-in');
+  });
 }

@@ -1848,6 +1848,22 @@ class $LocalCheckInsTable extends LocalCheckIns
       requiredDuringInsert: false,
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _ownerUserIdMeta =
+      const VerificationMeta('ownerUserId');
+  @override
+  late final GeneratedColumn<String> ownerUserId = GeneratedColumn<String>(
+      'owner_user_id', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
+  static const VerificationMeta _operationIdMeta =
+      const VerificationMeta('operationId');
+  @override
+  late final GeneratedColumn<String> operationId = GeneratedColumn<String>(
+      'operation_id', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
   static const VerificationMeta _titleMeta = const VerificationMeta('title');
   @override
   late final GeneratedColumn<String> title = GeneratedColumn<String>(
@@ -1859,6 +1875,12 @@ class $LocalCheckInsTable extends LocalCheckIns
   late final GeneratedColumn<DateTime> scheduledAt = GeneratedColumn<DateTime>(
       'scheduled_at', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _graceDeadlineAtMeta =
+      const VerificationMeta('graceDeadlineAt');
+  @override
+  late final GeneratedColumn<DateTime> graceDeadlineAt =
+      GeneratedColumn<DateTime>('grace_deadline_at', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
   static const VerificationMeta _confirmedAtMeta =
       const VerificationMeta('confirmedAt');
   @override
@@ -1896,16 +1918,33 @@ class $LocalCheckInsTable extends LocalCheckIns
   late final GeneratedColumn<String> location = GeneratedColumn<String>(
       'location', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _escalationAlertIdMeta =
+      const VerificationMeta('escalationAlertId');
+  @override
+  late final GeneratedColumn<String> escalationAlertId =
+      GeneratedColumn<String>('escalation_alert_id', aliasedName, true,
+          type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
+        ownerUserId,
+        operationId,
         title,
         scheduledAt,
+        graceDeadlineAt,
         confirmedAt,
         status,
         escalationMinutes,
         escalated,
-        location
+        location,
+        escalationAlertId,
+        updatedAt
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1920,6 +1959,18 @@ class $LocalCheckInsTable extends LocalCheckIns
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     }
+    if (data.containsKey('owner_user_id')) {
+      context.handle(
+          _ownerUserIdMeta,
+          ownerUserId.isAcceptableOrUnknown(
+              data['owner_user_id']!, _ownerUserIdMeta));
+    }
+    if (data.containsKey('operation_id')) {
+      context.handle(
+          _operationIdMeta,
+          operationId.isAcceptableOrUnknown(
+              data['operation_id']!, _operationIdMeta));
+    }
     if (data.containsKey('title')) {
       context.handle(
           _titleMeta, title.isAcceptableOrUnknown(data['title']!, _titleMeta));
@@ -1933,6 +1984,12 @@ class $LocalCheckInsTable extends LocalCheckIns
               data['scheduled_at']!, _scheduledAtMeta));
     } else if (isInserting) {
       context.missing(_scheduledAtMeta);
+    }
+    if (data.containsKey('grace_deadline_at')) {
+      context.handle(
+          _graceDeadlineAtMeta,
+          graceDeadlineAt.isAcceptableOrUnknown(
+              data['grace_deadline_at']!, _graceDeadlineAtMeta));
     }
     if (data.containsKey('confirmed_at')) {
       context.handle(
@@ -1958,6 +2015,16 @@ class $LocalCheckInsTable extends LocalCheckIns
       context.handle(_locationMeta,
           location.isAcceptableOrUnknown(data['location']!, _locationMeta));
     }
+    if (data.containsKey('escalation_alert_id')) {
+      context.handle(
+          _escalationAlertIdMeta,
+          escalationAlertId.isAcceptableOrUnknown(
+              data['escalation_alert_id']!, _escalationAlertIdMeta));
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    }
     return context;
   }
 
@@ -1969,10 +2036,16 @@ class $LocalCheckInsTable extends LocalCheckIns
     return LocalCheckIn(
       id: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      ownerUserId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}owner_user_id'])!,
+      operationId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}operation_id'])!,
       title: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}title'])!,
       scheduledAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}scheduled_at'])!,
+      graceDeadlineAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}grace_deadline_at']),
       confirmedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}confirmed_at']),
       status: attachedDatabase.typeMapping
@@ -1983,6 +2056,10 @@ class $LocalCheckInsTable extends LocalCheckIns
           .read(DriftSqlType.bool, data['${effectivePrefix}escalated'])!,
       location: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}location']),
+      escalationAlertId: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}escalation_alert_id']),
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at']),
     );
   }
 
@@ -1994,28 +2071,43 @@ class $LocalCheckInsTable extends LocalCheckIns
 
 class LocalCheckIn extends DataClass implements Insertable<LocalCheckIn> {
   final int id;
+  final String ownerUserId;
+  final String operationId;
   final String title;
   final DateTime scheduledAt;
+  final DateTime? graceDeadlineAt;
   final DateTime? confirmedAt;
   final String status;
   final int escalationMinutes;
   final bool escalated;
   final String? location;
+  final String? escalationAlertId;
+  final DateTime? updatedAt;
   const LocalCheckIn(
       {required this.id,
+      required this.ownerUserId,
+      required this.operationId,
       required this.title,
       required this.scheduledAt,
+      this.graceDeadlineAt,
       this.confirmedAt,
       required this.status,
       required this.escalationMinutes,
       required this.escalated,
-      this.location});
+      this.location,
+      this.escalationAlertId,
+      this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
+    map['owner_user_id'] = Variable<String>(ownerUserId);
+    map['operation_id'] = Variable<String>(operationId);
     map['title'] = Variable<String>(title);
     map['scheduled_at'] = Variable<DateTime>(scheduledAt);
+    if (!nullToAbsent || graceDeadlineAt != null) {
+      map['grace_deadline_at'] = Variable<DateTime>(graceDeadlineAt);
+    }
     if (!nullToAbsent || confirmedAt != null) {
       map['confirmed_at'] = Variable<DateTime>(confirmedAt);
     }
@@ -2025,14 +2117,25 @@ class LocalCheckIn extends DataClass implements Insertable<LocalCheckIn> {
     if (!nullToAbsent || location != null) {
       map['location'] = Variable<String>(location);
     }
+    if (!nullToAbsent || escalationAlertId != null) {
+      map['escalation_alert_id'] = Variable<String>(escalationAlertId);
+    }
+    if (!nullToAbsent || updatedAt != null) {
+      map['updated_at'] = Variable<DateTime>(updatedAt);
+    }
     return map;
   }
 
   LocalCheckInsCompanion toCompanion(bool nullToAbsent) {
     return LocalCheckInsCompanion(
       id: Value(id),
+      ownerUserId: Value(ownerUserId),
+      operationId: Value(operationId),
       title: Value(title),
       scheduledAt: Value(scheduledAt),
+      graceDeadlineAt: graceDeadlineAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(graceDeadlineAt),
       confirmedAt: confirmedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(confirmedAt),
@@ -2042,6 +2145,12 @@ class LocalCheckIn extends DataClass implements Insertable<LocalCheckIn> {
       location: location == null && nullToAbsent
           ? const Value.absent()
           : Value(location),
+      escalationAlertId: escalationAlertId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(escalationAlertId),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
     );
   }
 
@@ -2050,13 +2159,19 @@ class LocalCheckIn extends DataClass implements Insertable<LocalCheckIn> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return LocalCheckIn(
       id: serializer.fromJson<int>(json['id']),
+      ownerUserId: serializer.fromJson<String>(json['ownerUserId']),
+      operationId: serializer.fromJson<String>(json['operationId']),
       title: serializer.fromJson<String>(json['title']),
       scheduledAt: serializer.fromJson<DateTime>(json['scheduledAt']),
+      graceDeadlineAt: serializer.fromJson<DateTime?>(json['graceDeadlineAt']),
       confirmedAt: serializer.fromJson<DateTime?>(json['confirmedAt']),
       status: serializer.fromJson<String>(json['status']),
       escalationMinutes: serializer.fromJson<int>(json['escalationMinutes']),
       escalated: serializer.fromJson<bool>(json['escalated']),
       location: serializer.fromJson<String?>(json['location']),
+      escalationAlertId:
+          serializer.fromJson<String?>(json['escalationAlertId']),
+      updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
     );
   }
   @override
@@ -2064,41 +2179,67 @@ class LocalCheckIn extends DataClass implements Insertable<LocalCheckIn> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
+      'ownerUserId': serializer.toJson<String>(ownerUserId),
+      'operationId': serializer.toJson<String>(operationId),
       'title': serializer.toJson<String>(title),
       'scheduledAt': serializer.toJson<DateTime>(scheduledAt),
+      'graceDeadlineAt': serializer.toJson<DateTime?>(graceDeadlineAt),
       'confirmedAt': serializer.toJson<DateTime?>(confirmedAt),
       'status': serializer.toJson<String>(status),
       'escalationMinutes': serializer.toJson<int>(escalationMinutes),
       'escalated': serializer.toJson<bool>(escalated),
       'location': serializer.toJson<String?>(location),
+      'escalationAlertId': serializer.toJson<String?>(escalationAlertId),
+      'updatedAt': serializer.toJson<DateTime?>(updatedAt),
     };
   }
 
   LocalCheckIn copyWith(
           {int? id,
+          String? ownerUserId,
+          String? operationId,
           String? title,
           DateTime? scheduledAt,
+          Value<DateTime?> graceDeadlineAt = const Value.absent(),
           Value<DateTime?> confirmedAt = const Value.absent(),
           String? status,
           int? escalationMinutes,
           bool? escalated,
-          Value<String?> location = const Value.absent()}) =>
+          Value<String?> location = const Value.absent(),
+          Value<String?> escalationAlertId = const Value.absent(),
+          Value<DateTime?> updatedAt = const Value.absent()}) =>
       LocalCheckIn(
         id: id ?? this.id,
+        ownerUserId: ownerUserId ?? this.ownerUserId,
+        operationId: operationId ?? this.operationId,
         title: title ?? this.title,
         scheduledAt: scheduledAt ?? this.scheduledAt,
+        graceDeadlineAt: graceDeadlineAt.present
+            ? graceDeadlineAt.value
+            : this.graceDeadlineAt,
         confirmedAt: confirmedAt.present ? confirmedAt.value : this.confirmedAt,
         status: status ?? this.status,
         escalationMinutes: escalationMinutes ?? this.escalationMinutes,
         escalated: escalated ?? this.escalated,
         location: location.present ? location.value : this.location,
+        escalationAlertId: escalationAlertId.present
+            ? escalationAlertId.value
+            : this.escalationAlertId,
+        updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
       );
   LocalCheckIn copyWithCompanion(LocalCheckInsCompanion data) {
     return LocalCheckIn(
       id: data.id.present ? data.id.value : this.id,
+      ownerUserId:
+          data.ownerUserId.present ? data.ownerUserId.value : this.ownerUserId,
+      operationId:
+          data.operationId.present ? data.operationId.value : this.operationId,
       title: data.title.present ? data.title.value : this.title,
       scheduledAt:
           data.scheduledAt.present ? data.scheduledAt.value : this.scheduledAt,
+      graceDeadlineAt: data.graceDeadlineAt.present
+          ? data.graceDeadlineAt.value
+          : this.graceDeadlineAt,
       confirmedAt:
           data.confirmedAt.present ? data.confirmedAt.value : this.confirmedAt,
       status: data.status.present ? data.status.value : this.status,
@@ -2107,6 +2248,10 @@ class LocalCheckIn extends DataClass implements Insertable<LocalCheckIn> {
           : this.escalationMinutes,
       escalated: data.escalated.present ? data.escalated.value : this.escalated,
       location: data.location.present ? data.location.value : this.location,
+      escalationAlertId: data.escalationAlertId.present
+          ? data.escalationAlertId.value
+          : this.escalationAlertId,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
 
@@ -2114,104 +2259,161 @@ class LocalCheckIn extends DataClass implements Insertable<LocalCheckIn> {
   String toString() {
     return (StringBuffer('LocalCheckIn(')
           ..write('id: $id, ')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('operationId: $operationId, ')
           ..write('title: $title, ')
           ..write('scheduledAt: $scheduledAt, ')
+          ..write('graceDeadlineAt: $graceDeadlineAt, ')
           ..write('confirmedAt: $confirmedAt, ')
           ..write('status: $status, ')
           ..write('escalationMinutes: $escalationMinutes, ')
           ..write('escalated: $escalated, ')
-          ..write('location: $location')
+          ..write('location: $location, ')
+          ..write('escalationAlertId: $escalationAlertId, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, title, scheduledAt, confirmedAt, status,
-      escalationMinutes, escalated, location);
+  int get hashCode => Object.hash(
+      id,
+      ownerUserId,
+      operationId,
+      title,
+      scheduledAt,
+      graceDeadlineAt,
+      confirmedAt,
+      status,
+      escalationMinutes,
+      escalated,
+      location,
+      escalationAlertId,
+      updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is LocalCheckIn &&
           other.id == this.id &&
+          other.ownerUserId == this.ownerUserId &&
+          other.operationId == this.operationId &&
           other.title == this.title &&
           other.scheduledAt == this.scheduledAt &&
+          other.graceDeadlineAt == this.graceDeadlineAt &&
           other.confirmedAt == this.confirmedAt &&
           other.status == this.status &&
           other.escalationMinutes == this.escalationMinutes &&
           other.escalated == this.escalated &&
-          other.location == this.location);
+          other.location == this.location &&
+          other.escalationAlertId == this.escalationAlertId &&
+          other.updatedAt == this.updatedAt);
 }
 
 class LocalCheckInsCompanion extends UpdateCompanion<LocalCheckIn> {
   final Value<int> id;
+  final Value<String> ownerUserId;
+  final Value<String> operationId;
   final Value<String> title;
   final Value<DateTime> scheduledAt;
+  final Value<DateTime?> graceDeadlineAt;
   final Value<DateTime?> confirmedAt;
   final Value<String> status;
   final Value<int> escalationMinutes;
   final Value<bool> escalated;
   final Value<String?> location;
+  final Value<String?> escalationAlertId;
+  final Value<DateTime?> updatedAt;
   const LocalCheckInsCompanion({
     this.id = const Value.absent(),
+    this.ownerUserId = const Value.absent(),
+    this.operationId = const Value.absent(),
     this.title = const Value.absent(),
     this.scheduledAt = const Value.absent(),
+    this.graceDeadlineAt = const Value.absent(),
     this.confirmedAt = const Value.absent(),
     this.status = const Value.absent(),
     this.escalationMinutes = const Value.absent(),
     this.escalated = const Value.absent(),
     this.location = const Value.absent(),
+    this.escalationAlertId = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   });
   LocalCheckInsCompanion.insert({
     this.id = const Value.absent(),
+    this.ownerUserId = const Value.absent(),
+    this.operationId = const Value.absent(),
     required String title,
     required DateTime scheduledAt,
+    this.graceDeadlineAt = const Value.absent(),
     this.confirmedAt = const Value.absent(),
     this.status = const Value.absent(),
     this.escalationMinutes = const Value.absent(),
     this.escalated = const Value.absent(),
     this.location = const Value.absent(),
+    this.escalationAlertId = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   })  : title = Value(title),
         scheduledAt = Value(scheduledAt);
   static Insertable<LocalCheckIn> custom({
     Expression<int>? id,
+    Expression<String>? ownerUserId,
+    Expression<String>? operationId,
     Expression<String>? title,
     Expression<DateTime>? scheduledAt,
+    Expression<DateTime>? graceDeadlineAt,
     Expression<DateTime>? confirmedAt,
     Expression<String>? status,
     Expression<int>? escalationMinutes,
     Expression<bool>? escalated,
     Expression<String>? location,
+    Expression<String>? escalationAlertId,
+    Expression<DateTime>? updatedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (ownerUserId != null) 'owner_user_id': ownerUserId,
+      if (operationId != null) 'operation_id': operationId,
       if (title != null) 'title': title,
       if (scheduledAt != null) 'scheduled_at': scheduledAt,
+      if (graceDeadlineAt != null) 'grace_deadline_at': graceDeadlineAt,
       if (confirmedAt != null) 'confirmed_at': confirmedAt,
       if (status != null) 'status': status,
       if (escalationMinutes != null) 'escalation_minutes': escalationMinutes,
       if (escalated != null) 'escalated': escalated,
       if (location != null) 'location': location,
+      if (escalationAlertId != null) 'escalation_alert_id': escalationAlertId,
+      if (updatedAt != null) 'updated_at': updatedAt,
     });
   }
 
   LocalCheckInsCompanion copyWith(
       {Value<int>? id,
+      Value<String>? ownerUserId,
+      Value<String>? operationId,
       Value<String>? title,
       Value<DateTime>? scheduledAt,
+      Value<DateTime?>? graceDeadlineAt,
       Value<DateTime?>? confirmedAt,
       Value<String>? status,
       Value<int>? escalationMinutes,
       Value<bool>? escalated,
-      Value<String?>? location}) {
+      Value<String?>? location,
+      Value<String?>? escalationAlertId,
+      Value<DateTime?>? updatedAt}) {
     return LocalCheckInsCompanion(
       id: id ?? this.id,
+      ownerUserId: ownerUserId ?? this.ownerUserId,
+      operationId: operationId ?? this.operationId,
       title: title ?? this.title,
       scheduledAt: scheduledAt ?? this.scheduledAt,
+      graceDeadlineAt: graceDeadlineAt ?? this.graceDeadlineAt,
       confirmedAt: confirmedAt ?? this.confirmedAt,
       status: status ?? this.status,
       escalationMinutes: escalationMinutes ?? this.escalationMinutes,
       escalated: escalated ?? this.escalated,
       location: location ?? this.location,
+      escalationAlertId: escalationAlertId ?? this.escalationAlertId,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -2221,11 +2423,20 @@ class LocalCheckInsCompanion extends UpdateCompanion<LocalCheckIn> {
     if (id.present) {
       map['id'] = Variable<int>(id.value);
     }
+    if (ownerUserId.present) {
+      map['owner_user_id'] = Variable<String>(ownerUserId.value);
+    }
+    if (operationId.present) {
+      map['operation_id'] = Variable<String>(operationId.value);
+    }
     if (title.present) {
       map['title'] = Variable<String>(title.value);
     }
     if (scheduledAt.present) {
       map['scheduled_at'] = Variable<DateTime>(scheduledAt.value);
+    }
+    if (graceDeadlineAt.present) {
+      map['grace_deadline_at'] = Variable<DateTime>(graceDeadlineAt.value);
     }
     if (confirmedAt.present) {
       map['confirmed_at'] = Variable<DateTime>(confirmedAt.value);
@@ -2242,6 +2453,12 @@ class LocalCheckInsCompanion extends UpdateCompanion<LocalCheckIn> {
     if (location.present) {
       map['location'] = Variable<String>(location.value);
     }
+    if (escalationAlertId.present) {
+      map['escalation_alert_id'] = Variable<String>(escalationAlertId.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
     return map;
   }
 
@@ -2249,13 +2466,18 @@ class LocalCheckInsCompanion extends UpdateCompanion<LocalCheckIn> {
   String toString() {
     return (StringBuffer('LocalCheckInsCompanion(')
           ..write('id: $id, ')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('operationId: $operationId, ')
           ..write('title: $title, ')
           ..write('scheduledAt: $scheduledAt, ')
+          ..write('graceDeadlineAt: $graceDeadlineAt, ')
           ..write('confirmedAt: $confirmedAt, ')
           ..write('status: $status, ')
           ..write('escalationMinutes: $escalationMinutes, ')
           ..write('escalated: $escalated, ')
-          ..write('location: $location')
+          ..write('location: $location, ')
+          ..write('escalationAlertId: $escalationAlertId, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
@@ -6244,24 +6466,34 @@ typedef $$LocalSafeZonesTableProcessedTableManager = ProcessedTableManager<
 typedef $$LocalCheckInsTableCreateCompanionBuilder = LocalCheckInsCompanion
     Function({
   Value<int> id,
+  Value<String> ownerUserId,
+  Value<String> operationId,
   required String title,
   required DateTime scheduledAt,
+  Value<DateTime?> graceDeadlineAt,
   Value<DateTime?> confirmedAt,
   Value<String> status,
   Value<int> escalationMinutes,
   Value<bool> escalated,
   Value<String?> location,
+  Value<String?> escalationAlertId,
+  Value<DateTime?> updatedAt,
 });
 typedef $$LocalCheckInsTableUpdateCompanionBuilder = LocalCheckInsCompanion
     Function({
   Value<int> id,
+  Value<String> ownerUserId,
+  Value<String> operationId,
   Value<String> title,
   Value<DateTime> scheduledAt,
+  Value<DateTime?> graceDeadlineAt,
   Value<DateTime?> confirmedAt,
   Value<String> status,
   Value<int> escalationMinutes,
   Value<bool> escalated,
   Value<String?> location,
+  Value<String?> escalationAlertId,
+  Value<DateTime?> updatedAt,
 });
 
 class $$LocalCheckInsTableFilterComposer
@@ -6276,11 +6508,21 @@ class $$LocalCheckInsTableFilterComposer
   ColumnFilters<int> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnFilters(column));
 
+  ColumnFilters<String> get ownerUserId => $composableBuilder(
+      column: $table.ownerUserId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get operationId => $composableBuilder(
+      column: $table.operationId, builder: (column) => ColumnFilters(column));
+
   ColumnFilters<String> get title => $composableBuilder(
       column: $table.title, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get scheduledAt => $composableBuilder(
       column: $table.scheduledAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get graceDeadlineAt => $composableBuilder(
+      column: $table.graceDeadlineAt,
+      builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get confirmedAt => $composableBuilder(
       column: $table.confirmedAt, builder: (column) => ColumnFilters(column));
@@ -6297,6 +6539,13 @@ class $$LocalCheckInsTableFilterComposer
 
   ColumnFilters<String> get location => $composableBuilder(
       column: $table.location, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get escalationAlertId => $composableBuilder(
+      column: $table.escalationAlertId,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
 }
 
 class $$LocalCheckInsTableOrderingComposer
@@ -6311,11 +6560,21 @@ class $$LocalCheckInsTableOrderingComposer
   ColumnOrderings<int> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get ownerUserId => $composableBuilder(
+      column: $table.ownerUserId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get operationId => $composableBuilder(
+      column: $table.operationId, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get title => $composableBuilder(
       column: $table.title, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<DateTime> get scheduledAt => $composableBuilder(
       column: $table.scheduledAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get graceDeadlineAt => $composableBuilder(
+      column: $table.graceDeadlineAt,
+      builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<DateTime> get confirmedAt => $composableBuilder(
       column: $table.confirmedAt, builder: (column) => ColumnOrderings(column));
@@ -6332,6 +6591,13 @@ class $$LocalCheckInsTableOrderingComposer
 
   ColumnOrderings<String> get location => $composableBuilder(
       column: $table.location, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get escalationAlertId => $composableBuilder(
+      column: $table.escalationAlertId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
 }
 
 class $$LocalCheckInsTableAnnotationComposer
@@ -6346,11 +6612,20 @@ class $$LocalCheckInsTableAnnotationComposer
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
+  GeneratedColumn<String> get ownerUserId => $composableBuilder(
+      column: $table.ownerUserId, builder: (column) => column);
+
+  GeneratedColumn<String> get operationId => $composableBuilder(
+      column: $table.operationId, builder: (column) => column);
+
   GeneratedColumn<String> get title =>
       $composableBuilder(column: $table.title, builder: (column) => column);
 
   GeneratedColumn<DateTime> get scheduledAt => $composableBuilder(
       column: $table.scheduledAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get graceDeadlineAt => $composableBuilder(
+      column: $table.graceDeadlineAt, builder: (column) => column);
 
   GeneratedColumn<DateTime> get confirmedAt => $composableBuilder(
       column: $table.confirmedAt, builder: (column) => column);
@@ -6366,6 +6641,12 @@ class $$LocalCheckInsTableAnnotationComposer
 
   GeneratedColumn<String> get location =>
       $composableBuilder(column: $table.location, builder: (column) => column);
+
+  GeneratedColumn<String> get escalationAlertId => $composableBuilder(
+      column: $table.escalationAlertId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 }
 
 class $$LocalCheckInsTableTableManager extends RootTableManager<
@@ -6396,43 +6677,63 @@ class $$LocalCheckInsTableTableManager extends RootTableManager<
               $$LocalCheckInsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback: ({
             Value<int> id = const Value.absent(),
+            Value<String> ownerUserId = const Value.absent(),
+            Value<String> operationId = const Value.absent(),
             Value<String> title = const Value.absent(),
             Value<DateTime> scheduledAt = const Value.absent(),
+            Value<DateTime?> graceDeadlineAt = const Value.absent(),
             Value<DateTime?> confirmedAt = const Value.absent(),
             Value<String> status = const Value.absent(),
             Value<int> escalationMinutes = const Value.absent(),
             Value<bool> escalated = const Value.absent(),
             Value<String?> location = const Value.absent(),
+            Value<String?> escalationAlertId = const Value.absent(),
+            Value<DateTime?> updatedAt = const Value.absent(),
           }) =>
               LocalCheckInsCompanion(
             id: id,
+            ownerUserId: ownerUserId,
+            operationId: operationId,
             title: title,
             scheduledAt: scheduledAt,
+            graceDeadlineAt: graceDeadlineAt,
             confirmedAt: confirmedAt,
             status: status,
             escalationMinutes: escalationMinutes,
             escalated: escalated,
             location: location,
+            escalationAlertId: escalationAlertId,
+            updatedAt: updatedAt,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
+            Value<String> ownerUserId = const Value.absent(),
+            Value<String> operationId = const Value.absent(),
             required String title,
             required DateTime scheduledAt,
+            Value<DateTime?> graceDeadlineAt = const Value.absent(),
             Value<DateTime?> confirmedAt = const Value.absent(),
             Value<String> status = const Value.absent(),
             Value<int> escalationMinutes = const Value.absent(),
             Value<bool> escalated = const Value.absent(),
             Value<String?> location = const Value.absent(),
+            Value<String?> escalationAlertId = const Value.absent(),
+            Value<DateTime?> updatedAt = const Value.absent(),
           }) =>
               LocalCheckInsCompanion.insert(
             id: id,
+            ownerUserId: ownerUserId,
+            operationId: operationId,
             title: title,
             scheduledAt: scheduledAt,
+            graceDeadlineAt: graceDeadlineAt,
             confirmedAt: confirmedAt,
             status: status,
             escalationMinutes: escalationMinutes,
             escalated: escalated,
             location: location,
+            escalationAlertId: escalationAlertId,
+            updatedAt: updatedAt,
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (
