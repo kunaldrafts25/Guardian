@@ -1,199 +1,290 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: >
-  Guardian - Agentic Emergency Response System
-  Production AWS Serverless Backend Stack
-
-Parameters:
-  CognitoUserPoolArn:
-    Type: String
-    Description: ARN of the Cognito user pool that authenticates the mobile API.
+Description: Guardian production API, authentication, and emergency data plane
 
 Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 30
+    MemorySize: 512
   Api:
     Auth:
       DefaultAuthorizer: CognitoAuthorizer
+      AddDefaultAuthorizerToCorsPreflight: false
       Authorizers:
         CognitoAuthorizer:
-          UserPoolArn: !Ref CognitoUserPoolArn
+          UserPoolArn: !GetAtt GuardianUserPool.Arn
           Identity:
             Header: Authorization
-  Function:
-    Timeout: 30
-    MemorySize: 512
-    Runtime: python3.12
-    Environment:
-      Variables:
-        DYNAMODB_INCIDENTS_TABLE: !Ref IncidentsTable
-        DYNAMODB_EVENTS_TABLE: !Ref IncidentEventsTable
-        DYNAMODB_RESPONDERS_TABLE: !Ref RespondersTable
-        DYNAMODB_USERS_TABLE: !Ref UsersTable
-        EVENTBUS_NAME: default
-        SNS_TOPIC_ARN: !Ref EmergencyAlertsTopic
-        BEDROCK_MODEL_ID: anthropic.claude-3-haiku-20240307-v1:0
 
 Resources:
-  # ============================================================================
-  # 1. DynamoDB Tables
-  # ============================================================================
+  DefineAuthChallengeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../
+      Handler: aws.cognito_triggers.define_auth_challenge
+
+  CreateAuthChallengeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../
+      Handler: aws.cognito_triggers.create_auth_challenge
+      Environment:
+        Variables:
+          OTP_TTL_SECONDS: '300'
+          OTP_MAX_ATTEMPTS: '5'
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: sns:Publish
+              Resource: '*'
+
+  VerifyAuthChallengeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../
+      Handler: aws.cognito_triggers.verify_auth_challenge
+
+  AllowCognitoDefineChallenge:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref DefineAuthChallengeFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt GuardianUserPool.Arn
+  AllowCognitoCreateChallenge:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CreateAuthChallengeFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt GuardianUserPool.Arn
+  AllowCognitoVerifyChallenge:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref VerifyAuthChallengeFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt GuardianUserPool.Arn
+
+  GuardianUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: guardian-users
+      UsernameAttributes: [phone_number]
+      AutoVerifiedAttributes: [phone_number]
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_phone_number
+            Priority: 1
+      LambdaConfig:
+        DefineAuthChallenge: !GetAtt DefineAuthChallengeFunction.Arn
+        CreateAuthChallenge: !GetAtt CreateAuthChallengeFunction.Arn
+        VerifyAuthChallengeResponse: !GetAtt VerifyAuthChallengeFunction.Arn
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 16
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+          TemporaryPasswordValidityDays: 1
+      UserPoolAddOns:
+        AdvancedSecurityMode: ENFORCED
+
+  GuardianUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: guardian-mobile
+      UserPoolId: !Ref GuardianUserPool
+      GenerateSecret: false
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+      ExplicitAuthFlows: [ALLOW_CUSTOM_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      AccessTokenValidity: 15
+      IdTokenValidity: 15
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+
   IncidentsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: guardian-incidents
       BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: incident_id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: incident_id
-          KeyType: HASH
-
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+      SSESpecification: {SSEEnabled: true}
+      AttributeDefinitions: [{AttributeName: incident_id, AttributeType: S}]
+      KeySchema: [{AttributeName: incident_id, KeyType: HASH}]
   IncidentEventsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: guardian-incident-events
       BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+      SSESpecification: {SSEEnabled: true}
       AttributeDefinitions:
-        - AttributeName: incident_id
-          AttributeType: S
-        - AttributeName: timestamp
-          AttributeType: S
+        - {AttributeName: incident_id, AttributeType: S}
+        - {AttributeName: timestamp, AttributeType: S}
       KeySchema:
-        - AttributeName: incident_id
-          KeyType: HASH
-        - AttributeName: timestamp
-          KeyType: RANGE
-
+        - {AttributeName: incident_id, KeyType: HASH}
+        - {AttributeName: timestamp, KeyType: RANGE}
   RespondersTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: guardian-responders
       BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: responder_id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: responder_id
-          KeyType: HASH
-
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+      SSESpecification: {SSEEnabled: true}
+      AttributeDefinitions: [{AttributeName: responder_id, AttributeType: S}]
+      KeySchema: [{AttributeName: responder_id, KeyType: HASH}]
+  MissionsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: guardian-missions
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+      SSESpecification: {SSEEnabled: true}
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+      AttributeDefinitions: [{AttributeName: mission_id, AttributeType: S}]
+      KeySchema: [{AttributeName: mission_id, KeyType: HASH}]
   UsersTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: guardian-users
       BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: user_id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: user_id
-          KeyType: HASH
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+      SSESpecification: {SSEEnabled: true}
+      AttributeDefinitions: [{AttributeName: user_id, AttributeType: S}]
+      KeySchema: [{AttributeName: user_id, KeyType: HASH}]
+  AuthThrottleTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: guardian-auth-throttle
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification: {SSEEnabled: true}
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+      AttributeDefinitions: [{AttributeName: throttle_key, AttributeType: S}]
+      KeySchema: [{AttributeName: throttle_key, KeyType: HASH}]
 
-  # ============================================================================
-  # 2. SNS Alert Topic
-  # ============================================================================
   EmergencyAlertsTopic:
     Type: AWS::SNS::Topic
     Properties:
       TopicName: guardian-trusted-contact-alerts
-      DisplayName: Guardian Emergency Response Alerts
+      DisplayName: Guardian Alerts
 
-  # ============================================================================
-  # 3. Incident Ingestion Lambda & API Gateway
-  # ============================================================================
-  IncidentHandlerFunction:
+  GuardianApiFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ./
-      Handler: aws.incident_handler.handler.lambda_handler
+      CodeUri: ../
+      Handler: aws.lambda_handler.handler
+      Environment:
+        Variables: &ApiEnvironment
+          COGNITO_USER_POOL_ID: !Ref GuardianUserPool
+          COGNITO_CLIENT_ID: !Ref GuardianUserPoolClient
+          DYNAMODB_INCIDENTS_TABLE: !Ref IncidentsTable
+          DYNAMODB_EVENTS_TABLE: !Ref IncidentEventsTable
+          DYNAMODB_RESPONDERS_TABLE: !Ref RespondersTable
+          DYNAMODB_MISSIONS_TABLE: !Ref MissionsTable
+          DYNAMODB_USERS_TABLE: !Ref UsersTable
+          DYNAMODB_AUTH_THROTTLE_TABLE: !Ref AuthThrottleTable
+          EVENTBUS_NAME: default
+          SNS_TOPIC_ARN: !Ref EmergencyAlertsTopic
+          BEDROCK_MODEL_ID: anthropic.claude-3-haiku-20240307-v1:0
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref IncidentsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref IncidentEventsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref RespondersTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UsersTable
-        - EventBridgePutEventsPolicy:
-            EventBusName: default
-      Events:
-        CreateIncident:
-          Type: Api
-          Properties:
-            Path: /incidents
-            Method: post
-        GetIncident:
-          Type: Api
-          Properties:
-            Path: /incidents/{id}
-            Method: get
-        UpdateStatus:
-          Type: Api
-          Properties:
-            Path: /incidents/{id}/status
-            Method: put
-        GetTimeline:
-          Type: Api
-          Properties:
-            Path: /incidents/{id}/timeline
-            Method: get
-        GetNearbyResponders:
-          Type: Api
-          Properties:
-            Path: /incidents/{id}/nearby
-            Method: get
-        AcceptRescueMission:
-          Type: Api
-          Properties:
-            Path: /incidents/{id}/accept
-            Method: post
-        ResponderHeartbeat:
-          Type: Api
-          Properties:
-            Path: /responders/heartbeat
-            Method: post
-
-  # ============================================================================
-  # 4. Guardian Autonomous Agent Lambda (Bedrock + Strands)
-  # ============================================================================
-  GuardianAgentFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: ./
-      Handler: aws.agent.guardian_agent.lambda_handler
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref IncidentsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref IncidentEventsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref RespondersTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UsersTable
-        - SNSPublishMessagePolicy:
-            TopicName: !GetAtt EmergencyAlertsTopic.TopicName
+        - DynamoDBCrudPolicy: {TableName: !Ref IncidentsTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref IncidentEventsTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref RespondersTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref MissionsTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref UsersTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref AuthThrottleTable}
+        - SNSPublishMessagePolicy: {TopicName: !GetAtt EmergencyAlertsTopic.TopicName}
+        - EventBridgePutEventsPolicy: {EventBusName: default}
         - Statement:
             - Effect: Allow
               Action:
-                - bedrock:InvokeModel
-              Resource: "*"
+                - cognito-idp:AdminCreateUser
+                - cognito-idp:AdminSetUserPassword
+                - cognito-idp:GetUser
+                - cognito-idp:GlobalSignOut
+              Resource: !GetAtt GuardianUserPool.Arn
+            - Effect: Allow
+              Action:
+                - cognito-idp:InitiateAuth
+                - cognito-idp:RespondToAuthChallenge
+              Resource: '*'
+            - Effect: Allow
+              Action: [sns:CreatePlatformEndpoint, sns:GetEndpointAttributes, sns:SetEndpointAttributes, sns:Publish]
+              Resource: '*'
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: '*'
+      Events:
+        PublicRoot:
+          Type: Api
+          Properties: {Path: /, Method: get, Auth: {Authorizer: NONE}}
+        SendOtp:
+          Type: Api
+          Properties: {Path: /auth/send-otp, Method: post, Auth: {Authorizer: NONE}}
+        VerifyOtp:
+          Type: Api
+          Properties: {Path: /auth/verify-otp, Method: post, Auth: {Authorizer: NONE}}
+        RefreshToken:
+          Type: Api
+          Properties: {Path: /auth/refresh, Method: post, Auth: {Authorizer: NONE}}
+        SignOut:
+          Type: Api
+          Properties: {Path: /auth/sign-out, Method: post, Auth: {Authorizer: NONE}}
+        ProtectedApi:
+          Type: Api
+          Properties: {Path: '/{proxy+}', Method: any}
+
+  GuardianAgentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../
+      Handler: aws.agent.guardian_agent.lambda_handler
+      Environment:
+        Variables: *ApiEnvironment
+      Policies:
+        - DynamoDBCrudPolicy: {TableName: !Ref IncidentsTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref IncidentEventsTable}
+        - DynamoDBReadPolicy: {TableName: !Ref RespondersTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref MissionsTable}
+        - DynamoDBReadPolicy: {TableName: !Ref UsersTable}
+        - SNSPublishMessagePolicy: {TopicName: !GetAtt EmergencyAlertsTopic.TopicName}
+        - Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: '*'
       Events:
         IncidentCreatedEvent:
           Type: EventBridgeRule
           Properties:
             Pattern:
-              source:
-                - "guardian.incident"
-              detail-type:
-                - "incident.created"
+              source: [guardian.incident]
+              detail-type: [incident.created]
 
 Outputs:
   ApiEndpoint:
-    Description: "API Gateway endpoint URL for Prod environment"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
-  IncidentsTableName:
-    Description: "DynamoDB Incidents Table"
-    Value: !Ref IncidentsTable
-  AlertsTopicArn:
-    Description: "SNS Emergency Alerts Topic ARN"
-    Value: !Ref EmergencyAlertsTopic
+    Value: !Sub 'https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod'
+  CognitoUserPoolId:
+    Value: !Ref GuardianUserPool
+  CognitoClientId:
+    Value: !Ref GuardianUserPoolClient

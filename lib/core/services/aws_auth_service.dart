@@ -80,6 +80,7 @@ class AwsAuthService {
   String? _phone;
   String? _pendingSession; // Cognito auth session for OTP verification
   AwsAuthUser? _currentUser;
+  Future<bool>? _refreshInFlight;
   final StreamController<AwsAuthUser?> _authStateController =
       StreamController<AwsAuthUser?>.broadcast();
 
@@ -157,15 +158,27 @@ class AwsAuthService {
   }
 
   /// Refresh expired access token using the stored refresh token.
-  Future<bool> refreshSession() async {
+  Future<bool> refreshSession() {
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) return inFlight;
+    final operation = _refreshSessionInternal();
+    _refreshInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_refreshInFlight, operation)) _refreshInFlight = null;
+    });
+  }
+
+  Future<bool> _refreshSessionInternal() async {
     final refreshToken = await _storage.read(key: _kRefreshToken);
     if (refreshToken == null || _userId == null) return false;
 
     try {
-      final resp = await _post('/auth/refresh', {
-        'refresh_token': refreshToken,
-        'user_id': _userId!,
-      });
+      final resp = await _post(
+          '/auth/refresh',
+          {
+            'refresh_token': refreshToken,
+          },
+          retryUnauthorized: false);
       if (resp['access_token'] != null) {
         _accessToken = resp['access_token'] as String;
         await _storage.write(key: _kAccessToken, value: _accessToken);
@@ -302,43 +315,59 @@ class AwsAuthService {
       _post(path, body);
 
   Future<Map<String, dynamic>> _post(
-      String path, Map<String, dynamic> body) async {
-    final url = Uri.parse('$_baseUrl$path');
-    final response = await http
-        .post(url, headers: _headers, body: jsonEncode(body))
-        .timeout(const Duration(seconds: 15));
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    if (response.statusCode >= 400) {
-      throw Exception(
-          data['detail'] ?? 'Request failed: ${response.statusCode}');
-    }
-    return data;
+    String path,
+    Map<String, dynamic> body, {
+    bool retryUnauthorized = true,
+  }) async {
+    return _request(
+      path: path,
+      timeout: const Duration(seconds: 15),
+      retryUnauthorized: retryUnauthorized,
+      send: (url) => http.post(url, headers: _headers, body: jsonEncode(body)),
+    );
   }
 
   Future<Map<String, dynamic>> _get(String path) async {
-    final url = Uri.parse('$_baseUrl$path');
-    final response = await http
-        .get(url, headers: _headers)
-        .timeout(const Duration(seconds: 10));
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    if (response.statusCode >= 400) {
-      throw Exception(
-          data['detail'] ?? 'Request failed: ${response.statusCode}');
-    }
-    return data;
+    return _request(
+      path: path,
+      timeout: const Duration(seconds: 10),
+      send: (url) => http.get(url, headers: _headers),
+    );
   }
 
   Future<Map<String, dynamic>> _put(
       String path, Map<String, dynamic> body) async {
-    final url = Uri.parse('$_baseUrl$path');
-    final response = await http
-        .put(url, headers: _headers, body: jsonEncode(body))
-        .timeout(const Duration(seconds: 10));
+    return _request(
+      path: path,
+      timeout: const Duration(seconds: 10),
+      send: (url) => http.put(url, headers: _headers, body: jsonEncode(body)),
+    );
+  }
 
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
+  Future<Map<String, dynamic>> _request({
+    required String path,
+    required Duration timeout,
+    required Future<http.Response> Function(Uri url) send,
+    bool retryUnauthorized = true,
+  }) async {
+    final url = Uri.parse('$_baseUrl$path');
+    var response = await send(url).timeout(timeout);
+    if (response.statusCode == 401 &&
+        retryUnauthorized &&
+        !path.startsWith('/auth/') &&
+        await refreshSession()) {
+      response = await send(url).timeout(timeout);
+    }
+    final Object? decoded =
+        response.body.isEmpty ? null : jsonDecode(response.body);
+    final data = decoded is Map<String, dynamic>
+        ? decoded
+        : <String, dynamic>{'data': decoded};
     if (response.statusCode >= 400) {
+      if (response.statusCode == 401 && !path.startsWith('/auth/')) {
+        await _clearLocalSession();
+        _authStateController.add(null);
+      }
       throw Exception(
           data['detail'] ?? 'Request failed: ${response.statusCode}');
     }

@@ -9,6 +9,9 @@ Defines 4 core tools:
 
 import os
 import json
+import hashlib
+import hmac
+import secrets
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 
@@ -31,6 +34,7 @@ except ImportError:
 
 SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN", "")
 DYNAMODB_RESPONDERS_TABLE = os.environ.get("DYNAMODB_RESPONDERS_TABLE", "guardian-responders")
+DYNAMODB_MISSIONS_TABLE = os.environ.get("DYNAMODB_MISSIONS_TABLE", "guardian-missions")
 
 
 def _dev_mode() -> bool:
@@ -201,7 +205,18 @@ _LOCAL_RESPONDERS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-_ACCEPTED_MISSIONS: Dict[str, List[Dict[str, Any]]] = {}
+_LOCAL_MISSIONS: Dict[str, Dict[str, Any]] = {}
+
+
+def _mission_id(incident_id: str, responder_id: str) -> str:
+    return f"{incident_id}#{responder_id}"
+
+
+def _coarse_location(location: Dict[str, Any]) -> Dict[str, float]:
+    return {
+        "latitude": round(float(location.get("latitude", 0.0)), 2),
+        "longitude": round(float(location.get("longitude", 0.0)), 2),
+    }
 
 
 def register_responder_heartbeat(
@@ -218,13 +233,31 @@ def register_responder_heartbeat(
         "name": name,
         "latitude": latitude,
         "longitude": longitude,
-        "trust_score": trust_score,
         "is_active": is_active,
         "last_seen": datetime.now(timezone.utc).isoformat(),
+        "availability_expires_at": int(datetime.now(timezone.utc).timestamp()) + 300,
     }
     dynamo = get_dynamo_resource()
     if dynamo:
-        dynamo.Table(DYNAMODB_RESPONDERS_TABLE).put_item(Item=record)
+        table = dynamo.Table(DYNAMODB_RESPONDERS_TABLE)
+        existing = table.get_item(Key={"responder_id": responder_id}).get("Item")
+        if not existing or existing.get("verification_status") != "APPROVED":
+            raise PermissionError("Responder enrollment is not approved")
+        table.update_item(
+            Key={"responder_id": responder_id},
+            UpdateExpression=(
+                "SET latitude = :lat, longitude = :lng, is_active = :active, "
+                "last_seen = :seen, availability_expires_at = :expiry"
+            ),
+            ExpressionAttributeValues={
+                ":lat": latitude,
+                ":lng": longitude,
+                ":active": is_active,
+                ":seen": record["last_seen"],
+                ":expiry": record["availability_expires_at"],
+            },
+        )
+        record = {**existing, **record}
     elif _dev_mode():
         _LOCAL_RESPONDERS[responder_id] = record
     else:
@@ -263,8 +296,15 @@ def find_nearby_responders(incident_id: str, radius_meters: float = 1200.0) -> L
     lng1 = inc_loc.get("longitude", 72.8777)
 
     eligible_responders = []
+    now_epoch = int(datetime.now(timezone.utc).timestamp())
     for resp in _get_responder_records():
         if not resp.get("is_active"):
+            continue
+
+        if not _dev_mode() and (
+            resp.get("verification_status") != "APPROVED"
+            or int(resp.get("availability_expires_at", 0)) <= now_epoch
+        ):
             continue
 
         # Anti-Abuse Check 1: Trust Score minimum threshold
@@ -317,6 +357,33 @@ def dispatch_community_alert(incident_id: str) -> Dict[str, Any]:
     # Prepare obfuscated public broadcast payload
     lat = ctx.get("location", {}).get("latitude", 19.0760)
     lng = ctx.get("location", {}).get("longitude", 72.8777)
+    now = datetime.now(timezone.utc)
+    invitation_expiry = int(now.timestamp()) + 180
+    dynamo = get_dynamo_resource()
+    for responder in responders[:6]:
+        mission = {
+            "mission_id": _mission_id(incident_id, responder["responder_id"]),
+            "incident_id": incident_id,
+            "responder_id": responder["responder_id"],
+            "status": "INVITED",
+            "invited_at": now.isoformat(),
+            "expires_at": invitation_expiry,
+            "updated_at": now.isoformat(),
+        }
+        if dynamo:
+            try:
+                dynamo.Table(DYNAMODB_MISSIONS_TABLE).put_item(
+                    Item=mission,
+                    ConditionExpression="attribute_not_exists(mission_id)",
+                )
+            except Exception as error:
+                code = getattr(error, "response", {}).get("Error", {}).get("Code")
+                if code != "ConditionalCheckFailedException":
+                    raise
+        elif _dev_mode():
+            _LOCAL_MISSIONS.setdefault(mission["mission_id"], mission)
+        else:
+            raise RuntimeError("Mission store is unavailable")
 
     dispatch_payload = {
         "incident_id": incident_id,
@@ -327,7 +394,7 @@ def dispatch_community_alert(incident_id: str) -> Dict[str, Any]:
         },
         "tamper_proof_evidence_recording": True,  # Mutual digital witness activated
         "quorum_size": len(responders),
-        "dispatched_to": [r["responder_id"] for r in responders],
+        "invite_count": min(len(responders), 6),
     }
 
     # Append to incident audit timeline
@@ -342,7 +409,6 @@ def dispatch_community_alert(incident_id: str) -> Dict[str, Any]:
         "incident_id": incident_id,
         "status": "COMMUNITY_DISPATCHED",
         "dispatched_count": len(responders),
-        "responders": responders,
         "broadcast_payload": dispatch_payload,
     }
 
@@ -350,21 +416,78 @@ def dispatch_community_alert(incident_id: str) -> Dict[str, Any]:
 def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]:
     """
     Tool 7: Responder accepts rescue mission.
-    Unlocks precision GPS coordinates and establishes mutual coordination beacon.
+    Conditionally accepts an invitation and issues a short-lived navigation grant.
     """
     resp = _get_responder(responder_id)
-    if not resp or resp.get("trust_score", 0) < 70:
+    if not resp or resp.get("trust_score", 0) < 70 or (
+        not _dev_mode() and resp.get("verification_status") != "APPROVED"
+    ):
         raise PermissionError(f"Responder {responder_id} does not meet trust score criteria.")
 
     ctx = get_incident_context(incident_id)
+    now = datetime.now(timezone.utc)
+    grant = secrets.token_urlsafe(32)
     acceptance_record = {
+        "mission_id": _mission_id(incident_id, responder_id),
+        "incident_id": incident_id,
         "responder_id": responder_id,
-        "responder_name": resp.get("name"),
-        "responder_phone": resp.get("phone"),
-        "accepted_at": datetime.now(timezone.utc).isoformat(),
-        "mission_status": "EN_ROUTE",
+        "accepted_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "status": "ACCEPTED",
+        "navigation_grant_hash": hashlib.sha256(grant.encode("utf-8")).hexdigest(),
+        "navigation_grant_expires_at": int(now.timestamp()) + 900,
     }
-    _ACCEPTED_MISSIONS.setdefault(incident_id, []).append(acceptance_record)
+    mission_id = acceptance_record["mission_id"]
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        try:
+            result = dynamo.Table(DYNAMODB_MISSIONS_TABLE).update_item(
+                Key={"mission_id": mission_id},
+                UpdateExpression=(
+                    "SET #status = :accepted, accepted_at = :accepted_at, "
+                    "updated_at = :updated_at, navigation_grant_hash = :grant, "
+                    "navigation_grant_expires_at = :grant_expiry"
+                ),
+                ConditionExpression=(
+                    "#status = :invited AND responder_id = :responder "
+                    "AND expires_at > :now"
+                ),
+                ExpressionAttributeNames={"#status": "status"},
+                ExpressionAttributeValues={
+                    ":accepted": "ACCEPTED",
+                    ":invited": "INVITED",
+                    ":responder": responder_id,
+                    ":now": int(now.timestamp()),
+                    ":accepted_at": now.isoformat(),
+                    ":updated_at": now.isoformat(),
+                    ":grant": acceptance_record["navigation_grant_hash"],
+                    ":grant_expiry": acceptance_record["navigation_grant_expires_at"],
+                },
+                ReturnValues="ALL_NEW",
+            )
+            acceptance_record = result["Attributes"]
+        except Exception as error:
+            code = getattr(error, "response", {}).get("Error", {}).get("Code")
+            if code == "ConditionalCheckFailedException":
+                raise PermissionError("Mission invitation is unavailable or expired") from error
+            raise
+    elif _dev_mode():
+        existing = _LOCAL_MISSIONS.get(mission_id)
+        if existing is None:
+            # Direct tool tests create incidents without running dispatch first.
+            existing = {"status": "INVITED", "expires_at": int(now.timestamp()) + 180}
+        if existing.get("status") == "ACCEPTED":
+            return {
+                "incident_id": incident_id,
+                "mission": existing,
+                "approximate_location": _coarse_location(ctx.get("location") or {}),
+                "navigation_grant": None,
+            }
+        if existing.get("status") != "INVITED" or existing.get("expires_at", 0) <= int(now.timestamp()):
+            raise PermissionError("Mission invitation is unavailable or expired")
+        _LOCAL_MISSIONS[mission_id] = {**existing, **acceptance_record}
+    else:
+        raise RuntimeError("Mission store is unavailable")
 
     # Record on timeline
     update_incident_status(
@@ -374,15 +497,49 @@ def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]
         note=f"Verified helper {resp.get('name')} accepted mission and is en-route.",
     )
 
-    # Precision location unlocked for verified en-route helper
-    lat = ctx.get("location", {}).get("latitude", 19.0760)
-    lng = ctx.get("location", {}).get("longitude", 72.8777)
-
     return {
         "incident_id": incident_id,
-        "responder": acceptance_record,
-        "precision_coordinates": {"latitude": lat, "longitude": lng},
-        "navigation_url": f"https://maps.google.com/?q={lat},{lng}",
-        "other_responders_en_route": len(_ACCEPTED_MISSIONS[incident_id]) - 1,
+        "mission": {
+            key: value
+            for key, value in acceptance_record.items()
+            if key not in {"navigation_grant_hash"}
+        },
+        "approximate_location": _coarse_location(ctx.get("location") or {}),
+        "navigation_grant": grant,
+    }
+
+
+def get_authorized_incident_location(
+    incident_id: str, responder_id: str, navigation_grant: str
+) -> Dict[str, Any]:
+    """Return exact coordinates only for a live, bound mission grant."""
+    mission_id = _mission_id(incident_id, responder_id)
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        mission = dynamo.Table(DYNAMODB_MISSIONS_TABLE).get_item(
+            Key={"mission_id": mission_id}, ConsistentRead=True
+        ).get("Item")
+    elif _dev_mode():
+        mission = _LOCAL_MISSIONS.get(mission_id)
+    else:
+        raise RuntimeError("Mission store is unavailable")
+    now = int(datetime.now(timezone.utc).timestamp())
+    supplied_hash = hashlib.sha256(navigation_grant.encode("utf-8")).hexdigest()
+    if not mission or mission.get("status") not in {"ACCEPTED", "EN_ROUTE"}:
+        raise PermissionError("No active mission grant")
+    if int(mission.get("navigation_grant_expires_at", 0)) <= now or not hmac.compare_digest(
+        mission.get("navigation_grant_hash", ""), supplied_hash
+    ):
+        raise PermissionError("Navigation grant is invalid or expired")
+    incident = get_incident_context(incident_id)
+    location = incident.get("location")
+    if not location:
+        raise ValueError("Incident location is unavailable")
+    return {
+        "incident_id": incident_id,
+        "latitude": location["latitude"],
+        "longitude": location["longitude"],
+        "accuracy": location.get("accuracy"),
+        "grant_expires_at": mission["navigation_grant_expires_at"],
     }
 

@@ -9,6 +9,7 @@ import hmac
 import hashlib
 import base64
 import logging
+import re
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 
@@ -27,6 +28,11 @@ COGNITO_CLIENT_ID = os.environ.get("COGNITO_CLIENT_ID", "")
 COGNITO_CLIENT_SECRET = os.environ.get("COGNITO_CLIENT_SECRET", "")
 AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "ap-south-1")
 DYNAMODB_USERS_TABLE = os.environ.get("DYNAMODB_USERS_TABLE", "guardian-users")
+DYNAMODB_AUTH_THROTTLE_TABLE = os.environ.get(
+    "DYNAMODB_AUTH_THROTTLE_TABLE", "guardian-auth-throttle"
+)
+OTP_RESEND_COOLDOWN_SECONDS = 30
+OTP_MAX_REQUESTS_PER_HOUR = 5
 
 
 def _get_secret_hash(username: str) -> str:
@@ -70,10 +76,8 @@ def initiate_phone_auth(phone_number: str) -> Dict[str, Any]:
     if not client or not COGNITO_USER_POOL_ID or not COGNITO_CLIENT_ID:
         raise ValueError("AWS Cognito is not configured; OTP authentication is unavailable")
 
-    # Normalize phone number to E.164 format
-    phone = phone_number.strip()
-    if not phone.startswith("+"):
-        phone = f"+91{phone}"  # Default to India prefix
+    phone = _normalize_e164(phone_number)
+    _enforce_otp_rate_limit(phone)
 
     # Try to auto-register user if not exists
     try:
@@ -84,7 +88,7 @@ def initiate_phone_auth(phone_number: str) -> Dict[str, Any]:
             MessageAction="SUPPRESS",  # Don't send welcome email
             TemporaryPassword=_generate_temp_password(),
         )
-        logger.info(f"New Cognito user created for {phone}")
+        logger.info("New Cognito user created")
     except ClientError as e:
         if e.response["Error"]["Code"] != "UsernameExistsException":
             logger.warning(f"User creation note: {e}")
@@ -117,14 +121,12 @@ def initiate_phone_auth(phone_number: str) -> Dict[str, Any]:
         return {
             "session": session,
             "phone": phone,
-            "user_exists": True,
-            "message": f"OTP sent to {phone}"
+            "message": "If the number can receive messages, a code has been sent."
         }
     except ClientError as ce:
         code = ce.response["Error"]["Code"]
-        msg = ce.response["Error"]["Message"]
-        logger.error(f"Initiate auth error: {code}: {msg}")
-        raise ValueError(f"Authentication failed: {msg}")
+        logger.error("Initiate auth error: %s", code)
+        raise ValueError("Unable to start verification. Please try again later.")
 
 
 def verify_otp(phone_number: str, otp_code: str, session: str) -> Dict[str, Any]:
@@ -136,9 +138,7 @@ def verify_otp(phone_number: str, otp_code: str, session: str) -> Dict[str, Any]
     if not client or not COGNITO_USER_POOL_ID or not COGNITO_CLIENT_ID:
         raise ValueError("AWS Cognito is not configured; OTP authentication is unavailable")
 
-    phone = phone_number.strip()
-    if not phone.startswith("+"):
-        phone = f"+91{phone}"
+    phone = _normalize_e164(phone_number)
 
     try:
         challenge_responses = {
@@ -176,12 +176,11 @@ def verify_otp(phone_number: str, otp_code: str, session: str) -> Dict[str, Any]
         }
     except ClientError as ce:
         code = ce.response["Error"]["Code"]
-        msg = ce.response["Error"]["Message"]
-        logger.error(f"OTP verification error: {code}: {msg}")
-        raise ValueError(f"OTP verification failed: {msg}")
+        logger.warning("OTP verification rejected: %s", code)
+        raise ValueError("The verification code is invalid or expired.")
 
 
-def refresh_tokens(refresh_token: str, user_id: str) -> Dict[str, Any]:
+def refresh_tokens(refresh_token: str) -> Dict[str, Any]:
     """Refresh expired access/id tokens using the refresh token."""
     client = _cognito_client()
     if not client:
@@ -190,7 +189,7 @@ def refresh_tokens(refresh_token: str, user_id: str) -> Dict[str, Any]:
     try:
         auth_params = {"REFRESH_TOKEN": refresh_token}
         if COGNITO_CLIENT_SECRET:
-            auth_params["SECRET_HASH"] = _get_secret_hash(user_id)
+            raise ValueError("Mobile Cognito clients must not use a client secret")
 
         resp = client.initiate_auth(
             AuthFlow="REFRESH_TOKEN_AUTH",
@@ -341,3 +340,45 @@ def _generate_temp_password() -> str:
     pwd = "".join(secrets.choice(chars) for _ in range(16))
     # Ensure complexity requirements met
     return f"Grd!{pwd[:12]}"
+
+
+def _normalize_e164(phone_number: str) -> str:
+    phone = re.sub(r"[\s().-]", "", phone_number.strip())
+    if not re.fullmatch(r"\+[1-9]\d{7,14}", phone):
+        raise ValueError("Enter a valid phone number including country code.")
+    return phone
+
+
+def _enforce_otp_rate_limit(phone: str) -> None:
+    """Atomically enforce resend cooldown and a per-number hourly quota."""
+    dynamo = _dynamo_resource()
+    if not dynamo:
+        if os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true":
+            return
+        raise ValueError("Verification is temporarily unavailable.")
+    now = int(datetime.now(timezone.utc).timestamp())
+    phone_hash = hashlib.sha256(phone.encode("utf-8")).hexdigest()
+    hour_bucket = now // 3600
+    try:
+        dynamo.Table(DYNAMODB_AUTH_THROTTLE_TABLE).update_item(
+            Key={"throttle_key": f"{phone_hash}:{hour_bucket}"},
+            UpdateExpression=(
+                "SET last_sent_at = :now, expires_at = :ttl ADD request_count :one"
+            ),
+            ConditionExpression=(
+                "(attribute_not_exists(request_count) OR request_count < :max) "
+                "AND (attribute_not_exists(last_sent_at) OR last_sent_at <= :cooldown)"
+            ),
+            ExpressionAttributeValues={
+                ":now": now,
+                ":ttl": now + 7200,
+                ":one": 1,
+                ":max": OTP_MAX_REQUESTS_PER_HOUR,
+                ":cooldown": now - OTP_RESEND_COOLDOWN_SECONDS,
+            },
+        )
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            raise ValueError("Please wait before requesting another code.") from error
+        logger.exception("OTP rate-limit storage failed")
+        raise ValueError("Verification is temporarily unavailable.") from error

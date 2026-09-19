@@ -150,8 +150,9 @@ def test_nearby_responders_and_accept_handler():
     resp_a = lambda_handler(req_accept, None)
     assert resp_a["statusCode"] == 200
     res_data = json.loads(resp_a["body"])
-    assert res_data["responder"]["mission_status"] == "EN_ROUTE"
-    assert "precision_coordinates" in res_data
+    assert res_data["mission"]["status"] == "ACCEPTED"
+    assert "precision_coordinates" not in res_data
+    assert "navigation_grant" in res_data
 
     # 4. POST /responders/heartbeat
     req_hb = {

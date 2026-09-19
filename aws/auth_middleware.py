@@ -6,7 +6,7 @@ turn a deployed API into an unauthenticated demo server.
 """
 
 import os
-from typing import Optional
+from typing import FrozenSet, Optional, Tuple
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -22,9 +22,26 @@ def is_dev_mode() -> bool:
     return _dev_mode_enabled()
 
 
-def _cognito_user_id(access_token: str) -> Optional[str]:
+def _gateway_identity(request: Request) -> Optional[Tuple[str, FrozenSet[str]]]:
+    """Read claims already verified by the API Gateway Cognito authorizer."""
+    event = request.scope.get("aws.event") or {}
+    claims = (
+        event.get("requestContext", {})
+        .get("authorizer", {})
+        .get("claims", {})
+    )
+    user_id = claims.get("sub") or claims.get("username") or claims.get("cognito:username")
+    if not user_id:
+        return None
+    raw_groups = claims.get("cognito:groups", "")
+    groups = raw_groups if isinstance(raw_groups, list) else str(raw_groups).split(",")
+    return str(user_id), frozenset(group.strip() for group in groups if group.strip())
+
+
+def _cognito_identity(access_token: str) -> Optional[Tuple[str, FrozenSet[str]]]:
     if _dev_mode_enabled() and access_token.startswith("dev_access_token_"):
-        return access_token.removeprefix("dev_access_token_") or None
+        user_id = access_token.removeprefix("dev_access_token_") or None
+        return (user_id, frozenset()) if user_id else None
 
     pool_id = os.environ.get("COGNITO_USER_POOL_ID", "")
     if not pool_id:
@@ -38,7 +55,17 @@ def _cognito_user_id(access_token: str) -> Optional[str]:
             region_name=os.environ.get("AWS_DEFAULT_REGION", "ap-south-1"),
         )
         result = client.get_user(AccessToken=access_token)
-        return result.get("Username")
+        user_id = result.get("Username")
+        attributes = {
+            item.get("Name"): item.get("Value")
+            for item in result.get("UserAttributes", [])
+        }
+        groups = frozenset(
+            value.strip()
+            for value in attributes.get("custom:roles", "").split(",")
+            if value.strip()
+        )
+        return (user_id, groups) if user_id else None
     except Exception:
         return None
 
@@ -70,15 +97,15 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        user_id = _cognito_user_id(token)
-        if not user_id:
+        identity = _gateway_identity(request) or _cognito_identity(token)
+        if not identity:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "The bearer token is invalid or expired."},
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        request.state.user_id = user_id
+        request.state.user_id, request.state.roles = identity
         return await call_next(request)
 
 
@@ -88,3 +115,7 @@ def authenticated_user_id(request: Request) -> str:
     if not user_id:
         raise RuntimeError("Authentication middleware did not establish an identity")
     return user_id
+
+
+def authenticated_roles(request: Request) -> FrozenSet[str]:
+    return getattr(request.state, "roles", frozenset())

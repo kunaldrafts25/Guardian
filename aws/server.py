@@ -87,6 +87,7 @@ from aws.sns_push_service import (
 )
 from aws.auth_middleware import (
     AuthenticationMiddleware,
+    authenticated_roles,
     authenticated_user_id,
     is_dev_mode,
 )
@@ -106,6 +107,13 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+
+def _require_role(request: Request, role: str) -> None:
+    if is_dev_mode():
+        return
+    if role not in authenticated_roles(request):
+        raise HTTPException(status_code=403, detail="This account is not authorized for responder operations.")
 app.add_middleware(AuthenticationMiddleware)
 
 
@@ -149,7 +157,6 @@ class VerifyOtpRequest(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
-    user_id: str
 
 
 class SignOutRequest(BaseModel):
@@ -189,7 +196,7 @@ def api_verify_otp(req: VerifyOtpRequest):
 def api_refresh_token(req: RefreshTokenRequest):
     """Refresh expired JWT access/id tokens."""
     try:
-        result = refresh_tokens(req.refresh_token, req.user_id)
+        result = refresh_tokens(req.refresh_token)
         return result
     except ValueError as ve:
         raise HTTPException(status_code=401, detail=str(ve))
@@ -483,7 +490,7 @@ def api_get_nearby_responders(
     _owned_incident(incident_id, request)
     from aws.agent.tools import find_nearby_responders
     responders = find_nearby_responders(incident_id, radius_meters=radius_meters)
-    return {"incident_id": incident_id, "nearby_responders": responders}
+    return {"incident_id": incident_id, "eligible_responder_count": len(responders)}
 
 
 @app.post("/incidents/{incident_id}/accept")
@@ -493,6 +500,7 @@ def api_accept_mission(
     request: Request,
 ):
     from aws.agent.tools import accept_rescue_mission
+    _require_role(request, "responder")
     responder_id = (
         req.get("responder_id", "resp_01")
         if is_dev_mode()
@@ -516,6 +524,29 @@ def api_accept_mission(
         raise HTTPException(status_code=403, detail=str(pe))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class NavigationGrantRequest(BaseModel):
+    navigation_grant: str = Field(min_length=32, max_length=256)
+
+
+@app.post("/incidents/{incident_id}/authorized-location")
+def api_authorized_incident_location(
+    incident_id: str,
+    req: NavigationGrantRequest,
+    request: Request,
+):
+    from aws.agent.tools import get_authorized_incident_location
+
+    _require_role(request, "responder")
+    try:
+        return get_authorized_incident_location(
+            incident_id,
+            authenticated_user_id(request),
+            req.navigation_grant,
+        )
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error))
 
 
 @app.post("/incidents/{incident_id}/dispatch-community")
@@ -559,6 +590,7 @@ class ResponderHeartbeatRequest(BaseModel):
 @app.post("/responders/heartbeat")
 def api_responder_heartbeat(req: ResponderHeartbeatRequest, request: Request):
     from aws.agent.tools import register_responder_heartbeat
+    _require_role(request, "responder")
     responder_id = (
         req.responder_id
         if is_dev_mode() and req.responder_id

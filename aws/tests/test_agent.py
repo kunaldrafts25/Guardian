@@ -98,7 +98,12 @@ def test_hardware_panic_immediate_critical_and_community_dispatch():
 
 
 def test_community_responder_trust_gating_and_anti_solo_quorum():
-    from aws.agent.tools import find_nearby_responders, dispatch_community_alert, accept_rescue_mission
+    from aws.agent.tools import (
+        accept_rescue_mission,
+        dispatch_community_alert,
+        find_nearby_responders,
+        get_authorized_incident_location,
+    )
 
     # 1. Create incident in non-isolated zone
     rec = create_incident({
@@ -122,11 +127,17 @@ def test_community_responder_trust_gating_and_anti_solo_quorum():
     assert dispatch_res["dispatched_count"] >= 2
     assert "broadcast_payload" in dispatch_res
 
-    # 4. Accept rescue mission: Unlocks precision coordinates
+    # 4. Acceptance reveals only a coarse area and a bound short-lived grant.
     accept_res = accept_rescue_mission(iid, responder_id="resp_01")
-    assert accept_res["responder"]["mission_status"] == "EN_ROUTE"
-    assert "precision_coordinates" in accept_res
-    assert accept_res["precision_coordinates"]["latitude"] == 19.0760
+    assert accept_res["mission"]["status"] == "ACCEPTED"
+    assert "precision_coordinates" not in accept_res
+    assert accept_res["approximate_location"]["latitude"] == 19.08
+    authorized = get_authorized_incident_location(
+        iid, "resp_01", accept_res["navigation_grant"]
+    )
+    assert authorized["latitude"] == 19.0760
+    with pytest.raises(PermissionError):
+        get_authorized_incident_location(iid, "resp_01", "invalid-grant")
 
     # 5. Low trust responder cannot accept mission
     with pytest.raises(PermissionError):
