@@ -34,7 +34,9 @@ class SafetyStatusCard extends StatelessWidget {
               children: [
                 Icon(
                   isSafetyModeEnabled ? Icons.shield : Icons.shield_outlined,
-                  color: isSafetyModeEnabled ? AppColors.success : AppColors.textSecondary,
+                  color: isSafetyModeEnabled
+                      ? AppColors.success
+                      : AppColors.textSecondary,
                   size: 28,
                 ),
                 const SizedBox(width: 12),
@@ -55,11 +57,15 @@ class SafetyStatusCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      isSafetyModeEnabled ? 'Safety Mode Enabled' : 'Safety Mode Disabled',
+                      isSafetyModeEnabled
+                          ? 'Safety Mode Enabled'
+                          : 'Safety Mode Disabled',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
-                        color: isSafetyModeEnabled ? AppColors.success : AppColors.textSecondary,
+                        color: isSafetyModeEnabled
+                            ? AppColors.success
+                            : AppColors.textSecondary,
                       ),
                     ),
                     const SizedBox(height: 4),

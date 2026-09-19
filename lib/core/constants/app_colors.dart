@@ -23,7 +23,8 @@ class AppColors {
   static const Color secondaryDark = Color(0xFF6B7A95);
 
   // Alert colors
-  static const Color danger = Color(0xFFFF6B6B); // Same as accent for consistency
+  static const Color danger =
+      Color(0xFFFF6B6B); // Same as accent for consistency
   static const Color warning = Color(0xFFFFB300);
   static const Color success = Color(0xFF43A047);
   static const Color info = Color(0xFF039BE5);

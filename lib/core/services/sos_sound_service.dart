@@ -9,10 +9,10 @@ import 'package:flutter/services.dart';
 import 'package:guardian/core/utils/logger.dart';
 
 /// SOS Sound Service
-/// 
+///
 /// Plays system alarm sounds during SOS countdown and activation.
 /// Uses Flutter's built-in SystemSound for cross-platform audio.
-/// 
+///
 /// For louder alarms in the future, consider:
 /// - audioplayers package for custom sound files
 /// - Native platform channels for system alarm sounds

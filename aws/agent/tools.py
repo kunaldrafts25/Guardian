@@ -14,11 +14,13 @@ from datetime import datetime, timezone
 
 from aws.incident_handler.handler import (
     get_incident,
+    get_dynamo_resource,
     update_incident_status,
     IncidentState,
     DYNAMODB_INCIDENTS_TABLE,
     AWS_REGION,
 )
+from aws.cognito_service import get_user_profile
 from aws.agent.risk_engine import assess_incident_risk
 
 try:
@@ -27,7 +29,12 @@ try:
 except ImportError:
     BOTO3_AVAILABLE = False
 
-SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN", "arn:aws:sns:us-east-1:123456789012:guardian-trusted-contact-alerts")
+SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN", "")
+DYNAMODB_RESPONDERS_TABLE = os.environ.get("DYNAMODB_RESPONDERS_TABLE", "guardian-responders")
+
+
+def _dev_mode() -> bool:
+    return os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
 
 
 def get_incident_context(incident_id: str) -> Dict[str, Any]:
@@ -39,11 +46,10 @@ def get_incident_context(incident_id: str) -> Dict[str, Any]:
     if not incident:
         return {"error": f"Incident {incident_id} not found"}
 
-    # Mock user profile contacts if not populated
-    contacts = incident.get("contacts") or [
-        {"id": "contact_1", "name": "Mom", "relationship": "Mother", "phone": "+919876543210", "email": "guardian.alert.demo@gmail.com", "authorized": True},
-        {"id": "contact_2", "name": "Dad", "relationship": "Father", "phone": "+919876543211", "email": "guardian.alert.demo2@gmail.com", "authorized": True},
-    ]
+    contacts = incident.get("contacts")
+    if contacts is None:
+        profile = get_user_profile(incident.get("user_id"))
+        contacts = (profile or {}).get("emergency_contacts", [])
 
     return {
         "incident_id": incident_id,
@@ -125,8 +131,12 @@ def notify_trusted_contact(incident_id: str, contact_id: Optional[str] = None) -
         f"The user did not respond to safety verification. Immediate assistance requested."
     )
 
-    sns_message_id = "mock_sns_msg_12345"
-    if BOTO3_AVAILABLE and os.environ.get("AWS_EXECUTION_ENV"):
+    if not SNS_TOPIC_ARN or not BOTO3_AVAILABLE or not os.environ.get("AWS_EXECUTION_ENV"):
+        if not _dev_mode():
+            raise RuntimeError("AWS SNS is not configured; emergency alert was not sent")
+        sns_message_id = None
+        delivery_status = "DEV_MODE_NOT_SENT"
+    else:
         try:
             sns = boto3.client("sns", region_name=AWS_REGION)
             pub_res = sns.publish(
@@ -134,9 +144,10 @@ def notify_trusted_contact(incident_id: str, contact_id: Optional[str] = None) -
                 Subject=alert_subject[:100],
                 Message=alert_message,
             )
-            sns_message_id = pub_res.get("MessageId", sns_message_id)
-        except Exception as e:
-            sns_message_id = f"error_{str(e)}"
+            sns_message_id = pub_res.get("MessageId")
+            delivery_status = "SENT"
+        except Exception as exc:
+            raise RuntimeError("AWS SNS publish failed; emergency alert was not sent") from exc
 
     # Transition to RESPONDING
     res = update_incident_status(
@@ -150,6 +161,7 @@ def notify_trusted_contact(incident_id: str, contact_id: Optional[str] = None) -
         "incident_id": incident_id,
         "contact_notified": target_contact.get("name"),
         "sns_message_id": sns_message_id,
+        "delivery_status": delivery_status,
         "state": res.get("state"),
     }
 
@@ -160,7 +172,7 @@ def notify_trusted_contact(incident_id: str, contact_id: Optional[str] = None) -
 
 import math
 
-# Active community responders registry (mock / local fallback)
+# Local responder records are test/dev-only. Production uses DynamoDB.
 _LOCAL_RESPONDERS: Dict[str, Dict[str, Any]] = {
     "resp_01": {
         "responder_id": "resp_01",
@@ -215,8 +227,34 @@ def register_responder_heartbeat(
         "is_active": is_active,
         "last_seen": datetime.now(timezone.utc).isoformat(),
     }
-    _LOCAL_RESPONDERS[responder_id] = record
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        dynamo.Table(DYNAMODB_RESPONDERS_TABLE).put_item(Item=record)
+    elif _dev_mode():
+        _LOCAL_RESPONDERS[responder_id] = record
+    else:
+        raise RuntimeError("Responder registry is unavailable")
     return record
+
+
+def _get_responder_records() -> List[Dict[str, Any]]:
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        return dynamo.Table(DYNAMODB_RESPONDERS_TABLE).scan().get("Items", [])
+    if _dev_mode():
+        return list(_LOCAL_RESPONDERS.values())
+    raise RuntimeError("Responder registry is unavailable")
+
+
+def _get_responder(responder_id: str) -> Optional[Dict[str, Any]]:
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        return dynamo.Table(DYNAMODB_RESPONDERS_TABLE).get_item(
+            Key={"responder_id": responder_id}
+        ).get("Item")
+    if _dev_mode():
+        return _LOCAL_RESPONDERS.get(responder_id)
+    raise RuntimeError("Responder registry is unavailable")
 
 
 def find_nearby_responders(incident_id: str, radius_meters: float = 1200.0) -> List[Dict[str, Any]]:
@@ -230,7 +268,7 @@ def find_nearby_responders(incident_id: str, radius_meters: float = 1200.0) -> L
     lng1 = inc_loc.get("longitude", 72.8777)
 
     eligible_responders = []
-    for resp in _LOCAL_RESPONDERS.values():
+    for resp in _get_responder_records():
         if not resp.get("is_active"):
             continue
 
@@ -319,7 +357,7 @@ def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]
     Tool 7: Responder accepts rescue mission.
     Unlocks precision GPS coordinates and establishes mutual coordination beacon.
     """
-    resp = _LOCAL_RESPONDERS.get(responder_id)
+    resp = _get_responder(responder_id)
     if not resp or resp.get("trust_score", 0) < 70:
         raise PermissionError(f"Responder {responder_id} does not meet trust score criteria.")
 

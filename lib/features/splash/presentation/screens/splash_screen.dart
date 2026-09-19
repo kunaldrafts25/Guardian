@@ -59,8 +59,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       return;
     }
 
-    // DEV MODE: Skip auth check - go directly to login
-    // Check auth state
+    // Restore the authenticated session before entering the private app.
     final user = ref.read(currentUserProvider);
     if (user != null) {
       context.go(Routes.dashboard);
@@ -117,17 +116,21 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                           const SizedBox(height: 24),
                           Text(
                             'Guardian',
-                            style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineLarge
+                                ?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
                           ),
                           const SizedBox(height: 8),
                           Text(
                             'Your safety, our priority',
-                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Colors.white70,
-                            ),
+                            style:
+                                Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                      color: Colors.white70,
+                                    ),
                           ),
                         ],
                       ),

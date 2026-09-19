@@ -5,8 +5,6 @@
  * SafeZone Model - Represents a safe location
  */
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 /// Safe zone type
 enum SafeZoneType {
   home,
@@ -26,7 +24,6 @@ class SafeZone {
   final SafeZoneType type;
   final bool isActive;
   final bool notifyOnExit;
-  final bool autoGuardianMode; // Enable Guardian mode when leaving
   final DateTime createdAt;
 
   const SafeZone({
@@ -38,15 +35,8 @@ class SafeZone {
     this.type = SafeZoneType.custom,
     this.isActive = true,
     this.notifyOnExit = true,
-    this.autoGuardianMode = false,
     required this.createdAt,
   });
-
-  /// Create from Firestore document
-  factory SafeZone.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
-    return SafeZone.fromJson(data, doc.id);
-  }
 
   /// Create from JSON
   factory SafeZone.fromJson(Map<String, dynamic> json, String id) {
@@ -62,23 +52,22 @@ class SafeZone {
       ),
       isActive: json['isActive'] as bool? ?? true,
       notifyOnExit: json['notifyOnExit'] as bool? ?? true,
-      autoGuardianMode: json['autoGuardianMode'] as bool? ?? false,
-      createdAt: (json['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+          DateTime.now(),
     );
   }
 
-  /// Convert to JSON for Firestore
+  /// Convert to transport-safe JSON.
   Map<String, dynamic> toJson() => {
-    'name': name,
-    'latitude': latitude,
-    'longitude': longitude,
-    'radius': radius,
-    'type': type.name,
-    'isActive': isActive,
-    'notifyOnExit': notifyOnExit,
-    'autoGuardianMode': autoGuardianMode,
-    'createdAt': Timestamp.fromDate(createdAt),
-  };
+        'name': name,
+        'latitude': latitude,
+        'longitude': longitude,
+        'radius': radius,
+        'type': type.name,
+        'isActive': isActive,
+        'notifyOnExit': notifyOnExit,
+        'createdAt': createdAt.toUtc().toIso8601String(),
+      };
 
   /// Copy with modifications
   SafeZone copyWith({
@@ -90,7 +79,6 @@ class SafeZone {
     SafeZoneType? type,
     bool? isActive,
     bool? notifyOnExit,
-    bool? autoGuardianMode,
     DateTime? createdAt,
   }) {
     return SafeZone(
@@ -102,7 +90,6 @@ class SafeZone {
       type: type ?? this.type,
       isActive: isActive ?? this.isActive,
       notifyOnExit: notifyOnExit ?? this.notifyOnExit,
-      autoGuardianMode: autoGuardianMode ?? this.autoGuardianMode,
       createdAt: createdAt ?? this.createdAt,
     );
   }

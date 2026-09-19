@@ -8,7 +8,7 @@ class AppStrings {
   // App
   static const String appName = 'Guardian';
   static const String appTagline = 'Safety at your fingertips';
-  
+
   // Auth
   static const String login = 'Login';
   static const String signup = 'Sign Up';
@@ -21,7 +21,7 @@ class AppStrings {
   static const String createAccount = 'Create Account';
   static const String alreadyHaveAccount = 'Already have an account?';
   static const String dontHaveAccount = 'Don\'t have an account?';
-  
+
   // Dashboard
   static const String dashboard = 'Dashboard';
   static const String safetyStatus = 'Safety Status';
@@ -31,16 +31,17 @@ class AppStrings {
   static const String deviceStatus = 'Device Status';
   static const String batteryStatus = 'Battery Status';
   static const String locationStatus = 'Location Status';
-  
+
   // Emergency
   static const String emergency = 'Emergency';
   static const String sos = 'SOS';
   static const String sendAlert = 'Send Alert';
   static const String alertSent = 'Alert Sent';
   static const String alertCancelled = 'Alert Cancelled';
-  static const String tripleTapToTrigger = 'Triple tap power button to trigger emergency';
+  static const String tripleTapToTrigger =
+      'Triple tap power button to trigger emergency';
   static const String panicButton = 'Panic Button';
-  
+
   // Map
   static const String map = 'Map';
   static const String nearbyUsers = 'Nearby Users';
@@ -48,7 +49,7 @@ class AppStrings {
   static const String dangerZones = 'Danger Zones';
   static const String reportedIncidents = 'Reported Incidents';
   static const String shareLocation = 'Share Location';
-  
+
   // Store
   static const String store = 'Store';
   static const String safetyDevices = 'Safety Devices';
@@ -59,7 +60,7 @@ class AppStrings {
   static const String price = 'Price';
   static const String filter = 'Filter';
   static const String sort = 'Sort';
-  
+
   // Settings
   static const String settings = 'Settings';
   static const String account = 'Account';
@@ -72,14 +73,14 @@ class AppStrings {
   static const String help = 'Help';
   static const String about = 'About';
   static const String logout = 'Logout';
-  
+
   // Community
   static const String community = 'Community';
   static const String reportIncident = 'Report Incident';
   static const String safetyTips = 'Safety Tips';
   static const String resources = 'Resources';
   static const String helpline = 'Helpline';
-  
+
   // Errors
   static const String error = 'Error';
   static const String somethingWentWrong = 'Something went wrong';
@@ -87,6 +88,7 @@ class AppStrings {
   static const String noInternet = 'No Internet Connection';
   static const String locationPermissionDenied = 'Location permission denied';
   static const String cameraPermissionDenied = 'Camera permission denied';
-  static const String microphonePermissionDenied = 'Microphone permission denied';
+  static const String microphonePermissionDenied =
+      'Microphone permission denied';
   static const String bluetoothPermissionDenied = 'Bluetooth permission denied';
 }

@@ -27,8 +27,8 @@ class AppLocalizations {
   Future<bool> load() async {
     try {
       // Load the language JSON file from the "assets/translations" folder
-      String jsonString =
-          await rootBundle.loadString('assets/translations/${locale.languageCode}.json');
+      String jsonString = await rootBundle
+          .loadString('assets/translations/${locale.languageCode}.json');
       Map<String, dynamic> jsonMap = json.decode(jsonString);
 
       _localizedStrings = jsonMap;
@@ -39,7 +39,8 @@ class AppLocalizations {
       // If the language file couldn't be loaded, use English as fallback
       if (locale.languageCode != 'en') {
         try {
-          String jsonString = await rootBundle.loadString('assets/translations/en.json');
+          String jsonString =
+              await rootBundle.loadString('assets/translations/en.json');
           Map<String, dynamic> jsonMap = json.decode(jsonString);
           _localizedStrings = jsonMap;
           Logger.info('Loaded fallback translations (en)');
@@ -70,7 +71,8 @@ class AppLocalizations {
 }
 
 // LocalizationsDelegate is a factory for a set of localized resources
-class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
+class _AppLocalizationsDelegate
+    extends LocalizationsDelegate<AppLocalizations> {
   const _AppLocalizationsDelegate();
 
   @override
@@ -97,4 +99,3 @@ extension TranslateX on BuildContext {
     return AppLocalizations.of(this).translate(key);
   }
 }
-

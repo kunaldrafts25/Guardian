@@ -44,7 +44,8 @@ class CustomTextField extends StatelessWidget {
     this.onChanged,
     this.onSubmitted,
     this.textInputAction,
-    this.contentPadding = const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    this.contentPadding =
+        const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
   });
 
   @override

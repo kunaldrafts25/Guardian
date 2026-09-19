@@ -5,14 +5,12 @@
  * Emergency Model
  */
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 /// Emergency status enum
 enum EmergencyStatus {
-  active,      // Emergency is active, help needed
-  responding,  // Guardians are responding
-  resolved,    // Emergency resolved safely
-  cancelled,   // User cancelled the emergency
+  active, // Emergency is active, help needed
+  responding, // Guardians are responding
+  resolved, // Emergency resolved safely
+  cancelled, // User cancelled the emergency
 }
 
 /// Emergency record model
@@ -45,12 +43,6 @@ class Emergency {
     this.notes,
   });
 
-  /// Create from Firestore document
-  factory Emergency.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
-    return Emergency.fromJson(data, doc.id);
-  }
-
   /// Create from JSON
   factory Emergency.fromJson(Map<String, dynamic> json, String id) {
     return Emergency(
@@ -63,8 +55,11 @@ class Emergency {
       latitude: (json['latitude'] as num?)?.toDouble(),
       longitude: (json['longitude'] as num?)?.toDouble(),
       address: json['address'] as String?,
-      startedAt: (json['startedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      endedAt: (json['endedAt'] as Timestamp?)?.toDate(),
+      startedAt: DateTime.tryParse(json['startedAt'] as String? ?? '') ??
+          DateTime.now(),
+      endedAt: json['endedAt'] is String
+          ? DateTime.tryParse(json['endedAt'] as String)
+          : null,
       notifiedContacts: List<String>.from(json['notifiedContacts'] ?? []),
       responders: List<String>.from(json['responders'] ?? []),
       audioRecordingUrl: json['audioRecordingUrl'] as String?,
@@ -72,20 +67,20 @@ class Emergency {
     );
   }
 
-  /// Convert to JSON for Firestore
+  /// Convert to transport-safe JSON.
   Map<String, dynamic> toJson() => {
-    'userId': userId,
-    'status': status.name,
-    'latitude': latitude,
-    'longitude': longitude,
-    'address': address,
-    'startedAt': Timestamp.fromDate(startedAt),
-    'endedAt': endedAt != null ? Timestamp.fromDate(endedAt!) : null,
-    'notifiedContacts': notifiedContacts,
-    'responders': responders,
-    'audioRecordingUrl': audioRecordingUrl,
-    'notes': notes,
-  };
+        'userId': userId,
+        'status': status.name,
+        'latitude': latitude,
+        'longitude': longitude,
+        'address': address,
+        'startedAt': startedAt.toUtc().toIso8601String(),
+        'endedAt': endedAt?.toUtc().toIso8601String(),
+        'notifiedContacts': notifiedContacts,
+        'responders': responders,
+        'audioRecordingUrl': audioRecordingUrl,
+        'notes': notes,
+      };
 
   /// Copy with modifications
   Emergency copyWith({
@@ -119,7 +114,8 @@ class Emergency {
   }
 
   /// Check if emergency is active
-  bool get isActive => status == EmergencyStatus.active || status == EmergencyStatus.responding;
+  bool get isActive =>
+      status == EmergencyStatus.active || status == EmergencyStatus.responding;
 
   /// Duration of emergency
   Duration get duration {

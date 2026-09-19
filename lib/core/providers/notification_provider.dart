@@ -67,7 +67,7 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
   Future<void> _initialize() async {
     final granted = await NotificationService.requestPermissions();
     final token = await NotificationService.getFcmToken();
-    
+
     state = state.copyWith(
       permissionsGranted: granted,
       fcmToken: token,
@@ -83,7 +83,7 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
     String? customMessage,
   }) async {
     state = state.copyWith(isSending: true);
-    
+
     final result = await NotificationService.sendSosAlert(
       userName: userName,
       contacts: contacts,
@@ -91,10 +91,10 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
       longitude: longitude,
       customMessage: customMessage,
     );
-    
+
     _addToHistory(NotificationType.sosAlert, result);
     state = state.copyWith(isSending: false, lastResult: result);
-    
+
     return result;
   }
 
@@ -104,15 +104,15 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
     required List<EmergencyContact> contacts,
   }) async {
     state = state.copyWith(isSending: true);
-    
+
     final result = await NotificationService.sendSosResolved(
       userName: userName,
       contacts: contacts,
     );
-    
+
     _addToHistory(NotificationType.sosResolved, result);
     state = state.copyWith(isSending: false, lastResult: result);
-    
+
     return result;
   }
 
@@ -122,15 +122,15 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
     required List<EmergencyContact> contacts,
   }) async {
     state = state.copyWith(isSending: true);
-    
+
     final result = await NotificationService.sendSafeArrival(
       userName: userName,
       contacts: contacts,
     );
-    
+
     _addToHistory(NotificationType.safeArrival, result);
     state = state.copyWith(isSending: false, lastResult: result);
-    
+
     return result;
   }
 
@@ -145,10 +145,10 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
       zoneName: zoneName,
       primaryContact: primaryContact,
     );
-    
+
     _addToHistory(NotificationType.exitSafeZone, result);
     state = state.copyWith(lastResult: result);
-    
+
     return result;
   }
 
@@ -159,7 +159,7 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
       contactsNotified: result.sentCount,
       success: result.success,
     );
-    
+
     final updatedHistory = [log, ...state.history].take(50).toList();
     state = state.copyWith(history: updatedHistory);
   }
@@ -172,7 +172,8 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
 }
 
 /// Notification provider
-final notificationProvider = StateNotifierProvider<NotificationNotifier, NotificationState>((ref) {
+final notificationProvider =
+    StateNotifierProvider<NotificationNotifier, NotificationState>((ref) {
   return NotificationNotifier();
 });
 

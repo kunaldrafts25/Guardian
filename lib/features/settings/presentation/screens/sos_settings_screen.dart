@@ -34,25 +34,29 @@ class SosSettingsScreen extends ConsumerWidget {
                 SwitchListTile(
                   title: const Text('Shake to SOS'),
                   subtitle: Text(
-                    triggerState.shakeDetectionActive 
-                      ? 'Active - Shake device 3 times to trigger' 
-                      : 'Shake your device vigorously 3 times',
+                    triggerState.shakeDetectionActive
+                        ? 'Active - Shake device 3 times to trigger'
+                        : 'Shake your device vigorously 3 times',
                   ),
                   value: settings.shakeToSosEnabled,
                   onChanged: (value) {
-                    ref.read(sosSettingsProvider.notifier).setShakeToSosEnabled(value);
+                    ref
+                        .read(sosSettingsProvider.notifier)
+                        .setShakeToSosEnabled(value);
                   },
                   secondary: Icon(
                     Icons.vibration,
-                    color: settings.shakeToSosEnabled ? AppColors.primary : Colors.grey,
+                    color: settings.shakeToSosEnabled
+                        ? AppColors.primary
+                        : Colors.grey,
                   ),
                 ),
               ],
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Countdown Section
           _buildSectionHeader(context, 'Countdown Timer'),
           Card(
@@ -64,8 +68,8 @@ class SosSettingsScreen extends ConsumerWidget {
                   Text(
                     'Hold duration before SOS triggers',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
-                    ),
+                          color: Colors.grey[600],
+                        ),
                   ),
                   const SizedBox(height: 16),
                   Row(
@@ -77,10 +81,16 @@ class SosSettingsScreen extends ConsumerWidget {
                         selected: isSelected,
                         onSelected: (selected) {
                           if (selected) {
-                            ref.read(sosSettingsProvider.notifier).setCountdownSeconds(seconds);
+                            ref
+                                .read(sosSettingsProvider.notifier)
+                                .setCountdownSeconds(seconds);
                           }
                         },
-                        selectedColor: Color.fromRGBO(AppColors.primary.r.toInt(), AppColors.primary.g.toInt(), AppColors.primary.b.toInt(), 0.2),
+                        selectedColor: Color.fromRGBO(
+                            AppColors.primary.r.toInt(),
+                            AppColors.primary.g.toInt(),
+                            AppColors.primary.b.toInt(),
+                            0.2),
                         labelStyle: TextStyle(
                           color: isSelected ? AppColors.primary : null,
                           fontWeight: isSelected ? FontWeight.bold : null,
@@ -92,9 +102,9 @@ class SosSettingsScreen extends ConsumerWidget {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Feedback Section
           _buildSectionHeader(context, 'Feedback'),
           Card(
@@ -105,11 +115,14 @@ class SosSettingsScreen extends ConsumerWidget {
                   subtitle: const Text('Play sound during countdown'),
                   value: settings.soundEnabled,
                   onChanged: (value) {
-                    ref.read(sosSettingsProvider.notifier).setSoundEnabled(value);
+                    ref
+                        .read(sosSettingsProvider.notifier)
+                        .setSoundEnabled(value);
                   },
                   secondary: Icon(
                     settings.soundEnabled ? Icons.volume_up : Icons.volume_off,
-                    color: settings.soundEnabled ? AppColors.primary : Colors.grey,
+                    color:
+                        settings.soundEnabled ? AppColors.primary : Colors.grey,
                   ),
                 ),
                 const Divider(height: 1),
@@ -118,19 +131,23 @@ class SosSettingsScreen extends ConsumerWidget {
                   subtitle: const Text('Haptic feedback during countdown'),
                   value: settings.vibrationEnabled,
                   onChanged: (value) {
-                    ref.read(sosSettingsProvider.notifier).setVibrationEnabled(value);
+                    ref
+                        .read(sosSettingsProvider.notifier)
+                        .setVibrationEnabled(value);
                   },
                   secondary: Icon(
                     Icons.vibration,
-                    color: settings.vibrationEnabled ? AppColors.primary : Colors.grey,
+                    color: settings.vibrationEnabled
+                        ? AppColors.primary
+                        : Colors.grey,
                   ),
                 ),
               ],
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Custom Message Section
           _buildSectionHeader(context, 'Custom Message'),
           Card(
@@ -142,8 +159,8 @@ class SosSettingsScreen extends ConsumerWidget {
                   Text(
                     'Add a custom message to your SOS alerts',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
-                    ),
+                          color: Colors.grey[600],
+                        ),
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
@@ -157,16 +174,18 @@ class SosSettingsScreen extends ConsumerWidget {
                     maxLines: 3,
                     maxLength: 200,
                     onChanged: (value) {
-                      ref.read(sosSettingsProvider.notifier).setCustomMessage(value);
+                      ref
+                          .read(sosSettingsProvider.notifier)
+                          .setCustomMessage(value);
                     },
                   ),
                 ],
               ),
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Emergency Services Section
           _buildSectionHeader(context, 'Emergency Services'),
           Card(
@@ -174,14 +193,19 @@ class SosSettingsScreen extends ConsumerWidget {
               children: [
                 SwitchListTile(
                   title: const Text('Auto-call Emergency'),
-                  subtitle: const Text('Automatically call emergency number after SOS'),
+                  subtitle: const Text(
+                      'Automatically call emergency number after SOS'),
                   value: settings.autoCallEmergency,
                   onChanged: (value) {
-                    ref.read(sosSettingsProvider.notifier).setAutoCallEmergency(value);
+                    ref
+                        .read(sosSettingsProvider.notifier)
+                        .setAutoCallEmergency(value);
                   },
                   secondary: Icon(
                     Icons.phone_in_talk,
-                    color: settings.autoCallEmergency ? AppColors.sos : Colors.grey,
+                    color: settings.autoCallEmergency
+                        ? AppColors.sos
+                        : Colors.grey,
                   ),
                 ),
                 if (settings.autoCallEmergency) ...[
@@ -199,17 +223,25 @@ class SosSettingsScreen extends ConsumerWidget {
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
-                          children: SosSettings.emergencyNumbers.entries.map((entry) {
-                            final isSelected = settings.emergencyNumber == entry.value;
+                          children:
+                              SosSettings.emergencyNumbers.entries.map((entry) {
+                            final isSelected =
+                                settings.emergencyNumber == entry.value;
                             return ChoiceChip(
                               label: Text('${entry.key} (${entry.value})'),
                               selected: isSelected,
                               onSelected: (selected) {
                                 if (selected) {
-                                  ref.read(sosSettingsProvider.notifier).setEmergencyNumber(entry.value);
+                                  ref
+                                      .read(sosSettingsProvider.notifier)
+                                      .setEmergencyNumber(entry.value);
                                 }
                               },
-                              selectedColor: Color.fromRGBO(AppColors.sos.r.toInt(), AppColors.sos.g.toInt(), AppColors.sos.b.toInt(), 0.2),
+                              selectedColor: Color.fromRGBO(
+                                  AppColors.sos.r.toInt(),
+                                  AppColors.sos.g.toInt(),
+                                  AppColors.sos.b.toInt(),
+                                  0.2),
                               labelStyle: TextStyle(
                                 color: isSelected ? AppColors.sos : null,
                                 fontWeight: isSelected ? FontWeight.bold : null,
@@ -225,9 +257,9 @@ class SosSettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 32),
-          
+
           // Reset Button
           OutlinedButton.icon(
             onPressed: () => _showResetDialog(context, ref),
@@ -238,7 +270,7 @@ class SosSettingsScreen extends ConsumerWidget {
               side: BorderSide(color: Colors.grey[400]!),
             ),
           ),
-          
+
           const SizedBox(height: 24),
         ],
       ),
@@ -251,9 +283,9 @@ class SosSettingsScreen extends ConsumerWidget {
       child: Text(
         title,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: AppColors.primary,
-        ),
+              fontWeight: FontWeight.bold,
+              color: AppColors.primary,
+            ),
       ),
     );
   }
@@ -263,7 +295,8 @@ class SosSettingsScreen extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Reset Settings'),
-        content: const Text('Are you sure you want to reset all SOS settings to their default values?'),
+        content: const Text(
+            'Are you sure you want to reset all SOS settings to their default values?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),

@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:guardian/core/providers/contacts_provider.dart';
 import 'package:guardian/core/services/notification_service.dart';
+import 'package:guardian/core/services/aws_auth_service.dart';
 import 'package:guardian/core/utils/logger.dart';
 
 /// Check-in timer state
@@ -50,10 +51,10 @@ class CheckInState {
   /// Format remaining time for display
   String get remainingTimeFormatted {
     if (remainingTime == null) return '--:--';
-    
+
     final hours = remainingTime!.inHours;
     final minutes = remainingTime!.inMinutes % 60;
-    
+
     if (hours > 0) {
       return '${hours}h ${minutes}m';
     }
@@ -76,9 +77,9 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
   }) {
     _timer?.cancel();
     _overdueTimer?.cancel();
-    
+
     final targetTime = DateTime.now().add(duration);
-    
+
     state = CheckInState(
       isActive: true,
       targetTime: targetTime,
@@ -87,12 +88,12 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
       isOverdue: false,
       overdueMinutes: 0,
     );
-    
+
     Logger.info('⏰ Check-in timer started: ${duration.inMinutes} minutes');
     if (destination != null) {
       Logger.info('   Destination: $destination');
     }
-    
+
     // Update remaining time every minute
     _timer = Timer.periodic(const Duration(minutes: 1), (_) {
       _updateRemainingTime();
@@ -101,10 +102,10 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
 
   void _updateRemainingTime() {
     if (!state.isActive || state.targetTime == null) return;
-    
+
     final now = DateTime.now();
     final remaining = state.targetTime!.difference(now);
-    
+
     if (remaining.isNegative) {
       // Timer expired - user is overdue
       _handleOverdue(remaining.abs());
@@ -115,15 +116,15 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
 
   void _handleOverdue(Duration overdueBy) {
     final overdueMinutes = overdueBy.inMinutes;
-    
+
     state = state.copyWith(
       isOverdue: true,
       overdueMinutes: overdueMinutes,
       remainingTime: Duration.zero,
     );
-    
+
     Logger.warning('⏰ CHECK-IN OVERDUE by $overdueMinutes minutes!');
-    
+
     // Send notification to contacts if overdue by 5+ minutes
     if (overdueMinutes >= 5 && overdueMinutes % 5 == 0) {
       _notifyContacts(overdueMinutes);
@@ -132,14 +133,18 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
 
   Future<void> _notifyContacts(int minutesOverdue) async {
     final contacts = _ref.read(contactsProvider).contacts;
-    
+
     if (contacts.isEmpty) {
       Logger.warning('⏰ No contacts to notify about overdue check-in');
       return;
     }
-    
+
+    final profile = await AwsAuthService.instance.getUserProfile();
+    final userName = profile?['display_name'] as String? ??
+        profile?['displayName'] as String? ??
+        'Guardian';
     await NotificationService.sendCheckInReminder(
-      userName: 'Guardian User', // TODO: Get from profile
+      userName: userName,
       contacts: contacts,
       minutesOverdue: minutesOverdue,
     );
@@ -148,21 +153,25 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
   /// Check in (arrived safely)
   Future<void> checkIn() async {
     if (!state.isActive) return;
-    
+
     _timer?.cancel();
     _overdueTimer?.cancel();
-    
+
     Logger.info('✅ User checked in safely');
-    
+
     // Notify contacts of safe arrival
     final contacts = _ref.read(contactsProvider).contacts;
     if (contacts.isNotEmpty) {
+      final profile = await AwsAuthService.instance.getUserProfile();
+      final userName = profile?['display_name'] as String? ??
+          profile?['displayName'] as String? ??
+          'Guardian';
       await NotificationService.sendSafeArrival(
-        userName: 'Guardian User',
+        userName: userName,
         contacts: contacts,
       );
     }
-    
+
     state = const CheckInState();
   }
 
@@ -177,17 +186,17 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
   /// Extend timer by duration
   void extendTimer(Duration extension) {
     if (!state.isActive || state.targetTime == null) return;
-    
+
     final newTarget = state.targetTime!.add(extension);
     final remaining = newTarget.difference(DateTime.now());
-    
+
     state = state.copyWith(
       targetTime: newTarget,
       remainingTime: remaining,
       isOverdue: false,
       overdueMinutes: 0,
     );
-    
+
     Logger.info('⏰ Timer extended by ${extension.inMinutes} minutes');
   }
 
@@ -200,7 +209,8 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
 }
 
 /// Check-in provider
-final checkInProvider = StateNotifierProvider<CheckInNotifier, CheckInState>((ref) {
+final checkInProvider =
+    StateNotifierProvider<CheckInNotifier, CheckInState>((ref) {
   return CheckInNotifier(ref);
 });
 

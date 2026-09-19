@@ -25,19 +25,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final List<OnboardingPage> _pages = [
     OnboardingPage(
       title: 'Stay Safe',
-      description: 'Guardian helps you feel safe with one-tap emergency alerts that notify your trusted contacts instantly.',
+      description:
+          'Guardian helps you feel safe with one-tap emergency alerts that notify your trusted contacts instantly.',
       icon: Icons.shield,
       color: AppColors.primary,
     ),
     OnboardingPage(
       title: 'Community Protection',
-      description: 'Nearby Guardians can respond to your emergencies. You\'re never truly alone.',
+      description:
+          'Nearby Guardians can respond to your emergencies. You\'re never truly alone.',
       icon: Icons.people,
       color: AppColors.secondary,
     ),
     OnboardingPage(
       title: 'Privacy First',
-      description: 'Your location is OFF by default. We only track when you need us to.',
+      description:
+          'Your location is OFF by default. We only track when you need us to.',
       icon: Icons.lock,
       color: AppColors.success,
     ),
@@ -82,7 +85,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: const Text('Skip'),
               ),
             ),
-            
+
             // Page View
             Expanded(
               child: PageView.builder(
@@ -111,17 +114,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         const SizedBox(height: 48),
                         Text(
                           page.title,
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 16),
                         Text(
                           page.description,
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            color: Colors.grey,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                    color: Colors.grey,
+                                  ),
                           textAlign: TextAlign.center,
                         ),
                       ],
@@ -130,7 +137,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 },
               ),
             ),
-            
+
             // Page Indicator
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -148,9 +155,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 );
               }),
             ),
-            
+
             const SizedBox(height: 32),
-            
+
             // Next/Get Started Button
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -164,7 +171,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
               ),
             ),
-            
+
             const SizedBox(height: 32),
           ],
         ),

@@ -2,12 +2,49 @@
 Integration test for Guardian FastAPI server (mirrors API Gateway)
 """
 
+import os
 import pytest
+
+os.environ["GUARDIAN_DEV_MODE"] = "true"
 from fastapi.testclient import TestClient
 from aws.server import app
 
 
-client = TestClient(app)
+client = TestClient(
+    app,
+    headers={"Authorization": "Bearer dev_access_token_test_user"},
+)
+unauthenticated_client = TestClient(app)
+other_user_client = TestClient(
+    app,
+    headers={"Authorization": "Bearer dev_access_token_other_user"},
+)
+
+
+def test_protected_endpoints_require_bearer_token():
+    response = unauthenticated_client.post("/simulate/fall")
+    assert response.status_code == 401
+
+
+def test_incident_is_not_readable_by_another_user():
+    created = client.post("/simulate/fall")
+    assert created.status_code == 200
+    incident_id = created.json()["incident"]["incident_id"]
+
+    response = other_user_client.get(f"/incidents/{incident_id}")
+    assert response.status_code == 403
+
+
+def test_push_cannot_target_another_user():
+    response = client.post(
+        "/push/send",
+        json={
+            "user_id": "another_user",
+            "title": "test",
+            "body": "test",
+        },
+    )
+    assert response.status_code == 403
 
 
 def test_health_endpoint():

@@ -16,7 +16,6 @@ import 'package:guardian/features/splash/presentation/screens/splash_screen.dart
 
 // Auth Screens
 import 'package:guardian/features/auth/presentation/screens/login_screen.dart';
-import 'package:guardian/features/auth/presentation/screens/signup_screen.dart';
 import 'package:guardian/features/auth/presentation/screens/otp_verification_screen.dart';
 import 'package:guardian/features/auth/presentation/screens/profile_setup_screen.dart';
 
@@ -38,38 +37,40 @@ import 'package:guardian/features/settings/presentation/screens/sos_settings_scr
 final appRouterProvider = Provider<GoRouter>((ref) {
   // Watch auth state for redirect decisions
   final authState = ref.watch(authStateProvider);
-  
+
   return GoRouter(
-    initialLocation: Routes.dashboard,
-    debugLogDiagnostics: false, // Never log routes in production (contains sensitive navigation)
-    
+    initialLocation: Routes.splash,
+    debugLogDiagnostics:
+        false, // Never log routes in production (contains sensitive navigation)
+
     // Redirect logic based on auth state
     redirect: (context, state) {
       final isLoggedIn = authState.valueOrNull != null;
       final isGoingToAuth = state.matchedLocation.startsWith('/auth');
       final isGoingToSplash = state.matchedLocation == Routes.splash;
       final isGoingToOnboarding = state.matchedLocation == Routes.onboarding;
-      final isGoingToDashboard = state.matchedLocation == Routes.dashboard ||
-          state.matchedLocation.startsWith('/emergency');
-      
-      // Allow dashboard, emergency, splash and onboarding directly for demo & evaluation
-      if (isGoingToDashboard || isGoingToSplash || isGoingToOnboarding) {
+      // Keep the splash screen visible while the persisted auth session is
+      // being restored. Private routes must never be reachable anonymously.
+      if (authState.isLoading) {
+        return isGoingToSplash ? null : Routes.splash;
+      }
+
+      // Splash, onboarding, and authentication are the only public routes.
+      if (isGoingToSplash || isGoingToOnboarding || isGoingToAuth) {
+        if (isLoggedIn && isGoingToAuth) {
+          return Routes.dashboard;
+        }
         return null;
       }
-      
-      // Redirect to login if not authenticated and trying to access private sub-routes
-      if (!isLoggedIn && !isGoingToAuth) {
+
+      // Redirect every private route to login when there is no session.
+      if (!isLoggedIn) {
         return Routes.login;
       }
-      
-      // Redirect to dashboard if already logged in and going to auth
-      if (isLoggedIn && isGoingToAuth) {
-        return Routes.dashboard;
-      }
-      
+
       return null;
     },
-    
+
     routes: [
       // Splash
       GoRoute(
@@ -77,14 +78,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'splash',
         builder: (context, state) => const SplashScreen(),
       ),
-      
+
       // Onboarding
       GoRoute(
         path: Routes.onboarding,
         name: 'onboarding',
         builder: (context, state) => const OnboardingScreen(),
       ),
-      
+
       // Auth Routes
       GoRoute(
         path: Routes.login,
@@ -106,14 +107,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
-      
-      // Signup Route
-      GoRoute(
-        path: Routes.signup,
-        name: 'signup',
-        builder: (context, state) => const SignupScreen(),
-      ),
-      
+
       // Main App Shell
       ShellRoute(
         builder: (context, state, child) {
@@ -126,56 +120,56 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'dashboard',
             builder: (context, state) => const DashboardScreen(),
           ),
-          
+
           // Emergency
           GoRoute(
             path: Routes.emergency,
             name: 'emergency',
             builder: (context, state) => const EmergencyScreen(),
           ),
-          
+
           // Contacts
           GoRoute(
             path: Routes.contacts,
             name: 'contacts',
             builder: (context, state) => const ContactsScreen(),
           ),
-          
+
           // Map
           GoRoute(
             path: Routes.map,
             name: 'map',
             builder: (context, state) => const MapScreen(),
           ),
-          
+
           // Settings
           GoRoute(
             path: Routes.settings,
             name: 'settings',
             builder: (context, state) => const SettingsScreen(),
           ),
-          
+
           // SOS Settings
           GoRoute(
             path: Routes.sosSettings,
             name: 'sos-settings',
             builder: (context, state) => const SosSettingsScreen(),
           ),
-          
+
           // Profile
           GoRoute(
             path: Routes.profile,
             name: 'profile',
             builder: (context, state) => const ProfileScreen(),
           ),
-          
+
           // Safe Zones
           GoRoute(
             path: Routes.safeZones,
             name: 'safe-zones',
             builder: (context, state) => const SafeZonesScreen(),
           ),
-          
+
           // Quick Actions
           GoRoute(
             path: Routes.quickActions,
@@ -185,7 +179,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ],
       ),
     ],
-    
+
     errorBuilder: (context, state) => Scaffold(
       body: Center(
         child: Text('Page not found: ${state.error}'),
@@ -197,9 +191,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 /// Main shell with bottom navigation
 class MainShell extends StatelessWidget {
   final Widget child;
-  
+
   const MainShell({super.key, required this.child});
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -212,17 +206,17 @@ class MainShell extends StatelessWidget {
 /// Bottom navigation bar
 class MainBottomNavigation extends ConsumerWidget {
   const MainBottomNavigation({super.key});
-  
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentLocation = GoRouterState.of(context).matchedLocation;
-    
+
     int currentIndex = 0;
     if (currentLocation.startsWith(Routes.dashboard)) currentIndex = 0;
     if (currentLocation.startsWith(Routes.map)) currentIndex = 1;
     if (currentLocation.startsWith(Routes.contacts)) currentIndex = 2;
     if (currentLocation.startsWith(Routes.settings)) currentIndex = 3;
-    
+
     return NavigationBar(
       selectedIndex: currentIndex,
       onDestinationSelected: (index) {

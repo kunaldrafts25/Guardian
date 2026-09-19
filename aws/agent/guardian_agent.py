@@ -67,6 +67,42 @@ Output must be strict JSON matching this schema:
 }
 """
 
+COMPANION_SYSTEM_PROMPT = """You are Guardian, a safety companion.
+Give concise, calm, actionable safety guidance. For an immediate threat, tell the
+user to call local emergency services and move to a populated safe place. Never
+encourage confrontation, retaliation, or unsafe investigation. Do not request
+unnecessary personal data. If you are uncertain, say so explicitly.
+"""
+
+
+def query_safety_companion(message: str, context: Optional[Dict[str, str]] = None) -> str:
+    """Answer a safety question with the configured Bedrock model.
+
+    There is deliberately no local canned-response fallback: an unavailable
+    model is reported to the caller so the product cannot present deterministic
+    text as an AI response.
+    """
+    if not BOTO3_AVAILABLE:
+        raise RuntimeError("Bedrock runtime is not available")
+
+    region = os.environ.get("AWS_DEFAULT_REGION") or os.environ.get("AWS_REGION") or "us-east-1"
+    client = boto3.client("bedrock-runtime", region_name=region)
+    context_text = json.dumps(context or {}, separators=(",", ":"))
+    response = client.converse(
+        modelId=BEDROCK_MODEL_ID,
+        system=[{"text": COMPANION_SYSTEM_PROMPT}],
+        messages=[{
+            "role": "user",
+            "content": [{"text": f"Context: {context_text}\nUser: {message}"}],
+        }],
+        inferenceConfig={"temperature": 0.1, "maxTokens": 500},
+    )
+    content = response.get("output", {}).get("message", {}).get("content", [])
+    answer = next((item.get("text") for item in content if item.get("text")), None)
+    if not answer:
+        raise RuntimeError("Bedrock returned an empty response")
+    return answer.strip()
+
 
 def _query_bedrock_llm(context: Dict[str, Any], risk_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """

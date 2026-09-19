@@ -45,19 +45,19 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
 
   void _startHold() {
     final settings = ref.read(sosSettingsProvider);
-    
+
     // Haptic feedback
     if (settings.vibrationEnabled) {
       HapticFeedback.mediumImpact();
     }
-    
+
     setState(() {
       _isHolding = true;
       _countdown = settings.countdownSeconds;
     });
-    
+
     ref.read(emergencyProvider.notifier).startCountdown();
-    
+
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_countdown > 1) {
         setState(() => _countdown--);
@@ -140,26 +140,26 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                 Text(
                   'EMERGENCY ACTIVE',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 const SizedBox(height: 16),
                 Text(
                   '${emergencyState.notifiedContacts.length} contacts notified',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: Colors.white70,
-                  ),
+                        color: Colors.white70,
+                      ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Location shared • Help is on the way',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.white60,
-                  ),
+                        color: Colors.white60,
+                      ),
                 ),
                 const SizedBox(height: 24),
-                
+
                 // Notified contacts list
                 Card(
                   color: const Color.fromRGBO(255, 255, 255, 0.15),
@@ -170,9 +170,10 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                       children: [
                         Text(
                           'Alerts sent to:',
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: Colors.white70,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    color: Colors.white70,
+                                  ),
                         ),
                         const SizedBox(height: 8),
                         if (emergencyState.notifiedContacts.isEmpty)
@@ -181,21 +182,26 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                             style: TextStyle(color: Colors.white60),
                           )
                         else
-                          ...emergencyState.notifiedContacts.map((name) => Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.check_circle, color: Colors.white, size: 16),
-                                const SizedBox(width: 8),
-                                Text(name, style: const TextStyle(color: Colors.white)),
-                              ],
-                            ),
-                          )),
+                          ...emergencyState.notifiedContacts
+                              .map((name) => Padding(
+                                    padding:
+                                        const EdgeInsets.symmetric(vertical: 4),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.check_circle,
+                                            color: Colors.white, size: 16),
+                                        const SizedBox(width: 8),
+                                        Text(name,
+                                            style: const TextStyle(
+                                                color: Colors.white)),
+                                      ],
+                                    ),
+                                  )),
                       ],
                     ),
                   ),
                 ),
-                
+
                 // Quick Action Buttons
                 const SizedBox(height: 24),
                 Row(
@@ -204,7 +210,8 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                       child: ElevatedButton.icon(
                         onPressed: _callPolice,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color.fromRGBO(255, 255, 255, 0.2),
+                          backgroundColor:
+                              const Color.fromRGBO(255, 255, 255, 0.2),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
@@ -217,7 +224,8 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                       child: ElevatedButton.icon(
                         onPressed: _shareLocation,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color.fromRGBO(255, 255, 255, 0.2),
+                          backgroundColor:
+                              const Color.fromRGBO(255, 255, 255, 0.2),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
@@ -227,7 +235,7 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                     ),
                   ],
                 ),
-                
+
                 // Live Location Info
                 if (emergencyState.currentLocation != null) ...[
                   const SizedBox(height: 16),
@@ -237,7 +245,8 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                       padding: const EdgeInsets.all(12),
                       child: Row(
                         children: [
-                          const Icon(Icons.gps_fixed, color: Colors.white, size: 20),
+                          const Icon(Icons.gps_fixed,
+                              color: Colors.white, size: 20),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -245,11 +254,14 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                               children: [
                                 Text(
                                   'Live Location Active',
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold),
                                 ),
                                 Text(
                                   '${emergencyState.currentLocation!.latitude.toStringAsFixed(6)}, ${emergencyState.currentLocation!.longitude.toStringAsFixed(6)}',
-                                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                  style: const TextStyle(
+                                      color: Colors.white70, fontSize: 12),
                                 ),
                               ],
                             ),
@@ -259,14 +271,15 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                     ),
                   ),
                 ],
-                
+
                 const SizedBox(height: 32),
                 OutlinedButton(
                   onPressed: _cancelEmergency,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white,
                     side: const BorderSide(color: Colors.white, width: 2),
-                    padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 48, vertical: 16),
                   ),
                   child: const Text('I\'m Safe - Cancel'),
                 ),
@@ -282,16 +295,16 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                 Text(
                   'Error',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: AppColors.sos,
-                    fontWeight: FontWeight.bold,
-                  ),
+                        color: AppColors.sos,
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 const SizedBox(height: 16),
                 Text(
                   emergencyState.errorMessage ?? 'Something went wrong',
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Colors.grey[700],
-                  ),
+                        color: Colors.grey[700],
+                      ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
@@ -301,7 +314,8 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 32, vertical: 16),
                   ),
                   child: const Text('Try Again'),
                 ),
@@ -310,19 +324,19 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                 Text(
                   'Emergency Mode',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Hold the button below to activate emergency mode',
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Colors.grey,
-                  ),
+                        color: Colors.grey,
+                      ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 48),
-                
+
                 // Large SOS Button with Countdown
                 GestureDetector(
                   onLongPressStart: (_) => _startHold(),
@@ -338,7 +352,13 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                     height: _isHolding ? 220 : 200,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: _isHolding ? Color.fromRGBO(AppColors.sos.r.toInt(), AppColors.sos.g.toInt(), AppColors.sos.b.toInt(), 0.8) : AppColors.sos,
+                      color: _isHolding
+                          ? Color.fromRGBO(
+                              AppColors.sos.r.toInt(),
+                              AppColors.sos.g.toInt(),
+                              AppColors.sos.b.toInt(),
+                              0.8)
+                          : AppColors.sos,
                       boxShadow: [
                         BoxShadow(
                           color: _isHolding ? AppColors.sos : AppColors.sosGlow,
@@ -354,14 +374,18 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                           if (_isHolding) ...[
                             Text(
                               '$_countdown',
-                              style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .displayLarge
+                                  ?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                             ),
                             Text(
                               'Release to cancel',
-                              style: TextStyle(color: Colors.white70, fontSize: 12),
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 12),
                             ),
                           ] else ...[
                             const Icon(
@@ -372,10 +396,13 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                             const SizedBox(height: 8),
                             Text(
                               'SOS',
-                              style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineLarge
+                                  ?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                             ),
                           ],
                         ],
@@ -383,18 +410,21 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 24),
                 Text(
-                  _isHolding ? 'Keep holding...' : 'Hold for 3 seconds to activate',
+                  _isHolding
+                      ? 'Keep holding...'
+                      : 'Hold for 3 seconds to activate',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: _isHolding ? AppColors.sos : Colors.grey,
-                    fontWeight: _isHolding ? FontWeight.bold : FontWeight.normal,
-                  ),
+                        color: _isHolding ? AppColors.sos : Colors.grey,
+                        fontWeight:
+                            _isHolding ? FontWeight.bold : FontWeight.normal,
+                      ),
                 ),
-                
+
                 const SizedBox(height: 48),
-                
+
                 // Emergency contacts summary
                 Card(
                   child: Padding(
@@ -408,9 +438,12 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                             const SizedBox(width: 8),
                             Text(
                               'Emergency Contacts',
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                             ),
                             const Spacer(),
                             Text(
@@ -427,36 +460,46 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                           )
                         else
                           ...contacts.take(3).map((c) => Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: Row(
-                              children: [
-                                Icon(Icons.person, size: 16, color: Colors.grey),
-                                const SizedBox(width: 8),
-                                Text(c.name),
-                                if (c.isPrimary) ...[
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: Color.fromRGBO(AppColors.primary.r.toInt(), AppColors.primary.g.toInt(), AppColors.primary.b.toInt(), 0.1),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      'Primary',
-                                      style: const TextStyle(fontSize: 10, color: AppColors.primary),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          )),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 4),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.person,
+                                        size: 16, color: Colors.grey),
+                                    const SizedBox(width: 8),
+                                    Text(c.name),
+                                    if (c.isPrimary) ...[
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Color.fromRGBO(
+                                              AppColors.primary.r.toInt(),
+                                              AppColors.primary.g.toInt(),
+                                              AppColors.primary.b.toInt(),
+                                              0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          'Primary',
+                                          style: const TextStyle(
+                                              fontSize: 10,
+                                              color: AppColors.primary),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              )),
                       ],
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 16),
-                
+
                 // What happens section
                 Card(
                   child: Padding(
@@ -466,15 +509,18 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                       children: [
                         Text(
                           'When you trigger SOS:',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                         ),
                         const SizedBox(height: 12),
-                        _buildInfoRow(Icons.location_on, 'Your location is shared with trusted contacts'),
-                        _buildInfoRow(Icons.people, 'Nearby Guardians are alerted'),
-                        _buildInfoRow(Icons.sms, 'SMS sent to emergency contacts'),
-                        _buildInfoRow(Icons.mic, 'Audio recording starts (coming soon)'),
+                        _buildInfoRow(Icons.location_on,
+                            'Your location is shared with trusted contacts'),
+                        _buildInfoRow(
+                            Icons.people, 'Nearby Guardians are alerted'),
+                        _buildInfoRow(
+                            Icons.sms, 'SMS sent to emergency contacts'),
                       ],
                     ),
                   ),

@@ -26,7 +26,7 @@ part 'guardian_database.g.dart';
 /// Emergency contacts — stored locally, encrypted at rest
 class LocalContacts extends Table {
   IntColumn get id => integer().autoIncrement()();
-  TextColumn get contactUid => text()();           // Firebase UID of contact (if Guardian user)
+  TextColumn get contactUid => text()(); // Guardian user ID, when registered
   TextColumn get name => text()();
   TextColumn get phone => text()();
   TextColumn get relationship => text().withDefault(const Constant(''))();
@@ -40,8 +40,8 @@ class LocalContacts extends Table {
 class LocalAlerts extends Table {
   TextColumn get alertId => text()();
   TextColumn get userId => text()();
-  TextColumn get source => text()();               // 'button', 'shake', 'voice', etc.
-  TextColumn get status => text()();               // 'active', 'resolved', 'cancelled'
+  TextColumn get source => text()(); // 'button', 'shake', 'voice', etc.
+  TextColumn get status => text()(); // 'active', 'resolved', 'cancelled'
   RealColumn get latitude => real().nullable()();
   RealColumn get longitude => real().nullable()();
   RealColumn get accuracy => real().nullable()();
@@ -50,7 +50,8 @@ class LocalAlerts extends Table {
   DateTimeColumn get resolvedAt => dateTime().nullable()();
   BoolColumn get smsSent => boolean().withDefault(const Constant(false))();
   IntColumn get smsCount => integer().withDefault(const Constant(0))();
-  BoolColumn get syncedToCloud => boolean().withDefault(const Constant(false))();
+  BoolColumn get syncedToCloud =>
+      boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   @override
@@ -64,7 +65,8 @@ class LocalSafeZones extends Table {
   RealColumn get latitude => real()();
   RealColumn get longitude => real()();
   RealColumn get radiusMeters => real().withDefault(const Constant(200.0))();
-  TextColumn get type => text().withDefault(const Constant('safe'))(); // 'safe' | 'avoid'
+  TextColumn get type =>
+      text().withDefault(const Constant('safe'))(); // 'safe' | 'avoid'
   BoolColumn get alertOnExit => boolean().withDefault(const Constant(true))();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
@@ -79,7 +81,8 @@ class LocalCheckIns extends Table {
   TextColumn get status => text().withDefault(const Constant('pending'))();
   IntColumn get escalationMinutes => integer().withDefault(const Constant(5))();
   BoolColumn get escalated => boolean().withDefault(const Constant(false))();
-  TextColumn get location => text().nullable()();   // Description of where user is
+  TextColumn get location =>
+      text().nullable()(); // Description of where user is
 }
 
 /// Location log — rolling window of GPS positions for dead reckoning
@@ -91,22 +94,23 @@ class LocalLocationLog extends Table {
   RealColumn get altitude => real().nullable()();
   RealColumn get speed => real().nullable()();
   RealColumn get heading => real().nullable()();
-  TextColumn get provider => text()();             // 'gps' | 'network' | 'dead_reckoning'
+  TextColumn get provider => text()(); // 'gps' | 'network' | 'dead_reckoning'
   DateTimeColumn get timestamp => dateTime().withDefault(currentDateAndTime)();
 }
 
 /// BLE mesh beacons — store-and-forward for offline alert relay
 class LocalMeshBeacons extends Table {
-  TextColumn get beaconId => text()();             // hash(userHash + timestamp)
-  TextColumn get userHash => text()();             // Pseudonymous identifier
+  TextColumn get beaconId => text()(); // hash(userHash + timestamp)
+  TextColumn get userHash => text()(); // Pseudonymous identifier
   RealColumn get latitude => real().nullable()();
   RealColumn get longitude => real().nullable()();
   IntColumn get hopCount => integer().withDefault(const Constant(0))();
   IntColumn get maxHops => integer().withDefault(const Constant(5))();
   BoolColumn get forwarded => boolean().withDefault(const Constant(false))();
-  BoolColumn get relayedToCloud => boolean().withDefault(const Constant(false))();
+  BoolColumn get relayedToCloud =>
+      boolean().withDefault(const Constant(false))();
   DateTimeColumn get receivedAt => dateTime().withDefault(currentDateAndTime)();
-  DateTimeColumn get expiresAt => dateTime()();    // Beacons expire after 24 hours
+  DateTimeColumn get expiresAt => dateTime()(); // Beacons expire after 24 hours
 
   @override
   Set<Column> get primaryKey => {beaconId};
@@ -121,7 +125,8 @@ class LocalIncidents extends Table {
   RealColumn get longitude => real()();
   TextColumn get address => text().nullable()();
   BoolColumn get anonymous => boolean().withDefault(const Constant(true))();
-  BoolColumn get syncedToCloud => boolean().withDefault(const Constant(false))();
+  BoolColumn get syncedToCloud =>
+      boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
@@ -148,11 +153,9 @@ class GuardianDatabase extends _$GuardianDatabase {
   // Contacts
   // ─────────────────────────────────────────────────
 
-  Future<List<LocalContact>> getAllContacts() =>
-      select(localContacts).get();
+  Future<List<LocalContact>> getAllContacts() => select(localContacts).get();
 
-  Stream<List<LocalContact>> watchContacts() =>
-      select(localContacts).watch();
+  Stream<List<LocalContact>> watchContacts() => select(localContacts).watch();
 
   Future<int> upsertContact(LocalContactsCompanion contact) =>
       into(localContacts).insertOnConflictUpdate(contact);
@@ -177,6 +180,14 @@ class GuardianDatabase extends _$GuardianDatabase {
       (update(localAlerts)..where((t) => t.alertId.equals(alertId)))
           .write(const LocalAlertsCompanion(syncedToCloud: Value(true)));
 
+  Future<void> markAlertResolved(String alertId, DateTime resolvedAt) =>
+      (update(localAlerts)..where((t) => t.alertId.equals(alertId))).write(
+        LocalAlertsCompanion(
+          status: const Value('resolved'),
+          resolvedAt: Value(resolvedAt),
+        ),
+      );
+
   // ─────────────────────────────────────────────────
   // Location log — keep only last 500 positions
   // ─────────────────────────────────────────────────
@@ -194,16 +205,16 @@ class GuardianDatabase extends _$GuardianDatabase {
             ..limit(total - 500))
           .get();
       for (final row in oldest) {
-        await (delete(localLocationLog)..where((t) => t.id.equals(row.id))).go();
+        await (delete(localLocationLog)..where((t) => t.id.equals(row.id)))
+            .go();
       }
     }
   }
 
-  Future<LocalLocationLogData?> getLastLocation() =>
-      (select(localLocationLog)
-            ..orderBy([(t) => OrderingTerm.desc(t.timestamp)])
-            ..limit(1))
-          .getSingleOrNull();
+  Future<LocalLocationLogData?> getLastLocation() => (select(localLocationLog)
+        ..orderBy([(t) => OrderingTerm.desc(t.timestamp)])
+        ..limit(1))
+      .getSingleOrNull();
 
   Future<List<LocalLocationLogData>> getRecentLocations(int count) =>
       (select(localLocationLog)
@@ -221,18 +232,30 @@ class GuardianDatabase extends _$GuardianDatabase {
   Stream<List<LocalSafeZone>> watchSafeZones() =>
       (select(localSafeZones)..where((t) => t.isActive.equals(true))).watch();
 
+  Future<List<LocalSafeZone>> getAllSafeZones() => (select(localSafeZones)
+        ..orderBy([(zone) => OrderingTerm.asc(zone.createdAt)]))
+      .get();
+
+  Future<int> insertSafeZone(LocalSafeZonesCompanion zone) =>
+      into(localSafeZones).insert(zone);
+
+  Future<void> updateSafeZone(int id, LocalSafeZonesCompanion zone) =>
+      (update(localSafeZones)..where((table) => table.id.equals(id)))
+          .write(zone);
+
+  Future<void> deleteSafeZone(int id) =>
+      (delete(localSafeZones)..where((table) => table.id.equals(id))).go();
+
   // ─────────────────────────────────────────────────
   // Check-ins
   // ─────────────────────────────────────────────────
 
-  Future<List<LocalCheckIn>> getPendingCheckIns() =>
-      (select(localCheckIns)
-            ..where((t) => t.status.equals('pending'))
-            ..orderBy([(t) => OrderingTerm.asc(t.scheduledAt)]))
-          .get();
+  Future<List<LocalCheckIn>> getPendingCheckIns() => (select(localCheckIns)
+        ..where((t) => t.status.equals('pending'))
+        ..orderBy([(t) => OrderingTerm.asc(t.scheduledAt)]))
+      .get();
 
-  Stream<List<LocalCheckIn>> watchCheckIns() =>
-      select(localCheckIns).watch();
+  Stream<List<LocalCheckIn>> watchCheckIns() => select(localCheckIns).watch();
 
   Future<int> upsertCheckIn(LocalCheckInsCompanion entry) =>
       into(localCheckIns).insert(entry, mode: InsertMode.insertOrReplace);
@@ -251,18 +274,17 @@ class GuardianDatabase extends _$GuardianDatabase {
   Future<void> storeBeacon(LocalMeshBeaconsCompanion beacon) =>
       into(localMeshBeacons).insertOnConflictUpdate(beacon);
 
-  Future<List<LocalMeshBeacon>> getUnforwardedBeacons() =>
-      (select(localMeshBeacons)
+  Future<List<LocalMeshBeacon>>
+      getUnforwardedBeacons() => (select(localMeshBeacons)
             ..where((t) =>
                 t.forwarded.equals(false) &
                 t.hopCount.isSmallerThan(const Variable(5))))
           .get();
 
   /// Delete expired beacons (> 24 hours old)
-  Future<void> pruneExpiredBeacons() =>
-      (delete(localMeshBeacons)
-            ..where((t) => t.expiresAt.isSmallerThan(Variable(DateTime.now()))))
-          .go();
+  Future<void> pruneExpiredBeacons() => (delete(localMeshBeacons)
+        ..where((t) => t.expiresAt.isSmallerThan(Variable(DateTime.now()))))
+      .go();
 }
 
 // ═══════════════════════════════════════════════════════

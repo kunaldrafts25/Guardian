@@ -81,7 +81,8 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
     if (kIsWeb) return;
     _bridge = SafetyServiceBridge();
     _bridge!.onHardwarePanic = () {
-      Logger.info('🚨 Hardware panic received — triggering immediate CRITICAL SOS');
+      Logger.info(
+          '🚨 Hardware panic received — triggering immediate CRITICAL SOS');
       _ref.read(emergencyProvider.notifier).triggerFromHardwarePanic();
     };
     _bridge!.onSosTrigger = (source) {
@@ -100,7 +101,7 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
 
     final settings = _ref.read(sosSettingsProvider);
     Logger.info('📱 SOS Settings - Shake: ${settings.shakeToSosEnabled}');
-    
+
     // Initialize shake detection
     if (settings.shakeToSosEnabled) {
       startShakeDetection();
@@ -159,7 +160,7 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
     if (state.voiceDetectionActive) return;
 
     _voiceService = VoiceRecognitionService.instance;
-    
+
     final started = await _voiceService!.startListening(
       onTrigger: _onVoiceTriggerDetected,
     );
@@ -189,7 +190,7 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
   void registerTap() {
     final now = DateTime.now();
     final lastTap = state.lastTapTime;
-    
+
     // Reset if tap window expired
     if (lastTap == null || now.difference(lastTap) > _tapWindow) {
       state = state.copyWith(tapCount: 1, lastTapTime: now);
@@ -220,7 +221,7 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
   /// Trigger SOS if not already active
   void _triggerSosIfNotActive(SosTriggerSource source) {
     final emergencyState = _ref.read(emergencyProvider);
-    
+
     if (emergencyState.isActive) {
       Logger.info('SOS already active, ignoring trigger');
       return;
@@ -238,8 +239,8 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
         break;
       case SosTriggerSource.voiceCommand:
         _ref.read(emergencyProvider.notifier).triggerEmergency(
-          source: SosTriggerSource.voiceCommand,
-        );
+              source: SosTriggerSource.voiceCommand,
+            );
         break;
       default:
         _ref.read(emergencyProvider.notifier).triggerEmergency(source: source);
@@ -249,7 +250,7 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
   /// Enable/disable all triggers
   void setEnabled(bool enabled) {
     state = state.copyWith(isEnabled: enabled);
-    
+
     if (enabled) {
       final settings = _ref.read(sosSettingsProvider);
       if (settings.shakeToSosEnabled) {
@@ -271,7 +272,8 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
 }
 
 /// SOS Trigger provider
-final sosTriggerProvider = StateNotifierProvider<SosTriggerNotifier, SosTriggerState>((ref) {
+final sosTriggerProvider =
+    StateNotifierProvider<SosTriggerNotifier, SosTriggerState>((ref) {
   return SosTriggerNotifier(ref);
 });
 
@@ -284,4 +286,3 @@ final shakeDetectionActiveProvider = Provider<bool>((ref) {
 final voiceDetectionActiveProvider = Provider<bool>((ref) {
   return ref.watch(sosTriggerProvider).voiceDetectionActive;
 });
-

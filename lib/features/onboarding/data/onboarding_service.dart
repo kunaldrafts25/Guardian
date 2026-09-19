@@ -11,24 +11,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Service to manage onboarding state
 class OnboardingService extends ChangeNotifier {
   static const String _onboardingCompletedKey = 'onboarding_completed';
-  
+
   bool _isOnboardingCompleted = false;
-  
+
   /// Check if onboarding is completed
   bool get isOnboardingCompleted => _isOnboardingCompleted;
-  
+
   /// Initialize onboarding service
   Future<void> init() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       _isOnboardingCompleted = prefs.getBool(_onboardingCompletedKey) ?? false;
-      Logger.info('Onboarding status: ${_isOnboardingCompleted ? 'completed' : 'not completed'}');
+      Logger.info(
+          'Onboarding status: ${_isOnboardingCompleted ? 'completed' : 'not completed'}');
     } catch (e) {
       Logger.error('Error initializing onboarding service', e);
       _isOnboardingCompleted = false;
     }
   }
-  
+
   /// Mark onboarding as completed
   Future<void> completeOnboarding() async {
     try {
@@ -41,7 +42,7 @@ class OnboardingService extends ChangeNotifier {
       Logger.error('Error completing onboarding', e);
     }
   }
-  
+
   /// Reset onboarding status (for testing)
   Future<void> resetOnboarding() async {
     try {
@@ -55,4 +56,3 @@ class OnboardingService extends ChangeNotifier {
     }
   }
 }
-

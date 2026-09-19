@@ -5,6 +5,7 @@
  * Works in dev mode without any AWS credentials configured.
  */
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -17,6 +18,27 @@ const _kAccessToken = 'aws_access_token';
 const _kIdToken = 'aws_id_token';
 const _kRefreshToken = 'aws_refresh_token';
 const _kPhone = 'aws_user_phone';
+
+class AwsAuthUser {
+  final String uid;
+  final String? phoneNumber;
+  final String? displayName;
+  final String? photoURL;
+
+  const AwsAuthUser({
+    required this.uid,
+    this.phoneNumber,
+    this.displayName,
+    this.photoURL,
+  });
+
+  AwsAuthUser copyWith({String? displayName, String? photoURL}) => AwsAuthUser(
+        uid: uid,
+        phoneNumber: phoneNumber,
+        displayName: displayName ?? this.displayName,
+        photoURL: photoURL ?? this.photoURL,
+      );
+}
 
 /// AWS Cognito Authentication Service
 /// Communicates with the Guardian FastAPI backend which proxies Cognito calls.
@@ -37,7 +59,16 @@ class AwsAuthService {
   );
 
   String get _baseUrl {
-    if (_apiBase.isNotEmpty) return _apiBase.replaceAll(RegExp(r'/$'), '');
+    if (_apiBase.isNotEmpty) {
+      final endpoint = _apiBase.replaceAll(RegExp(r'/$'), '');
+      if (kReleaseMode && !endpoint.startsWith('https://')) {
+        throw StateError('AWS_API_ENDPOINT must use HTTPS in release builds.');
+      }
+      return endpoint;
+    }
+    if (kReleaseMode) {
+      throw StateError('AWS_API_ENDPOINT is required in release builds.');
+    }
     if (kIsWeb) return 'http://localhost:8000';
     // Physical Android device — use Wi-Fi IP of dev machine
     return 'http://192.168.0.103:8000';
@@ -48,11 +79,16 @@ class AwsAuthService {
   String? _accessToken;
   String? _phone;
   String? _pendingSession; // Cognito auth session for OTP verification
+  AwsAuthUser? _currentUser;
+  final StreamController<AwsAuthUser?> _authStateController =
+      StreamController<AwsAuthUser?>.broadcast();
 
   String? get currentUserId => _userId;
   String? get currentPhone => _phone;
   String? get accessToken => _accessToken;
   bool get isSignedIn => _userId != null;
+  AwsAuthUser? get currentUser => _currentUser;
+  Stream<AwsAuthUser?> get authStateChanges => _authStateController.stream;
 
   // ─── Initialization ─────────────────────────────────────────────────────
 
@@ -62,6 +98,21 @@ class AwsAuthService {
       _userId = await _storage.read(key: _kUserId);
       _accessToken = await _storage.read(key: _kAccessToken);
       _phone = await _storage.read(key: _kPhone);
+      if (_userId != null &&
+          _userId!.isNotEmpty &&
+          _accessToken != null &&
+          _accessToken!.isNotEmpty) {
+        if (_isJwtExpired(_accessToken!)) {
+          final refreshed = await refreshSession();
+          if (!refreshed) {
+            await _clearLocalSession();
+            _authStateController.add(null);
+            return;
+          }
+        }
+        _currentUser = AwsAuthUser(uid: _userId!, phoneNumber: _phone);
+      }
+      _authStateController.add(_currentUser);
       Logger.info('AwsAuthService: restored user=$_userId');
     } catch (e) {
       Logger.warning('AwsAuthService: could not restore session: $e');
@@ -137,12 +188,42 @@ class AwsAuthService {
         Logger.warning('AwsAuthService: sign-out API error: $e');
       }
     }
+    await _clearLocalSession();
+    _authStateController.add(null);
+    Logger.info('AwsAuthService: signed out');
+  }
+
+  bool _isJwtExpired(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return true;
+      final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+      ) as Map<String, dynamic>;
+      final expiry = (payload['exp'] as num?)?.toInt();
+      if (expiry == null) return true;
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      return expiry <= now + 60;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<void> _clearLocalSession() async {
     _userId = null;
     _accessToken = null;
     _phone = null;
     _pendingSession = null;
-    await _storage.deleteAll();
-    Logger.info('AwsAuthService: signed out');
+    _currentUser = null;
+    for (final key in [
+      _kUserId,
+      _kAccessToken,
+      _kIdToken,
+      _kRefreshToken,
+      _kPhone,
+    ]) {
+      await _storage.delete(key: key);
+    }
   }
 
   // ─── User Profile ────────────────────────────────────────────────────────
@@ -164,6 +245,13 @@ class AwsAuthService {
     if (_userId == null) return false;
     try {
       await _put('/users/$_userId', data);
+      if (_currentUser != null) {
+        _currentUser = _currentUser!.copyWith(
+          displayName: data['display_name'] as String?,
+          photoURL: data['photo_url'] as String?,
+        );
+        _authStateController.add(_currentUser);
+      }
       return true;
     } catch (e) {
       Logger.warning('AwsAuthService: update profile failed: $e');
@@ -172,7 +260,8 @@ class AwsAuthService {
   }
 
   /// Save emergency contacts to DynamoDB.
-  Future<bool> saveEmergencyContacts(List<Map<String, dynamic>> contacts) async {
+  Future<bool> saveEmergencyContacts(
+      List<Map<String, dynamic>> contacts) async {
     if (_userId == null) return false;
     try {
       await _post('/users/$_userId/contacts', {'contacts': contacts});
@@ -184,7 +273,8 @@ class AwsAuthService {
   }
 
   /// Register this device for push notifications via AWS SNS.
-  Future<String?> registerDevice(String deviceToken, {String platform = 'android'}) async {
+  Future<String?> registerDevice(String deviceToken,
+      {String platform = 'android'}) async {
     if (_userId == null) return null;
     try {
       final resp = await _post('/users/$_userId/device', {
@@ -211,7 +301,8 @@ class AwsAuthService {
   Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) =>
       _post(path, body);
 
-  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> _post(
+      String path, Map<String, dynamic> body) async {
     final url = Uri.parse('$_baseUrl$path');
     final response = await http
         .post(url, headers: _headers, body: jsonEncode(body))
@@ -219,7 +310,8 @@ class AwsAuthService {
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode >= 400) {
-      throw Exception(data['detail'] ?? 'Request failed: ${response.statusCode}');
+      throw Exception(
+          data['detail'] ?? 'Request failed: ${response.statusCode}');
     }
     return data;
   }
@@ -232,12 +324,14 @@ class AwsAuthService {
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode >= 400) {
-      throw Exception(data['detail'] ?? 'Request failed: ${response.statusCode}');
+      throw Exception(
+          data['detail'] ?? 'Request failed: ${response.statusCode}');
     }
     return data;
   }
 
-  Future<Map<String, dynamic>> _put(String path, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> _put(
+      String path, Map<String, dynamic> body) async {
     final url = Uri.parse('$_baseUrl$path');
     final response = await http
         .put(url, headers: _headers, body: jsonEncode(body))
@@ -245,7 +339,8 @@ class AwsAuthService {
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode >= 400) {
-      throw Exception(data['detail'] ?? 'Request failed: ${response.statusCode}');
+      throw Exception(
+          data['detail'] ?? 'Request failed: ${response.statusCode}');
     }
     return data;
   }
@@ -253,13 +348,17 @@ class AwsAuthService {
   Future<void> _persistSession(Map<String, dynamic> resp) async {
     _userId = resp['user_id'] as String;
     _accessToken = resp['access_token'] as String?;
+    _phone = resp['phone'] as String? ?? _phone;
+    _currentUser = AwsAuthUser(uid: _userId!, phoneNumber: _phone);
 
     await _storage.write(key: _kUserId, value: _userId);
     await _storage.write(key: _kAccessToken, value: _accessToken ?? '');
     await _storage.write(key: _kIdToken, value: resp['id_token'] ?? '');
-    await _storage.write(key: _kRefreshToken, value: resp['refresh_token'] ?? '');
+    await _storage.write(
+        key: _kRefreshToken, value: resp['refresh_token'] ?? '');
     await _storage.write(key: _kPhone, value: _phone ?? '');
 
     Logger.info('AwsAuthService: session persisted for user=$_userId');
+    _authStateController.add(_currentUser);
   }
 }

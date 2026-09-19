@@ -56,9 +56,10 @@ class LoadingIndicator extends StatelessWidget {
           const SizedBox(height: 16.0),
           Text(
             text!,
-            style: textStyle ?? AppTextStyles.bodyMedium.copyWith(
-              color: AppColors.textSecondary,
-            ),
+            style: textStyle ??
+                AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
             textAlign: TextAlign.center,
           ),
         ],

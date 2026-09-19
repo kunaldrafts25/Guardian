@@ -17,7 +17,7 @@ typedef TriggerCallback = void Function(String phrase);
 /// Voice Recognition Service using speech_to_text package
 class VoiceRecognitionService {
   static VoiceRecognitionService? _instance;
-  static VoiceRecognitionService get instance => 
+  static VoiceRecognitionService get instance =>
       _instance ??= VoiceRecognitionService._();
 
   VoiceRecognitionService._();
@@ -35,8 +35,8 @@ class VoiceRecognitionService {
     'sos',
     'save me',
     'danger',
-    'bachao',  // Hindi
-    'madad',   // Hindi
+    'bachao', // Hindi
+    'madad', // Hindi
   ];
 
   /// Check if listening
@@ -143,7 +143,7 @@ class VoiceRecognitionService {
       if (text.contains(phrase)) {
         Logger.info('🎤 TRIGGER PHRASE DETECTED: $phrase');
         _onTriggerDetected?.call(phrase);
-        
+
         // Stop listening after trigger to prevent repeated triggers
         stopListening();
         break;
@@ -184,4 +184,3 @@ class VoiceRecognitionService {
     _instance = null;
   }
 }
-

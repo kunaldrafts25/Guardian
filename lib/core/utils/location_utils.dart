@@ -5,8 +5,8 @@
  */
 
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'dart:math';
 
 class LocationUtils {
   /// Check if location services are enabled
@@ -81,44 +81,28 @@ class LocationUtils {
   /// Get address from position
   static Future<String?> getAddressFromPosition(Position position) async {
     try {
-      // In a real app, this would use a geocoding service
-      // For this mock implementation, we'll return a fake address
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      if (placemarks.isEmpty) return null;
 
-      // Generate a somewhat realistic address based on coordinates
-      final random =
-          Random(position.latitude.toInt() + position.longitude.toInt());
+      final place = placemarks.first;
+      final parts = <String?>[
+        place.name,
+        place.street,
+        place.subLocality,
+        place.locality,
+        place.administrativeArea,
+        place.postalCode,
+        place.country,
+      ]
+          .whereType<String>()
+          .map((value) => value.trim())
+          .where((value) => value.isNotEmpty)
+          .toList();
 
-      final streets = [
-        'Main Street',
-        'Park Avenue',
-        'Oak Lane',
-        'Maple Road',
-        'Cedar Street',
-        'Pine Avenue',
-        'Elm Boulevard',
-        'River Road',
-        'Lake Drive',
-        'Mountain View',
-      ];
-
-      final cities = [
-        'Springfield',
-        'Riverside',
-        'Oakville',
-        'Maplewood',
-        'Cedarville',
-        'Pineville',
-        'Elmwood',
-        'Riverdale',
-        'Lakeside',
-        'Hillcrest',
-      ];
-
-      final streetNumber = random.nextInt(200) + 1;
-      final street = streets[random.nextInt(streets.length)];
-      final city = cities[random.nextInt(cities.length)];
-
-      return '$streetNumber $street, $city';
+      return parts.isEmpty ? null : parts.toSet().join(', ');
     } catch (e) {
       return null;
     }

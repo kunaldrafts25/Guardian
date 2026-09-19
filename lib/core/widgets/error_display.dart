@@ -13,25 +13,25 @@ import 'package:guardian/core/widgets/custom_button.dart';
 class ErrorDisplay extends StatelessWidget {
   /// The error message to display
   final String message;
-  
+
   /// Callback when retry button is pressed
   final VoidCallback? onRetry;
-  
+
   /// Text to display on the retry button
   final String retryText;
-  
+
   /// Icon to display
   final IconData icon;
-  
+
   /// Color of the icon
   final Color iconColor;
-  
+
   /// Size of the icon
   final double iconSize;
-  
+
   /// Style for the error message
   final TextStyle? messageStyle;
-  
+
   /// Creates an error display widget
   const ErrorDisplay({
     super.key,
@@ -60,9 +60,10 @@ class ErrorDisplay extends StatelessWidget {
             const SizedBox(height: 16.0),
             Text(
               message,
-              style: messageStyle ?? AppTextStyles.bodyLarge.copyWith(
-                color: AppColors.textPrimary,
-              ),
+              style: messageStyle ??
+                  AppTextStyles.bodyLarge.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
               textAlign: TextAlign.center,
             ),
             if (onRetry != null) ...[

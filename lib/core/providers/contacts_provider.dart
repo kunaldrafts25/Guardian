@@ -36,15 +36,15 @@ class ContactsState {
   }
 
   /// Get primary contact
-  EmergencyContact? get primaryContact => 
+  EmergencyContact? get primaryContact =>
       contacts.where((c) => c.isPrimary).firstOrNull;
-  
+
   /// Number of contacts
   int get count => contacts.length;
-  
+
   /// Max contacts allowed
   static const int maxContacts = 5;
-  
+
   /// Can add more contacts
   bool get canAddMore => contacts.length < maxContacts;
 }
@@ -53,24 +53,7 @@ class ContactsState {
 class ContactsNotifier extends StateNotifier<ContactsState> {
   static const String _storageKey = 'guardian_emergency_contacts';
 
-  static const List<EmergencyContact> defaultContacts = [
-    EmergencyContact(
-      id: '1',
-      name: 'Mom',
-      phone: '+91 98765 43210',
-      relation: 'Parent',
-      isPrimary: true,
-    ),
-    EmergencyContact(
-      id: '2',
-      name: 'Dad',
-      phone: '+91 98765 43211',
-      relation: 'Parent',
-      isPrimary: false,
-    ),
-  ];
-
-  ContactsNotifier() : super(const ContactsState(contacts: defaultContacts)) {
+  ContactsNotifier() : super(const ContactsState()) {
     _loadContacts();
   }
 
@@ -81,7 +64,8 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
       if (storedJson != null && storedJson.isNotEmpty) {
         final List<dynamic> list = jsonDecode(storedJson) as List<dynamic>;
         final contacts = list
-            .map((item) => EmergencyContact.fromJson(item as Map<String, dynamic>))
+            .map((item) =>
+                EmergencyContact.fromJson(item as Map<String, dynamic>))
             .toList();
         state = state.copyWith(contacts: contacts);
         return;
@@ -89,7 +73,6 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     } catch (e) {
       Logger.error('Failed to load contacts from storage, using defaults', e);
     }
-    _loadSampleContacts();
   }
 
   Future<void> _persistContacts() async {
@@ -102,59 +85,39 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     }
   }
 
-  /// Load sample contacts for initial setup
-  void _loadSampleContacts() {
-    state = state.copyWith(
-      contacts: const [
-        EmergencyContact(
-          id: '1',
-          name: 'Mom',
-          phone: '+91 98765 43210',
-          relation: 'Parent',
-          isPrimary: true,
-        ),
-        EmergencyContact(
-          id: '2',
-          name: 'Dad',
-          phone: '+91 98765 43211',
-          relation: 'Parent',
-          isPrimary: false,
-        ),
-      ],
-    );
-    _persistContacts();
-  }
-
   /// Add a new contact
   void addContact(EmergencyContact contact) {
     if (!state.canAddMore) {
-      Logger.warning('Cannot add more than ${ContactsState.maxContacts} contacts');
+      Logger.warning(
+          'Cannot add more than ${ContactsState.maxContacts} contacts');
       return;
     }
-    
+
     final isPrimary = state.contacts.isEmpty || contact.isPrimary;
-    
+
     List<EmergencyContact> updatedContacts = state.contacts;
     if (isPrimary) {
-      updatedContacts = state.contacts.map((c) => 
-        EmergencyContact(
-          id: c.id,
-          name: c.name,
-          phone: c.phone,
-          relation: c.relation,
-          isPrimary: false,
-        )
-      ).toList();
+      updatedContacts = state.contacts
+          .map((c) => EmergencyContact(
+                id: c.id,
+                name: c.name,
+                phone: c.phone,
+                relation: c.relation,
+                isPrimary: false,
+              ))
+          .toList();
     }
-    
+
     final newContact = EmergencyContact(
-      id: contact.id.isEmpty ? DateTime.now().millisecondsSinceEpoch.toString() : contact.id,
+      id: contact.id.isEmpty
+          ? DateTime.now().millisecondsSinceEpoch.toString()
+          : contact.id,
       name: contact.name,
       phone: contact.phone,
       relation: contact.relation,
       isPrimary: isPrimary,
     );
-    
+
     state = state.copyWith(contacts: [...updatedContacts, newContact]);
     _persistContacts();
     Logger.info('📱 Contact added: ${contact.name}');
@@ -163,9 +126,9 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
   /// Update a contact
   void updateContact(int index, EmergencyContact contact) {
     if (index < 0 || index >= state.contacts.length) return;
-    
+
     final updatedContacts = [...state.contacts];
-    
+
     if (contact.isPrimary) {
       for (int i = 0; i < updatedContacts.length; i++) {
         if (i != index) {
@@ -179,7 +142,7 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
         }
       }
     }
-    
+
     updatedContacts[index] = contact;
     state = state.copyWith(contacts: updatedContacts);
     _persistContacts();
@@ -189,10 +152,10 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
   /// Remove a contact
   void removeContact(int index) {
     if (index < 0 || index >= state.contacts.length) return;
-    
+
     final removedName = state.contacts[index].name;
     final updatedContacts = [...state.contacts]..removeAt(index);
-    
+
     if (state.contacts[index].isPrimary && updatedContacts.isNotEmpty) {
       updatedContacts[0] = EmergencyContact(
         id: updatedContacts[0].id,
@@ -202,7 +165,7 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
         isPrimary: true,
       );
     }
-    
+
     state = state.copyWith(contacts: updatedContacts);
     _persistContacts();
     Logger.info('📱 Contact removed: $removedName');
@@ -211,7 +174,7 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
   /// Set primary contact
   void setPrimaryContact(int index) {
     if (index < 0 || index >= state.contacts.length) return;
-    
+
     final updatedContacts = state.contacts.asMap().entries.map((entry) {
       return EmergencyContact(
         id: entry.value.id,
@@ -221,7 +184,7 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
         isPrimary: entry.key == index,
       );
     }).toList();
-    
+
     state = state.copyWith(contacts: updatedContacts);
     _persistContacts();
     Logger.info('📱 Primary contact set: ${state.contacts[index].name}');
@@ -236,7 +199,8 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
 }
 
 /// Contacts provider
-final contactsProvider = StateNotifierProvider<ContactsNotifier, ContactsState>((ref) {
+final contactsProvider =
+    StateNotifierProvider<ContactsNotifier, ContactsState>((ref) {
   return ContactsNotifier();
 });
 

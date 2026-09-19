@@ -8,25 +8,25 @@
 class EmergencyContact {
   /// Unique identifier for the contact
   final String? id;
-  
+
   /// Name of the emergency contact
   final String name;
-  
+
   /// Phone number of the emergency contact
   final String phoneNumber;
-  
+
   /// Email address of the emergency contact (optional)
   final String? email;
-  
+
   /// Relationship to the user (e.g., family, friend, etc.)
   final String relationship;
-  
+
   /// Whether this contact should be notified in case of emergency
   final bool notifyInEmergency;
-  
+
   /// Whether this contact can track the user's location
   final bool canTrackLocation;
-  
+
   /// Constructor
   EmergencyContact({
     this.id,
@@ -37,7 +37,7 @@ class EmergencyContact {
     this.notifyInEmergency = true,
     this.canTrackLocation = false,
   });
-  
+
   /// Create a contact from a map (e.g., from Firestore)
   factory EmergencyContact.fromMap(Map<String, dynamic> map, [String? id]) {
     return EmergencyContact(
@@ -50,7 +50,7 @@ class EmergencyContact {
       canTrackLocation: map['canTrackLocation'] ?? false,
     );
   }
-  
+
   /// Convert contact to a map (e.g., for Firestore)
   Map<String, dynamic> toMap() {
     return {
@@ -62,7 +62,7 @@ class EmergencyContact {
       'canTrackLocation': canTrackLocation,
     };
   }
-  
+
   /// Create a copy of this contact with some fields replaced
   EmergencyContact copyWith({
     String? name,

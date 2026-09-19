@@ -18,13 +18,7 @@ dependencies:
   # Firebase
   # ═══════════════════════════════════════════════
   firebase_core: ^3.8.1
-  firebase_auth: ^5.3.4
-  cloud_firestore: ^5.5.1
-  firebase_storage: ^12.3.7
   firebase_messaging: ^15.1.6
-  firebase_analytics: ^11.3.6
-  firebase_crashlytics: ^4.1.4       # Crash reporting
-  google_sign_in: ^6.2.1
 
   # ═══════════════════════════════════════════════
   # State Management — Riverpod ONLY (GetIt removed)
@@ -119,8 +113,6 @@ dev_dependencies:
   mockito: ^5.4.4
   mocktail: ^1.0.3
   network_image_mock: ^2.1.1
-  fake_cloud_firestore: ^3.1.0
-  firebase_auth_mocks: ^0.14.1
 
 dependency_overrides:
   google_fonts: ^6.2.2

@@ -49,7 +49,8 @@ class AgentObservabilityCard extends ConsumerWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: badgeColor.withValues(alpha: 0.4), width: 1.5),
+        border:
+            Border.all(color: badgeColor.withValues(alpha: 0.4), width: 1.5),
         boxShadow: [
           BoxShadow(
             color: badgeColor.withValues(alpha: 0.08),
@@ -87,7 +88,8 @@ class AgentObservabilityCard extends ConsumerWidget {
                 ],
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: badgeColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),
@@ -127,7 +129,8 @@ class AgentObservabilityCard extends ConsumerWidget {
                   label: 'Risk Level',
                   value: '${incident.riskLevel} (${incident.riskScore})',
                   icon: Icons.security,
-                  highlight: incident.riskLevel == 'HIGH' || incident.riskLevel == 'CRITICAL',
+                  highlight: incident.riskLevel == 'HIGH' ||
+                      incident.riskLevel == 'CRITICAL',
                 ),
               ),
             ],
@@ -149,7 +152,8 @@ class AgentObservabilityCard extends ConsumerWidget {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.auto_awesome, size: 14, color: AppColors.primary),
+                      const Icon(Icons.auto_awesome,
+                          size: 14, color: AppColors.primary),
                       const SizedBox(width: 6),
                       Text(
                         'Decision: ${incident.agentDecision}',
@@ -164,7 +168,10 @@ class AgentObservabilityCard extends ConsumerWidget {
                   const SizedBox(height: 4),
                   Text(
                     incident.agentRationale,
-                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.3),
+                    style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                        height: 1.3),
                   ),
                 ],
               ),
@@ -192,7 +199,8 @@ class AgentObservabilityCard extends ConsumerWidget {
                           alignment: Alignment.center,
                           children: [
                             CircularProgressIndicator(
-                              value: incident.verificationSecondsRemaining / 15.0,
+                              value:
+                                  incident.verificationSecondsRemaining / 15.0,
                               strokeWidth: 3,
                               color: Colors.amber.shade800,
                               backgroundColor: Colors.amber.shade100,
@@ -230,10 +238,12 @@ class AgentObservabilityCard extends ConsumerWidget {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.green,
                             foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)),
                             padding: const EdgeInsets.symmetric(vertical: 10),
                           ),
-                          child: const Text("I'M OK", style: TextStyle(fontWeight: FontWeight.bold)),
+                          child: const Text("I'M OK",
+                              style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -243,10 +253,12 @@ class AgentObservabilityCard extends ConsumerWidget {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.danger,
                             foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)),
                             padding: const EdgeInsets.symmetric(vertical: 10),
                           ),
-                          child: const Text("NEED HELP", style: TextStyle(fontWeight: FontWeight.bold)),
+                          child: const Text("NEED HELP",
+                              style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ),
                     ],
@@ -270,12 +282,16 @@ class AgentObservabilityCard extends ConsumerWidget {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.notification_important, color: AppColors.danger, size: 20),
+                      const Icon(Icons.notification_important,
+                          color: AppColors.danger, size: 20),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           'Escalated! Alerts dispatched to emergency contacts via AWS SNS.',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.red),
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.red),
                         ),
                       ),
                     ],
@@ -288,7 +304,8 @@ class AgentObservabilityCard extends ConsumerWidget {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red.shade700,
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                 ],
@@ -306,7 +323,10 @@ class AgentObservabilityCard extends ConsumerWidget {
                 const Expanded(
                   child: Text(
                     'Incident resolved & stored in audit trail.',
-                    style: TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.green,
+                        fontWeight: FontWeight.w600),
                   ),
                 ),
                 TextButton(
@@ -321,9 +341,11 @@ class AgentObservabilityCard extends ConsumerWidget {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
-              onPressed: () => _showTimelineBottomSheet(context, incident.timeline),
+              onPressed: () =>
+                  _showTimelineBottomSheet(context, incident.timeline),
               icon: const Icon(Icons.history, size: 16),
-              label: Text('Audit Trail (${incident.timeline.length} events)', style: const TextStyle(fontSize: 12)),
+              label: Text('Audit Trail (${incident.timeline.length} events)',
+                  style: const TextStyle(fontSize: 12)),
             ),
           ),
         ],
@@ -336,7 +358,8 @@ class AgentObservabilityCard extends ConsumerWidget {
     int activeIndex = 0;
     if (currentState == 'SUSPECTED') activeIndex = 1;
     if (currentState == 'VERIFYING') activeIndex = 2;
-    if (currentState == 'RESPONDING' || currentState == 'RESOLVED') activeIndex = 3;
+    if (currentState == 'RESPONDING' || currentState == 'RESOLVED')
+      activeIndex = 3;
 
     return Row(
       children: List.generate(stages.length * 2 - 1, (index) {
@@ -360,7 +383,9 @@ class AgentObservabilityCard extends ConsumerWidget {
           decoration: BoxDecoration(
             color: isCurrent
                 ? AppColors.primary
-                : (isPast ? AppColors.primary.withValues(alpha: 0.2) : Colors.grey.shade200),
+                : (isPast
+                    ? AppColors.primary.withValues(alpha: 0.2)
+                    : Colors.grey.shade200),
             borderRadius: BorderRadius.circular(6),
           ),
           child: Text(
@@ -368,7 +393,9 @@ class AgentObservabilityCard extends ConsumerWidget {
             style: TextStyle(
               fontSize: 9,
               fontWeight: FontWeight.bold,
-              color: isCurrent ? Colors.white : (isPast ? AppColors.primary : Colors.grey.shade600),
+              color: isCurrent
+                  ? Colors.white
+                  : (isPast ? AppColors.primary : Colors.grey.shade600),
             ),
           ),
         );
@@ -390,13 +417,16 @@ class AgentObservabilityCard extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: highlight ? Colors.red : Colors.grey.shade700),
+          Icon(icon,
+              size: 16, color: highlight ? Colors.red : Colors.grey.shade700),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+                Text(label,
+                    style:
+                        TextStyle(fontSize: 10, color: Colors.grey.shade600)),
                 Text(
                   value,
                   maxLines: 1,
@@ -415,10 +445,12 @@ class AgentObservabilityCard extends ConsumerWidget {
     );
   }
 
-  void _showTimelineBottomSheet(BuildContext context, List<Map<String, dynamic>> timeline) {
+  void _showTimelineBottomSheet(
+      BuildContext context, List<Map<String, dynamic>> timeline) {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) {
         return Container(
           padding: const EdgeInsets.all(20),
@@ -428,8 +460,12 @@ class AgentObservabilityCard extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('DynamoDB Audit Trail', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+                  const Text('DynamoDB Audit Trail',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx)),
                 ],
               ),
               const SizedBox(height: 10),
@@ -445,14 +481,23 @@ class AgentObservabilityCard extends ConsumerWidget {
                             dense: true,
                             leading: CircleAvatar(
                               radius: 14,
-                              backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                              child: Text('${i + 1}', style: const TextStyle(fontSize: 11, color: AppColors.primary)),
+                              backgroundColor:
+                                  AppColors.primary.withValues(alpha: 0.1),
+                              child: Text('${i + 1}',
+                                  style: const TextStyle(
+                                      fontSize: 11, color: AppColors.primary)),
                             ),
-                            title: Text(e['event_type'] ?? 'event', style: const TextStyle(fontWeight: FontWeight.w600)),
-                            subtitle: Text(e['details'] ?? e['state'] ?? '', style: const TextStyle(fontSize: 12)),
+                            title: Text(e['event_type'] ?? 'event',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600)),
+                            subtitle: Text(e['details'] ?? e['state'] ?? '',
+                                style: const TextStyle(fontSize: 12)),
                             trailing: Text(
                               (e['actor'] ?? 'SYSTEM').toString(),
-                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey),
+                              style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey),
                             ),
                           );
                         },

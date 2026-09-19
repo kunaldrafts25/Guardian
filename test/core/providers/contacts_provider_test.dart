@@ -15,10 +15,10 @@ void main() {
   });
 
   group('ContactsState & Notifier', () {
-    test('Initial sample contacts load correctly', () {
+    test('Starts with no contacts until the user adds them', () {
       final notifier = ContactsNotifier();
-      expect(notifier.state.contacts.length, 2);
-      expect(notifier.state.primaryContact?.name, 'Mom');
+      expect(notifier.state.contacts, isEmpty);
+      expect(notifier.state.primaryContact, isNull);
       expect(notifier.state.canAddMore, isTrue);
     });
 
@@ -32,20 +32,40 @@ void main() {
       );
 
       notifier.addContact(newContact);
-      expect(notifier.state.contacts.length, 3);
+      expect(notifier.state.contacts.length, 1);
       expect(notifier.state.contacts.last.name, 'Sister');
     });
 
     test('Primary contact can be switched', () {
       final notifier = ContactsNotifier();
-      notifier.setPrimaryContact(1); // Dad
+      notifier.addContact(const EmergencyContact(
+        id: '1',
+        name: 'Mom',
+        phone: '+91 98765 43210',
+        relation: 'Parent',
+        isPrimary: true,
+      ));
+      notifier.addContact(const EmergencyContact(
+        id: '2',
+        name: 'Dad',
+        phone: '+91 98765 43211',
+        relation: 'Parent',
+      ));
+      notifier.setPrimaryContact(1);
       expect(notifier.state.primaryContact?.name, 'Dad');
     });
 
     test('Removing a contact decreases count', () {
       final notifier = ContactsNotifier();
+      notifier.addContact(const EmergencyContact(
+        id: '1',
+        name: 'Mom',
+        phone: '+91 98765 43210',
+        relation: 'Parent',
+        isPrimary: true,
+      ));
       final initialCount = notifier.state.contacts.length;
-      notifier.removeContact(1);
+      notifier.removeContact(0);
       expect(notifier.state.contacts.length, initialCount - 1);
     });
   });

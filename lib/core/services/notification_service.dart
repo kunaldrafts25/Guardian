@@ -1,16 +1,8 @@
-/*
- * Guardian — NotificationService
- *
- * Thin wrapper over FcmService for sending safety notifications.
- * This replaces the deleted mock NotificationService.
- */
-
 import 'package:guardian/core/models/user_model.dart';
 import 'package:guardian/core/services/aws_auth_service.dart';
-import 'package:guardian/core/services/fcm_service.dart';
+import 'package:guardian/core/services/aws_sns_service.dart';
 import 'package:guardian/core/utils/logger.dart';
 
-/// Result of a notification send attempt
 class NotificationResult {
   final bool success;
   final int sentCount;
@@ -22,14 +14,10 @@ class NotificationResult {
     this.error,
   });
 
-  static NotificationResult ok(int count) =>
-      NotificationResult(success: true, sentCount: count);
-
   static NotificationResult fail(String error) =>
       NotificationResult(success: false, sentCount: 0, error: error);
 }
 
-/// Types of notifications
 enum NotificationType {
   sosAlert,
   sosResolved,
@@ -38,80 +26,85 @@ enum NotificationType {
   exitSafeZone,
 }
 
-/// NotificationService — wraps FcmService for push, SMS is handled by SosService
 class NotificationService {
   static Future<bool> requestPermissions() async {
     try {
-      await FcmService.initialize();
-      return true;
-    } catch (e) {
-      Logger.error('Notification permission error', e);
+      await AwsSnsService.initialize();
+      return AwsSnsService.deviceToken != null;
+    } catch (error) {
+      Logger.error('Notification initialization failed', error);
       return false;
     }
   }
 
-  static Future<String?> getFcmToken() async => FcmService.fcmToken;
+  static Future<String?> getFcmToken() async => AwsSnsService.deviceToken;
 
+  static Future<NotificationResult> _notifyContacts(
+    String type, {
+    int? minutesOverdue,
+    String? zoneName,
+  }) async {
+    try {
+      final response = await AwsAuthService.instance.post(
+        '/notifications/contacts',
+        {
+          'notification_type': type,
+          if (minutesOverdue != null) 'minutes_overdue': minutesOverdue,
+          if (zoneName != null) 'zone_name': zoneName,
+        },
+      );
+      final sent = (response['sent_count'] as num?)?.toInt() ?? 0;
+      final success = response['success'] == true;
+      return NotificationResult(
+        success: success,
+        sentCount: sent,
+        error: success ? null : 'One or more contact notifications failed',
+      );
+    } catch (error) {
+      Logger.error('Contact notification failed', error);
+      return NotificationResult.fail(error.toString());
+    }
+  }
+
+  /// SOS delivery is owned by the incident pipeline and native SMS transport.
   static Future<NotificationResult> sendSosAlert({
     required String userName,
     required List<EmergencyContact> contacts,
     required double latitude,
     required double longitude,
     String? customMessage,
-  }) async {
-    try {
-      final locationLink = 'https://maps.google.com/?q=$latitude,$longitude';
-      // ignore: unused_local_variable
-      final body = customMessage != null
-          ? '$userName needs help! $customMessage\n$locationLink'
-          : '$userName triggered an SOS alert! Location: $locationLink';
-
-      // FCM is best-effort — SMS (SosService) is the reliable transport
-      Logger.info('🔔 SOS FCM alert dispatched');
-      return NotificationResult.ok(contacts.length);
-    } catch (e) {
-      Logger.error('FCM SOS alert error', e);
-      return NotificationResult.fail(e.toString());
-    }
-  }
+  }) async =>
+      NotificationResult.fail(
+          'Use the SOS incident pipeline for emergency alerts');
 
   static Future<NotificationResult> sendSosResolved({
     required String userName,
     required List<EmergencyContact> contacts,
-  }) async {
-    Logger.info('🔔 SOS resolved notification dispatched');
-    return NotificationResult.ok(contacts.length);
-  }
+  }) =>
+      _notifyContacts('sos_resolved');
 
   static Future<NotificationResult> sendSafeArrival({
     required String userName,
     required List<EmergencyContact> contacts,
-  }) async {
-    Logger.info('🔔 Safe arrival notification dispatched for $contacts contacts');
-    return NotificationResult.ok(contacts.length);
-  }
+  }) =>
+      _notifyContacts('safe_arrival');
 
   static Future<NotificationResult> sendCheckInReminder({
     required String userName,
     required List<EmergencyContact> contacts,
     required int minutesOverdue,
-  }) async {
-    Logger.warning('⏰ Check-in overdue by ${minutesOverdue}min — notifying contacts');
-    return NotificationResult.ok(contacts.length);
-  }
+  }) =>
+      _notifyContacts('check_in_overdue', minutesOverdue: minutesOverdue);
 
   static Future<NotificationResult> sendExitSafeZone({
     required String userName,
     required String zoneName,
     required EmergencyContact primaryContact,
-  }) async {
-    Logger.warning('📍 $userName left safe zone: $zoneName');
-    return NotificationResult.ok(1);
-  }
+  }) =>
+      _notifyContacts('safe_zone_exit', zoneName: zoneName);
 
-  /// Get user display name from AwsAuthService
-  static String get currentUserName {
-    final phone = AwsAuthService.instance.currentPhone;
-    return phone ?? 'Guardian User';
-  }
+  static String get currentUserName =>
+      AwsAuthService.instance.currentUser?.displayName ??
+      AwsAuthService.instance.currentPhone ??
+      'Guardian User';
 }

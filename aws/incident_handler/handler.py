@@ -10,6 +10,7 @@ Handles:
 import json
 import os
 import uuid
+import hashlib
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
@@ -62,11 +63,15 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         # Check if event_id already exists via GSI or scan/query
         # For atomic creation, we check our local/cache or conditional put
     else:
-        if event_id in _LOCAL_IDEMPOTENCY:
-            existing_id = _LOCAL_IDEMPOTENCY[event_id]
+        local_idempotency_key = f"{user_id}:{event_id}"
+        if local_idempotency_key in _LOCAL_IDEMPOTENCY:
+            existing_id = _LOCAL_IDEMPOTENCY[local_idempotency_key]
             return _LOCAL_INCIDENTS[existing_id]
 
-    incident_id = f"inc_{uuid.uuid4().hex[:12]}"
+    # A deterministic key makes retries idempotent even when the first
+    # response is lost and separate Lambda containers process the requests.
+    idempotency_key = f"{user_id}:{event_id}".encode("utf-8")
+    incident_id = f"inc_{hashlib.sha256(idempotency_key).hexdigest()[:24]}"
     now_iso = datetime.now(timezone.utc).isoformat()
 
     # Calculate initial risk assessment via Risk Engine
@@ -94,6 +99,8 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         "agent_decision": "PENDING_REASONING",
         "agent_rationale": "Initial anomaly observed. Awaiting autonomous agent evaluation.",
     }
+    if "contacts" in payload:
+        incident_record["contacts"] = payload["contacts"]
 
     # Record first timeline event
     timeline_entry = {
@@ -108,7 +115,21 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
     # Persist
     if dynamo:
         table = dynamo.Table(DYNAMODB_INCIDENTS_TABLE)
-        table.put_item(Item=incident_record)
+        try:
+            table.put_item(
+                Item=incident_record,
+                ConditionExpression="attribute_not_exists(incident_id)",
+            )
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+                raise
+            existing = table.get_item(
+                Key={"incident_id": incident_id},
+                ConsistentRead=True,
+            ).get("Item")
+            if existing:
+                return existing
+            raise
         
         events_table = dynamo.Table(DYNAMODB_EVENTS_TABLE)
         events_table.put_item(Item=timeline_entry)
@@ -129,7 +150,7 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
     else:
         _LOCAL_INCIDENTS[incident_id] = incident_record
         _LOCAL_EVENTS[incident_id] = [timeline_entry]
-        _LOCAL_IDEMPOTENCY[event_id] = incident_id
+        _LOCAL_IDEMPOTENCY[f"{user_id}:{event_id}"] = incident_id
 
     return incident_record
 
@@ -221,12 +242,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     http_method = event.get("httpMethod") or event.get("requestContext", {}).get("http", {}).get("method", "GET")
     path = event.get("path") or event.get("rawPath", "/")
 
+    allowed_origin = os.environ.get("GUARDIAN_ALLOWED_ORIGIN", "")
     headers = {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Amz-Date, X-Api-Key",
     }
+    if allowed_origin:
+        headers["Access-Control-Allow-Origin"] = allowed_origin
 
     if http_method == "OPTIONS":
         return {"statusCode": 200, "headers": headers, "body": ""}

@@ -66,8 +66,7 @@ def register_device_endpoint(
     """
     sns = _sns_client()
     if not sns:
-        logger.warning("SNS not available - dev mode device registration")
-        return {"endpoint_arn": f"dev_arn_{user_id}_{platform}", "success": True, "dev_mode": True}
+        return {"endpoint_arn": "", "success": False, "error": "SNS client unavailable"}
 
     platform_arn = SNS_FCM_PLATFORM_ARN if platform == "android" else SNS_APNS_PLATFORM_ARN
     if not platform_arn:
@@ -144,8 +143,7 @@ def send_push_to_user(
     dynamo = _dynamo()
 
     if not sns or not dynamo:
-        logger.warning(f"DEV: Push notification to {user_id}: [{title}] {body}")
-        return {"success": True, "dev_mode": True, "message_id": f"dev_msg_{user_id}"}
+        return {"success": False, "error": "SNS or DynamoDB client unavailable"}
 
     # Get user's endpoint ARN
     try:
@@ -203,8 +201,7 @@ def send_community_sos_broadcast(
     """
     sns = _sns_client()
     if not sns:
-        logger.warning(f"DEV: SOS broadcast for incident {incident_id}")
-        return {"success": True, "dev_mode": True, "subscribers_notified": 0}
+        return {"success": False, "error": "SNS client unavailable"}
 
     if not SNS_SOS_TOPIC_ARN:
         logger.warning("SNS_SOS_TOPIC_ARN not configured - skipping community broadcast")
@@ -257,8 +254,7 @@ def send_sms_alert(
     """
     sns = _sns_client()
     if not sns:
-        logger.warning(f"DEV SMS to {phone_number}: {message}")
-        return {"success": True, "dev_mode": True, "message_id": "dev_sms"}
+        return {"success": False, "error": "SNS client unavailable"}
 
     phone = phone_number.strip()
     if not phone.startswith("+"):

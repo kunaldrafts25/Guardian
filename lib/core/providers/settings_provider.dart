@@ -23,7 +23,8 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
 });
 
 /// Theme mode state
-final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {
+final themeModeProvider =
+    StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {
   return ThemeModeNotifier();
 });
 
@@ -31,13 +32,13 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
   ThemeModeNotifier() : super(ThemeMode.system) {
     _loadThemeMode();
   }
-  
+
   Future<void> _loadThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
     final themeIndex = prefs.getInt(_themeModeKey) ?? 0;
     state = ThemeMode.values[themeIndex];
   }
-  
+
   Future<void> setThemeMode(ThemeMode mode) async {
     state = mode;
     final prefs = await SharedPreferences.getInstance();
@@ -54,7 +55,7 @@ class LocaleNotifier extends StateNotifier<Locale> {
   LocaleNotifier() : super(const Locale('en', 'US')) {
     _loadLocale();
   }
-  
+
   Future<void> _loadLocale() async {
     final prefs = await SharedPreferences.getInstance();
     final localeString = prefs.getString(_localeKey);
@@ -63,16 +64,18 @@ class LocaleNotifier extends StateNotifier<Locale> {
       state = Locale(parts[0], parts.length > 1 ? parts[1] : null);
     }
   }
-  
+
   Future<void> setLocale(Locale locale) async {
     state = locale;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_localeKey, '${locale.languageCode}_${locale.countryCode ?? ''}');
+    await prefs.setString(
+        _localeKey, '${locale.languageCode}_${locale.countryCode ?? ''}');
   }
 }
 
 /// Location mode state
-final locationModeProvider = StateNotifierProvider<LocationModeNotifier, LocationMode>((ref) {
+final locationModeProvider =
+    StateNotifierProvider<LocationModeNotifier, LocationMode>((ref) {
   return LocationModeNotifier();
 });
 
@@ -80,13 +83,13 @@ class LocationModeNotifier extends StateNotifier<LocationMode> {
   LocationModeNotifier() : super(LocationMode.smart) {
     _loadLocationMode();
   }
-  
+
   Future<void> _loadLocationMode() async {
     final prefs = await SharedPreferences.getInstance();
     final modeIndex = prefs.getInt(_locationModeKey) ?? 1; // Default: smart
     state = LocationMode.values[modeIndex];
   }
-  
+
   Future<void> setLocationMode(LocationMode mode) async {
     state = mode;
     final prefs = await SharedPreferences.getInstance();

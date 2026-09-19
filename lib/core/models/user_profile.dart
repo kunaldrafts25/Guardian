@@ -8,28 +8,28 @@
 class UserProfile {
   /// Unique identifier for the user
   final String id;
-  
+
   /// User's display name
   final String displayName;
-  
+
   /// User's email address
   final String email;
-  
+
   /// URL to the user's profile picture
   final String? photoUrl;
-  
+
   /// User's phone number
   final String? phoneNumber;
-  
+
   /// User's address
   final String? address;
-  
+
   /// Emergency information (e.g., medical conditions, allergies)
   final Map<String, dynamic>? emergencyInfo;
-  
+
   /// User settings
   final Map<String, dynamic>? settings;
-  
+
   /// Constructor
   UserProfile({
     required this.id,
@@ -41,7 +41,7 @@ class UserProfile {
     this.emergencyInfo,
     this.settings,
   });
-  
+
   /// Create a profile from a map (e.g., from Firestore)
   factory UserProfile.fromMap(Map<String, dynamic> map, String id) {
     return UserProfile(
@@ -55,7 +55,7 @@ class UserProfile {
       settings: map['settings'],
     );
   }
-  
+
   /// Convert profile to a map (e.g., for Firestore)
   Map<String, dynamic> toMap() {
     return {
@@ -68,7 +68,7 @@ class UserProfile {
       'settings': settings,
     };
   }
-  
+
   /// Create a copy of this profile with some fields replaced
   UserProfile copyWith({
     String? displayName,

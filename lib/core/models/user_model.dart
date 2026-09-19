@@ -5,22 +5,20 @@
  * User Model
  */
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 /// Location mode enum for privacy settings
 enum LocationMode {
-  ghost,    // Location only during SOS
-  smart,    // Auto-activate at night/risky moments
+  ghost, // Location only during SOS
+  smart, // Auto-activate at night/risky moments
   guardian, // Always on
 }
 
 /// Trust rank based on points
 enum TrustRank {
-  watcher,        // 0-49 points
-  walker,         // 50-199 points  
-  responder,      // 200-499 points
-  sentinel,       // 500-999 points
-  guardianAngel,  // 1000+ points
+  watcher, // 0-49 points
+  walker, // 50-199 points
+  responder, // 200-499 points
+  sentinel, // 500-999 points
+  guardianAngel, // 1000+ points
 }
 
 /// Emergency contact model
@@ -44,18 +42,20 @@ class EmergencyContact {
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
       phone: json['phone'] as String? ?? '',
-      relation: json['relation'] as String? ?? '',
-      isPrimary: json['isPrimary'] as bool? ?? false,
+      relation:
+          json['relation'] as String? ?? json['relationship'] as String? ?? '',
+      isPrimary:
+          json['is_primary'] as bool? ?? json['isPrimary'] as bool? ?? false,
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'phone': phone,
-    'relation': relation,
-    'isPrimary': isPrimary,
-  };
+        'id': id,
+        'name': name,
+        'phone': phone,
+        'relation': relation,
+        'is_primary': isPrimary,
+      };
 
   EmergencyContact copyWith({
     String? id,
@@ -110,18 +110,13 @@ class UserModel {
     required this.updatedAt,
   });
 
-  /// Create from Firestore document
-  factory UserModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
-    return UserModel.fromJson(data, doc.id);
-  }
-
   /// Create from JSON
   factory UserModel.fromJson(Map<String, dynamic> json, String uid) {
     final contacts = (json['emergencyContacts'] as List<dynamic>?)
-        ?.map((e) => EmergencyContact.fromJson(e as Map<String, dynamic>))
-        .toList() ?? [];
-    
+            ?.map((e) => EmergencyContact.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [];
+
     return UserModel(
       uid: uid,
       phoneNumber: json['phoneNumber'] as String? ?? '',
@@ -142,28 +137,30 @@ class UserModel {
       walkSessionsCount: json['walkSessionsCount'] as int? ?? 0,
       isPhoneVerified: json['isPhoneVerified'] as bool? ?? true,
       isIdVerified: json['isIdVerified'] as bool? ?? false,
-      createdAt: (json['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      updatedAt: (json['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+          DateTime.now(),
+      updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? '') ??
+          DateTime.now(),
     );
   }
 
-  /// Convert to JSON for Firestore
+  /// Convert to transport-safe JSON.
   Map<String, dynamic> toJson() => {
-    'phoneNumber': phoneNumber,
-    'displayName': displayName,
-    'photoUrl': photoUrl,
-    'trustScore': trustScore,
-    'trustRank': trustRank.name,
-    'locationMode': locationMode.name,
-    'emergencyContacts': emergencyContacts.map((e) => e.toJson()).toList(),
-    'helpedCount': helpedCount,
-    'sosUsedCount': sosUsedCount,
-    'walkSessionsCount': walkSessionsCount,
-    'isPhoneVerified': isPhoneVerified,
-    'isIdVerified': isIdVerified,
-    'createdAt': Timestamp.fromDate(createdAt),
-    'updatedAt': Timestamp.fromDate(updatedAt),
-  };
+        'phoneNumber': phoneNumber,
+        'displayName': displayName,
+        'photoUrl': photoUrl,
+        'trustScore': trustScore,
+        'trustRank': trustRank.name,
+        'locationMode': locationMode.name,
+        'emergencyContacts': emergencyContacts.map((e) => e.toJson()).toList(),
+        'helpedCount': helpedCount,
+        'sosUsedCount': sosUsedCount,
+        'walkSessionsCount': walkSessionsCount,
+        'isPhoneVerified': isPhoneVerified,
+        'isIdVerified': isIdVerified,
+        'createdAt': createdAt.toUtc().toIso8601String(),
+        'updatedAt': updatedAt.toUtc().toIso8601String(),
+      };
 
   /// Copy with modifications
   UserModel copyWith({

@@ -52,7 +52,7 @@ class LocationState {
   }
 
   bool get hasLocation => position != null;
-  
+
   String get displayCoordinates {
     if (position == null) return 'Location unavailable';
     return '${position!.latitude.toStringAsFixed(6)}, ${position!.longitude.toStringAsFixed(6)}';
@@ -62,24 +62,24 @@ class LocationState {
 /// Location state notifier
 class LocationNotifier extends StateNotifier<LocationState> {
   StreamSubscription<Position>? _positionSubscription;
-  
+
   LocationNotifier() : super(const LocationState()) {
     _initialize();
   }
 
   Future<void> _initialize() async {
     state = state.copyWith(isLoading: true);
-    
+
     try {
       final isEnabled = await LocationService.isLocationServiceEnabled();
       final hasPermission = await LocationService.requestLocationPermission();
-      
+
       state = state.copyWith(
         isEnabled: isEnabled,
         hasPermission: hasPermission,
         isLoading: false,
       );
-      
+
       if (isEnabled && hasPermission) {
         await refreshLocation();
       }
@@ -95,12 +95,13 @@ class LocationNotifier extends StateNotifier<LocationState> {
   /// Refresh current location
   Future<void> refreshLocation() async {
     state = state.copyWith(isLoading: true, errorMessage: null);
-    
+
     try {
       final position = await LocationService.getCurrentLocation();
-      
+
       if (position != null) {
-        Logger.info('📍 Location updated: ${position.latitude}, ${position.longitude}');
+        Logger.info(
+            '📍 Location updated: ${position.latitude}, ${position.longitude}');
         state = state.copyWith(
           position: position,
           isLoading: false,
@@ -165,7 +166,8 @@ class LocationNotifier extends StateNotifier<LocationState> {
 }
 
 /// Location provider
-final locationProvider = StateNotifierProvider<LocationNotifier, LocationState>((ref) {
+final locationProvider =
+    StateNotifierProvider<LocationNotifier, LocationState>((ref) {
   return LocationNotifier();
 });
 

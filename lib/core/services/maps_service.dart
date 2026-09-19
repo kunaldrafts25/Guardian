@@ -42,7 +42,8 @@ class BitmapDescriptor {
   static const hueViolet = 270.0;
   static const hueCyan = 180.0;
   static const hueAzure = 210.0;
-  static BitmapDescriptor defaultMarkerWithHue(double hue) => BitmapDescriptor(hue);
+  static BitmapDescriptor defaultMarkerWithHue(double hue) =>
+      BitmapDescriptor(hue);
 }
 
 /// A service for Maps functionality
@@ -50,6 +51,7 @@ class MapsService {
   static final Map<String, BitmapDescriptor> _markerCache = {};
   static final Map<String, dynamic> _locationCache = {};
   static const Duration _cacheDuration = Duration(minutes: 15);
+
   /// Default camera position (India)
   static const CameraPosition defaultCameraPosition = CameraPosition(
     target: LatLng(20.5937, 78.9629),
@@ -71,7 +73,8 @@ class MapsService {
   }
 
   /// Get camera position for current location
-  static Future<CameraPosition?> getCurrentCameraPosition({double zoom = 15}) async {
+  static Future<CameraPosition?> getCurrentCameraPosition(
+      {double zoom = 15}) async {
     final latLng = await getCurrentLatLng();
     if (latLng != null) {
       return CameraPosition(
@@ -83,7 +86,8 @@ class MapsService {
   }
 
   /// Create a custom marker from an asset with caching
-  static Future<BitmapDescriptor> createMarkerFromAsset(String assetPath) async {
+  static Future<BitmapDescriptor> createMarkerFromAsset(
+      String assetPath) async {
     // Check if marker is already in cache
     if (_markerCache.containsKey(assetPath)) {
       Logger.info('Using cached marker for $assetPath');
@@ -98,11 +102,14 @@ class MapsService {
       if (assetPath.contains('hospital')) {
         marker = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
       } else if (assetPath.contains('police')) {
-        marker = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue);
+        marker =
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue);
       } else if (assetPath.contains('safe')) {
-        marker = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+        marker =
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
       } else if (assetPath.contains('danger')) {
-        marker = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
+        marker =
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
       } else {
         marker = BitmapDescriptor.defaultMarker;
       }
@@ -126,7 +133,8 @@ class MapsService {
     double height = 80,
   }) async {
     // Create a cache key based on parameters
-    final cacheKey = 'marker_text_${text}_${backgroundColor.value}_${textColor.value}_${width}_$height';
+    final cacheKey =
+        'marker_text_${text}_${backgroundColor.value}_${textColor.value}_${width}_$height';
 
     // Check if marker is already in cache
     if (_markerCache.containsKey(cacheKey)) {
@@ -165,9 +173,9 @@ class MapsService {
 
       // Convert to image
       final img = await recorder.endRecording().toImage(
-        width.toInt(),
-        height.toInt(),
-      );
+            width.toInt(),
+            height.toInt(),
+          );
       final data = await img.toByteData(format: ui.ImageByteFormat.png);
 
       if (data != null) {
@@ -177,13 +185,18 @@ class MapsService {
 
         final lowerText = text.toLowerCase();
         if (lowerText.contains('sos') || lowerText.contains('emergency')) {
-          marker = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
+          marker =
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
         } else if (lowerText.contains('safe') || lowerText.contains('home')) {
-          marker = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
-        } else if (lowerText.contains('warning') || lowerText.contains('caution')) {
-          marker = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow);
+          marker =
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+        } else if (lowerText.contains('warning') ||
+            lowerText.contains('caution')) {
+          marker =
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow);
         } else if (backgroundColor == AppColors.primary) {
-          marker = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet);
+          marker =
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet);
         } else {
           marker = BitmapDescriptor.defaultMarker;
         }
@@ -258,7 +271,8 @@ class MapsService {
     bool forceRefresh = false,
   }) async {
     // Create a cache key based on origin and destination
-    final cacheKey = 'directions_${origin.latitude}_${origin.longitude}_${destination.latitude}_${destination.longitude}';
+    final cacheKey =
+        'directions_${origin.latitude}_${origin.longitude}_${destination.latitude}_${destination.longitude}';
 
     // Check if we have a valid cached result
     if (!forceRefresh && _locationCache.containsKey(cacheKey)) {
@@ -434,17 +448,18 @@ class MapsService {
 
     String markersParam = '';
     if (markers.isNotEmpty) {
-      markersParam = markers.map((marker) =>
-        'markers=color:red|${marker.latitude},${marker.longitude}'
-      ).join('&');
+      markersParam = markers
+          .map((marker) =>
+              'markers=color:red|${marker.latitude},${marker.longitude}')
+          .join('&');
     }
 
     String pathsParam = '';
     if (paths.isNotEmpty) {
       pathsParam = paths.map((path) {
-        final pathPoints = path.map((point) =>
-          '${point.latitude},${point.longitude}'
-        ).join('|');
+        final pathPoints = path
+            .map((point) => '${point.latitude},${point.longitude}')
+            .join('|');
         return 'path=color:0x0000ff|weight:5|$pathPoints';
       }).join('&');
     }
@@ -484,4 +499,3 @@ class MapsService {
     );
   }
 }
-

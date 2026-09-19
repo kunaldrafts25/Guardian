@@ -43,7 +43,8 @@ class CommunityAlertDialog extends ConsumerStatefulWidget {
   }
 
   @override
-  ConsumerState<CommunityAlertDialog> createState() => _CommunityAlertDialogState();
+  ConsumerState<CommunityAlertDialog> createState() =>
+      _CommunityAlertDialogState();
 }
 
 class _CommunityAlertDialogState extends ConsumerState<CommunityAlertDialog> {
@@ -132,7 +133,8 @@ class _CommunityAlertDialogState extends ConsumerState<CommunityAlertDialog> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.location_on_rounded, color: AppColors.primary, size: 20),
+                      const Icon(Icons.location_on_rounded,
+                          color: AppColors.primary, size: 20),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -151,7 +153,8 @@ class _CommunityAlertDialogState extends ConsumerState<CommunityAlertDialog> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: AppColors.primary.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(6),
@@ -166,7 +169,8 @@ class _CommunityAlertDialogState extends ConsumerState<CommunityAlertDialog> {
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: AppColors.success.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(6),
@@ -174,7 +178,8 @@ class _CommunityAlertDialogState extends ConsumerState<CommunityAlertDialog> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.groups_rounded, color: AppColors.success, size: 14),
+                            const Icon(Icons.groups_rounded,
+                                color: AppColors.success, size: 14),
                             const SizedBox(width: 4),
                             Text(
                               '${widget.coRespondersCount} Helpers Moving',
@@ -200,14 +205,16 @@ class _CommunityAlertDialogState extends ConsumerState<CommunityAlertDialog> {
               decoration: BoxDecoration(
                 color: const Color(0xFFFFF9E6),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+                border:
+                    Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
               ),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.shield_outlined, color: AppColors.warning, size: 16),
+                      Icon(Icons.shield_outlined,
+                          color: AppColors.warning, size: 16),
                       SizedBox(width: 6),
                       Text(
                         'Guardian Anti-Abuse Shield Active',
@@ -242,11 +249,13 @@ class _CommunityAlertDialogState extends ConsumerState<CommunityAlertDialog> {
                 decoration: BoxDecoration(
                   color: AppColors.success.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                  border: Border.all(
+                      color: AppColors.success.withValues(alpha: 0.3)),
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.check_circle_rounded, color: AppColors.success, size: 18),
+                    Icon(Icons.check_circle_rounded,
+                        color: AppColors.success, size: 18),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -271,7 +280,9 @@ class _CommunityAlertDialogState extends ConsumerState<CommunityAlertDialog> {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: _isAccepting ? null : () => Navigator.of(context).pop(),
+                      onPressed: _isAccepting
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.textSecondary,
                         side: const BorderSide(color: AppColors.divider),
@@ -302,17 +313,30 @@ class _CommunityAlertDialogState extends ConsumerState<CommunityAlertDialog> {
                                   color: Colors.white, strokeWidth: 2),
                             )
                           : const Icon(Icons.directions_run_rounded, size: 18),
-                      label: Text(_isAccepting ? 'Accepting...' : 'Accept & Help'),
+                      label:
+                          Text(_isAccepting ? 'Accepting...' : 'Accept & Help'),
                     ),
                   ),
                 ],
               ),
               ElevatedButton.icon(
                 onPressed: () {
-                  final precLoc = _acceptedMission?['precision_location'] as Map?;
-                  final lat = (precLoc?['latitude'] as num?)?.toDouble() ?? 19.0760;
-                  final lng = (precLoc?['longitude'] as num?)?.toDouble() ?? 72.8777;
-                  final pin = _acceptedMission?['verification_pin']?.toString() ?? '8429';
+                  final precLoc =
+                      _acceptedMission?['precision_location'] as Map?;
+                  final lat = (precLoc?['latitude'] as num?)?.toDouble();
+                  final lng = (precLoc?['longitude'] as num?)?.toDouble();
+                  final pin = _acceptedMission?['verification_pin']?.toString();
+                  if (lat == null ||
+                      lng == null ||
+                      pin == null ||
+                      pin.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text(
+                              'Verified rendezvous details are not available yet.')),
+                    );
+                    return;
+                  }
 
                   Navigator.of(context).pop();
                   Navigator.of(context).push(
@@ -331,8 +355,8 @@ class _CommunityAlertDialogState extends ConsumerState<CommunityAlertDialog> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
-                  shape:
-                      RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
                 icon: const Icon(Icons.navigation_rounded, size: 18),

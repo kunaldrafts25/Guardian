@@ -38,8 +38,8 @@ class SafeZonesScreen extends ConsumerWidget {
           // Status Banner
           Container(
             padding: const EdgeInsets.all(16),
-            color: isInSafeZone 
-                ? AppColors.success.withOpacity(0.1) 
+            color: isInSafeZone
+                ? AppColors.success.withOpacity(0.1)
                 : AppColors.warning.withOpacity(0.1),
             child: Row(
               children: [
@@ -53,12 +53,14 @@ class SafeZonesScreen extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isInSafeZone 
-                            ? 'You are in a safe zone' 
+                        isInSafeZone
+                            ? 'You are in a safe zone'
                             : 'You are outside safe zones',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          color: isInSafeZone ? AppColors.success : AppColors.warning,
+                          color: isInSafeZone
+                              ? AppColors.success
+                              : AppColors.warning,
                         ),
                       ),
                       if (currentZone != null)
@@ -82,14 +84,14 @@ class SafeZonesScreen extends ConsumerWidget {
                 Text(
                   'Your Safe Zones',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 Text(
                   '${zones.length}/${SafeZoneState.maxZones}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey,
-                  ),
+                        color: Colors.grey,
+                      ),
                 ),
               ],
             ),
@@ -132,16 +134,16 @@ class SafeZonesScreen extends ConsumerWidget {
             Text(
               'No Safe Zones',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: Colors.grey[600],
-              ),
+                    color: Colors.grey[600],
+                  ),
             ),
             const SizedBox(height: 8),
             Text(
               'Add locations like home and work to get alerts when you leave',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey,
-              ),
+                    color: Colors.grey,
+                  ),
             ),
           ],
         ),
@@ -154,8 +156,8 @@ class SafeZonesScreen extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: zone.isActive 
-              ? AppColors.success.withOpacity(0.2) 
+          backgroundColor: zone.isActive
+              ? AppColors.success.withOpacity(0.2)
               : Colors.grey.withOpacity(0.2),
           child: Icon(
             _getZoneIcon(zone.type),
@@ -186,11 +188,6 @@ class SafeZonesScreen extends ConsumerWidget {
               const SizedBox(width: 4),
               const Text('Exit alerts', style: TextStyle(fontSize: 11)),
               const SizedBox(width: 8),
-            ],
-            if (zone.autoGuardianMode) ...[
-              Icon(Icons.shield, size: 12, color: AppColors.guardian),
-              const SizedBox(width: 4),
-              Text('Auto Guardian', style: TextStyle(fontSize: 11, color: AppColors.guardian)),
             ],
           ],
         ),
@@ -227,7 +224,6 @@ class SafeZonesScreen extends ConsumerWidget {
     SafeZoneType type = SafeZoneType.custom;
     double radius = 200;
     bool notifyOnExit = true;
-    bool autoGuardianMode = false;
 
     // Get current location as default (mutable)
     final locationState = ref.read(locationProvider);
@@ -259,10 +255,13 @@ class SafeZonesScreen extends ConsumerWidget {
                     labelText: 'Type',
                     prefixIcon: Icon(Icons.category),
                   ),
-                  items: SafeZoneType.values.map((t) => DropdownMenuItem(
-                    value: t,
-                    child: Text(t.name[0].toUpperCase() + t.name.substring(1)),
-                  )).toList(),
+                  items: SafeZoneType.values
+                      .map((t) => DropdownMenuItem(
+                            value: t,
+                            child: Text(
+                                t.name[0].toUpperCase() + t.name.substring(1)),
+                          ))
+                      .toList(),
                   onChanged: (value) => setState(() => type = value!),
                 ),
                 const SizedBox(height: 16),
@@ -280,19 +279,13 @@ class SafeZonesScreen extends ConsumerWidget {
                   value: notifyOnExit,
                   onChanged: (value) => setState(() => notifyOnExit = value),
                 ),
-                SwitchListTile(
-                  title: const Text('Auto Guardian mode'),
-                  subtitle: const Text('Enable when leaving this zone'),
-                  value: autoGuardianMode,
-                  onChanged: (value) => setState(() => autoGuardianMode = value),
-                ),
                 const SizedBox(height: 8),
                 // Location selection
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: lat != 0 
-                        ? AppColors.success.withValues(alpha: 0.1) 
+                    color: lat != 0
+                        ? AppColors.success.withValues(alpha: 0.1)
                         : Colors.grey.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
@@ -313,13 +306,14 @@ class SafeZonesScreen extends ConsumerWidget {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              lat != 0 
+                              lat != 0
                                   ? (locationAddress ?? 'Location selected')
                                   : 'No location selected',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
-                                color: lat != 0 ? AppColors.success : Colors.grey,
+                                color:
+                                    lat != 0 ? AppColors.success : Colors.grey,
                               ),
                             ),
                           ),
@@ -329,7 +323,10 @@ class SafeZonesScreen extends ConsumerWidget {
                         const SizedBox(height: 4),
                         Text(
                           '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
-                          style: TextStyle(fontSize: 10, color: Colors.grey[600], fontFamily: 'monospace'),
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey[600],
+                              fontFamily: 'monospace'),
                         ),
                       ],
                       const SizedBox(height: 8),
@@ -338,7 +335,8 @@ class SafeZonesScreen extends ConsumerWidget {
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: () async {
-                                final result = await Navigator.push<PickedLocation>(
+                                final result =
+                                    await Navigator.push<PickedLocation>(
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => const LocationPickerScreen(
@@ -392,19 +390,18 @@ class SafeZonesScreen extends ConsumerWidget {
               onPressed: () {
                 if (nameController.text.isNotEmpty && lat != 0) {
                   ref.read(safeZoneProvider.notifier).addZone(
-                    SafeZone(
-                      id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      name: nameController.text,
-                      latitude: lat,
-                      longitude: lng,
-                      radius: radius,
-                      type: type,
-                      isActive: true,
-                      notifyOnExit: notifyOnExit,
-                      autoGuardianMode: autoGuardianMode,
-                      createdAt: DateTime.now(),
-                    ),
-                  );
+                        SafeZone(
+                          id: DateTime.now().millisecondsSinceEpoch.toString(),
+                          name: nameController.text,
+                          latitude: lat,
+                          longitude: lng,
+                          radius: radius,
+                          type: type,
+                          isActive: true,
+                          notifyOnExit: notifyOnExit,
+                          createdAt: DateTime.now(),
+                        ),
+                      );
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('${nameController.text} added')),
@@ -424,7 +421,6 @@ class SafeZonesScreen extends ConsumerWidget {
     SafeZoneType type = zone.type;
     double radius = zone.radius;
     bool notifyOnExit = zone.notifyOnExit;
-    bool autoGuardianMode = zone.autoGuardianMode;
 
     showDialog(
       context: context,
@@ -449,10 +445,13 @@ class SafeZonesScreen extends ConsumerWidget {
                     labelText: 'Type',
                     prefixIcon: Icon(Icons.category),
                   ),
-                  items: SafeZoneType.values.map((t) => DropdownMenuItem(
-                    value: t,
-                    child: Text(t.name[0].toUpperCase() + t.name.substring(1)),
-                  )).toList(),
+                  items: SafeZoneType.values
+                      .map((t) => DropdownMenuItem(
+                            value: t,
+                            child: Text(
+                                t.name[0].toUpperCase() + t.name.substring(1)),
+                          ))
+                      .toList(),
                   onChanged: (value) => setState(() => type = value!),
                 ),
                 const SizedBox(height: 16),
@@ -470,12 +469,6 @@ class SafeZonesScreen extends ConsumerWidget {
                   value: notifyOnExit,
                   onChanged: (value) => setState(() => notifyOnExit = value),
                 ),
-                SwitchListTile(
-                  title: const Text('Auto Guardian mode'),
-                  subtitle: const Text('Enable when leaving this zone'),
-                  value: autoGuardianMode,
-                  onChanged: (value) => setState(() => autoGuardianMode = value),
-                ),
               ],
             ),
           ),
@@ -488,15 +481,14 @@ class SafeZonesScreen extends ConsumerWidget {
               onPressed: () {
                 if (nameController.text.isNotEmpty) {
                   ref.read(safeZoneProvider.notifier).updateZone(
-                    zone.id,
-                    zone.copyWith(
-                      name: nameController.text,
-                      type: type,
-                      radius: radius,
-                      notifyOnExit: notifyOnExit,
-                      autoGuardianMode: autoGuardianMode,
-                    ),
-                  );
+                        zone.id,
+                        zone.copyWith(
+                          name: nameController.text,
+                          type: type,
+                          radius: radius,
+                          notifyOnExit: notifyOnExit,
+                        ),
+                      );
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Zone updated')),
@@ -511,7 +503,8 @@ class SafeZonesScreen extends ConsumerWidget {
     );
   }
 
-  void _showDeleteConfirmation(BuildContext context, WidgetRef ref, SafeZone zone) {
+  void _showDeleteConfirmation(
+      BuildContext context, WidgetRef ref, SafeZone zone) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(

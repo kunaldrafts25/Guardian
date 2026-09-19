@@ -77,7 +77,8 @@ class StringUtils {
   static bool isValidEmail(String email) {
     if (email.isEmpty) return false;
 
-    final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+    final emailRegex =
+        RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
     return emailRegex.hasMatch(email);
   }
 
@@ -106,7 +107,8 @@ class StringUtils {
       return name[0].toUpperCase();
     }
 
-    return nameParts[0][0].toUpperCase() + nameParts[nameParts.length - 1][0].toUpperCase();
+    return nameParts[0][0].toUpperCase() +
+        nameParts[nameParts.length - 1][0].toUpperCase();
   }
 
   /// Converts a string to camelCase
@@ -115,7 +117,8 @@ class StringUtils {
 
     final words = str.split(RegExp(r'[^a-zA-Z0-9]'));
     final firstWord = words[0].toLowerCase();
-    final remainingWords = words.sublist(1).map((word) => capitalize(word.toLowerCase())).join('');
+    final remainingWords =
+        words.sublist(1).map((word) => capitalize(word.toLowerCase())).join('');
 
     return firstWord + remainingWords;
   }
@@ -128,9 +131,12 @@ class StringUtils {
     final result = str.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
 
     // Replace uppercase letters with underscore + lowercase
-    return result.replaceAllMapped(
-      RegExp(r'[A-Z]'),
-      (match) => '_${match.group(0)!.toLowerCase()}',
-    ).replaceAll(RegExp(r'_+'), '_').toLowerCase();
+    return result
+        .replaceAllMapped(
+          RegExp(r'[A-Z]'),
+          (match) => '_${match.group(0)!.toLowerCase()}',
+        )
+        .replaceAll(RegExp(r'_+'), '_')
+        .toLowerCase();
   }
 }

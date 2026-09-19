@@ -47,7 +47,8 @@ class AwsSnsService {
   // ─── Local Notification Display ──────────────────────────────────────────
 
   static Future<void> _setupLocalNotifications() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: false,
       requestBadgePermission: false,
@@ -129,7 +130,8 @@ class AwsSnsService {
       if (settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional) {
         _deviceToken = await messaging.getToken();
-        Logger.info('Device token obtained: ${_deviceToken?.substring(0, 20)}...');
+        Logger.info(
+            'Device token obtained: ${_deviceToken?.substring(0, 20)}...');
 
         // Register with AWS SNS via backend
         await _registerWithSns();
@@ -239,4 +241,3 @@ class AwsSnsService {
     }
   }
 }
-

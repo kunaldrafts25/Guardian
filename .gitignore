@@ -73,6 +73,7 @@ google-services.json
 *.dSYM
 
 # --- IDE ---
+.tooling/
 .idea/
 .vscode/
 *.iml

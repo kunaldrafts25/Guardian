@@ -39,7 +39,8 @@ class LocationPickerScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<LocationPickerScreen> createState() => _LocationPickerScreenState();
+  ConsumerState<LocationPickerScreen> createState() =>
+      _LocationPickerScreenState();
 }
 
 class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
@@ -68,11 +69,12 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
   @override
   Widget build(BuildContext context) {
     final locationState = ref.watch(locationProvider);
-    
+
     // Default to current location or a fallback
     final initialPosition = widget.initialLocation ??
         (locationState.hasLocation
-            ? LatLng(locationState.position!.latitude, locationState.position!.longitude)
+            ? LatLng(locationState.position!.latitude,
+                locationState.position!.longitude)
             : const LatLng(18.5204, 73.8567)); // Pune fallback
 
     return Scaffold(
@@ -82,7 +84,8 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
           if (_selectedLocation != null)
             TextButton(
               onPressed: _confirmLocation,
-              child: const Text('CONFIRM', style: TextStyle(fontWeight: FontWeight.bold)),
+              child: const Text('CONFIRM',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
             ),
         ],
       ),
@@ -117,7 +120,7 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
               onChanged: _onSearchChanged,
             ),
           ),
-          
+
           // Search results or map
           Expanded(
             child: Stack(
@@ -132,7 +135,8 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.company.guardian',
                     ),
                     if (_selectedLocation != null)
@@ -152,7 +156,7 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
                       ),
                   ],
                 ),
-                
+
                 // Search results overlay
                 if (_searchResults.isNotEmpty || _isSearching)
                   Positioned(
@@ -165,7 +169,9 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(8),
-                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black26, blurRadius: 4)
+                        ],
                       ),
                       child: _isSearching
                           ? const Center(
@@ -192,28 +198,33 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
                             ),
                     ),
                   ),
-                
+
                 // Center marker hint
                 if (_selectedLocation == null && _searchResults.isEmpty)
                   Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.touch_app, size: 48, color: AppColors.primary.withValues(alpha: 0.7)),
+                        Icon(Icons.touch_app,
+                            size: 48,
+                            color: AppColors.primary.withValues(alpha: 0.7)),
                         const SizedBox(height: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(8),
-                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                            boxShadow: const [
+                              BoxShadow(color: Colors.black26, blurRadius: 4)
+                            ],
                           ),
                           child: const Text('Search or tap on the map'),
                         ),
                       ],
                     ),
                   ),
-                
+
                 // Current location button
                 Positioned(
                   right: 16,
@@ -222,13 +233,14 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
                     heroTag: 'current_location',
                     onPressed: locationState.hasLocation
                         ? () => _moveToLocation(
-                            LatLng(locationState.position!.latitude, locationState.position!.longitude),
-                          )
+                              LatLng(locationState.position!.latitude,
+                                  locationState.position!.longitude),
+                            )
                         : null,
                     child: const Icon(Icons.my_location),
                   ),
                 ),
-                
+
                 // Bottom info card
                 if (_selectedLocation != null)
                   Positioned(
@@ -244,7 +256,8 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.location_on, color: AppColors.primary),
+                                Icon(Icons.location_on,
+                                    color: AppColors.primary),
                                 const SizedBox(width: 8),
                                 const Text(
                                   'Selected Location',
@@ -256,17 +269,24 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
                             if (_isLoadingAddress)
                               const Row(
                                 children: [
-                                  SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                                  SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2)),
                                   SizedBox(width: 8),
                                   Text('Getting address...'),
                                 ],
                               )
                             else if (_address != null)
-                              Text(_address!, style: TextStyle(color: Colors.grey[600]))
+                              Text(_address!,
+                                  style: TextStyle(color: Colors.grey[600]))
                             else
                               Text(
                                 '${_selectedLocation!.latitude.toStringAsFixed(6)}, ${_selectedLocation!.longitude.toStringAsFixed(6)}',
-                                style: TextStyle(color: Colors.grey[600], fontFamily: 'monospace'),
+                                style: TextStyle(
+                                    color: Colors.grey[600],
+                                    fontFamily: 'monospace'),
                               ),
                             const SizedBox(height: 12),
                             SizedBox(
@@ -292,7 +312,7 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
 
   void _onSearchChanged(String query) {
     _searchDebounce?.cancel();
-    
+
     if (query.isEmpty) {
       setState(() {
         _searchResults = [];
@@ -300,9 +320,9 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
       });
       return;
     }
-    
+
     setState(() => _isSearching = true);
-    
+
     _searchDebounce = Timer(const Duration(milliseconds: 800), () async {
       try {
         final locations = await locationFromAddress(query);
@@ -344,24 +364,28 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
 
   Future<void> _getAddressFromLatLng(LatLng position) async {
     setState(() => _isLoadingAddress = true);
-    
+
     try {
       final placemarks = await placemarkFromCoordinates(
         position.latitude,
         position.longitude,
       );
-      
+
       if (placemarks.isNotEmpty && mounted) {
         final place = placemarks.first;
         final addressParts = <String>[];
-        
-        if (place.name != null && place.name!.isNotEmpty) addressParts.add(place.name!);
-        if (place.subLocality != null && place.subLocality!.isNotEmpty) addressParts.add(place.subLocality!);
-        if (place.locality != null && place.locality!.isNotEmpty) addressParts.add(place.locality!);
-        if (place.administrativeArea != null && place.administrativeArea!.isNotEmpty) {
+
+        if (place.name != null && place.name!.isNotEmpty)
+          addressParts.add(place.name!);
+        if (place.subLocality != null && place.subLocality!.isNotEmpty)
+          addressParts.add(place.subLocality!);
+        if (place.locality != null && place.locality!.isNotEmpty)
+          addressParts.add(place.locality!);
+        if (place.administrativeArea != null &&
+            place.administrativeArea!.isNotEmpty) {
           addressParts.add(place.administrativeArea!);
         }
-        
+
         setState(() {
           _address = addressParts.take(3).join(', ');
         });

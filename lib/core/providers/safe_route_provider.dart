@@ -6,7 +6,6 @@
  */
 
 import 'dart:convert';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -145,71 +144,17 @@ class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
 
       throw Exception('No route found (OSRM)');
     } catch (e) {
-      Logger.warning('OSRM routing failed, using fallback: $e');
-
-      // Always fallback to straight-line estimate
-      final fallbackRoute = _generateFallbackRoute(origin, destination, destinationName);
-      state = state.copyWith(
+      Logger.warning('OSRM routing failed: $e');
+      state = SafeRouteState(
         isLoading: false,
-        currentRoute: fallbackRoute,
-        errorMessage: 'Using estimated route',
+        origin: origin,
+        destination: destination,
+        destinationName: destinationName,
+        errorMessage:
+            'A walking route could not be retrieved. Check your connection and try again.',
       );
     }
   }
-
-  /// Generate a fallback straight-line route when API is unavailable
-  RouteInfo _generateFallbackRoute(LatLng origin, LatLng destination, String? destinationName) {
-    // Calculate distance using Haversine formula
-    const earthRadius = 6371.0; // km
-    final dLat = _toRadians(destination.latitude - origin.latitude);
-    final dLng = _toRadians(destination.longitude - origin.longitude);
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_toRadians(origin.latitude)) * math.cos(_toRadians(destination.latitude)) *
-        math.sin(dLng / 2) * math.sin(dLng / 2);
-    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-    final distance = earthRadius * c;
-    
-    // Estimate walking time (5 km/h average)
-    final walkingMinutes = (distance / 5 * 60).round();
-    
-    // Generate intermediate points for smoother line
-    final points = <LatLng>[];
-    const segments = 20;
-    for (var i = 0; i <= segments; i++) {
-      final t = i / segments;
-      points.add(LatLng(
-        origin.latitude + (destination.latitude - origin.latitude) * t,
-        origin.longitude + (destination.longitude - origin.longitude) * t,
-      ));
-    }
-    
-    String distanceText;
-    if (distance < 1) {
-      distanceText = '${(distance * 1000).toInt()} m';
-    } else {
-      distanceText = '${distance.toStringAsFixed(1)} km';
-    }
-    
-    String durationText;
-    if (walkingMinutes < 60) {
-      durationText = '$walkingMinutes min';
-    } else {
-      final hours = walkingMinutes ~/ 60;
-      final mins = walkingMinutes % 60;
-      durationText = '$hours h $mins min';
-    }
-    
-    return RouteInfo(
-      polylinePoints: points,
-      distance: distanceText,
-      duration: durationText,
-      startAddress: 'Your location',
-      endAddress: destinationName ?? 'Destination',
-      steps: ['Walk towards ${destinationName ?? "destination"} (estimated)'],
-    );
-  }
-
-  double _toRadians(double degrees) => degrees * math.pi / 180;
 
   // ignore: unused_element
   /// Decode Google's encoded polyline format
@@ -266,18 +211,19 @@ class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
 }
 
 /// Safe route provider
-final safeRouteProvider = StateNotifierProvider<SafeRouteNotifier, SafeRouteState>((ref) {
+final safeRouteProvider =
+    StateNotifierProvider<SafeRouteNotifier, SafeRouteState>((ref) {
   return SafeRouteNotifier();
 });
 
 /// Current route polyline provider (for map display)
 final routePolylinesProvider = Provider<List<Polyline>>((ref) {
   final routeState = ref.watch(safeRouteProvider);
-  
+
   if (!routeState.hasRoute) {
     return [];
   }
-  
+
   return [
     Polyline(
       points: routeState.currentRoute!.polylinePoints,
@@ -290,14 +236,14 @@ final routePolylinesProvider = Provider<List<Polyline>>((ref) {
 /// Route markers provider (start and end)
 final routeMarkersProvider = Provider<List<Marker>>((ref) {
   final routeState = ref.watch(safeRouteProvider);
-  
+
   if (!routeState.hasRoute) {
     return [];
   }
-  
+
   final points = routeState.currentRoute!.polylinePoints;
   if (points.isEmpty) return [];
-  
+
   return [
     Marker(
       point: points.first,
@@ -313,4 +259,3 @@ final routeMarkersProvider = Provider<List<Marker>>((ref) {
     ),
   ];
 });
-

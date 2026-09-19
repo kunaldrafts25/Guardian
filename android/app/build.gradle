@@ -47,7 +47,7 @@ android {
         applicationId = "com.company.guardian"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
-        minSdk = 23 // Updated from 21 to 23 for record_android plugin compatibility
+        minSdkVersion = flutter.minSdkVersion // Updated from 21 to 23 for record_android plugin compatibility
         targetSdk = 35 // Updated from flutter.targetSdkVersion to fix plugin compatibility issues
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName
@@ -55,11 +55,6 @@ android {
         // Enable multidex for large app
         multiDexEnabled true
         
-        // Read API key from dart-define or use empty string as fallback
-        def googleMapsApiKey = project.hasProperty('GOOGLE_MAPS_API_KEY') 
-            ? project.property('GOOGLE_MAPS_API_KEY') 
-            : System.getenv('GOOGLE_MAPS_API_KEY_ANDROID') ?: ""
-        manifestPlaceholders = [GOOGLE_MAPS_API_KEY: googleMapsApiKey]
     }
 
     buildTypes {

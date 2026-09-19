@@ -9,11 +9,10 @@
  * - SMS alerts
  * - Push notifications
  * - Emergency state management
- * - Firebase alert storage
+ * - Local emergency state management
  */
 
 import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -28,21 +27,21 @@ const MethodChannel _serviceChannel = MethodChannel('com.guardian/service');
 
 /// SOS trigger source
 enum SosTriggerSource {
-  button,      // Manual button press
-  shake,       // Shake detection
-  widget,      // Home screen widget
-  voiceCommand,// Voice command
-  scheduled,   // Check-in timer expired
+  button, // Manual button press
+  shake, // Shake detection
+  widget, // Home screen widget
+  voiceCommand, // Voice command
+  scheduled, // Check-in timer expired
 }
 
 /// SOS alert status
 enum SosAlertStatus {
-  pending,     // Alert created but not sent
-  sending,     // Currently sending alerts
-  active,      // Alerts sent, emergency active
-  resolved,    // User marked safe
-  cancelled,   // User cancelled before sending
-  failed,      // Failed to send alerts
+  pending, // Alert created but not sent
+  sending, // Currently sending alerts
+  active, // Alerts sent, emergency active
+  resolved, // User marked safe
+  cancelled, // User cancelled before sending
+  failed, // Failed to send alerts
 }
 
 /// Individual contact alert status
@@ -129,7 +128,8 @@ class SosAlert {
   }
 
   /// Count of successfully notified contacts
-  int get notifiedCount => contactStatuses.where((c) => c.smsSent || c.pushSent).length;
+  int get notifiedCount =>
+      contactStatuses.where((c) => c.smsSent || c.pushSent).length;
 }
 
 /// Callback types
@@ -146,9 +146,10 @@ class SosService {
   // Current active alert
   SosAlert? _activeAlert;
   SosAlert? get activeAlert => _activeAlert;
-  bool get hasActiveAlert => _activeAlert != null && 
-      (_activeAlert!.status == SosAlertStatus.active || 
-       _activeAlert!.status == SosAlertStatus.sending);
+  bool get hasActiveAlert =>
+      _activeAlert != null &&
+      (_activeAlert!.status == SosAlertStatus.active ||
+          _activeAlert!.status == SosAlertStatus.sending);
 
   // Location tracking
   StreamSubscription<Position>? _locationSubscription;
@@ -192,13 +193,11 @@ class SosService {
   /// [source] - What triggered the SOS
   /// [customMessage] - Optional custom message
   /// [userName] - Display name for SMS message
-  /// [userId] - Firebase Auth UID for Firestore storage
   Future<SosAlert?> triggerSos({
     required List<EmergencyContact> contacts,
     required SosTriggerSource source,
     String? customMessage,
     String? userName,
-    String? userId,
   }) async {
     if (hasActiveAlert) {
       Logger.warning('SOS already active, ignoring trigger');
@@ -212,21 +211,28 @@ class SosService {
     try {
       position = await LocationUtils.getCurrentPosition();
       if (position != null) {
-        Logger.info('📍 Location acquired (accuracy: ${position.accuracy.toStringAsFixed(0)}m)');
+        Logger.info(
+            '📍 Location acquired (accuracy: ${position.accuracy.toStringAsFixed(0)}m)');
       } else {
         // Fallback: request last-known location from foreground service
         Logger.warning('📍 Could not get fresh GPS — using cached location');
-        final cached = await _serviceChannel.invokeMethod<Map>('getLastLocation');
+        final cached =
+            await _serviceChannel.invokeMethod<Map>('getLastLocation');
         if (cached != null) {
           position = Position(
             latitude: (cached['latitude'] as num).toDouble(),
             longitude: (cached['longitude'] as num).toDouble(),
             accuracy: (cached['accuracy'] as num).toDouble(),
-            altitude: 0, heading: 0, speed: 0, speedAccuracy: 0,
-            altitudeAccuracy: 0, headingAccuracy: 0,
+            altitude: 0,
+            heading: 0,
+            speed: 0,
+            speedAccuracy: 0,
+            altitudeAccuracy: 0,
+            headingAccuracy: 0,
             timestamp: DateTime.now(),
           );
-          Logger.info('📍 Using cached location (accuracy: ${position.accuracy.toStringAsFixed(0)}m)');
+          Logger.info(
+              '📍 Using cached location (accuracy: ${position.accuracy.toStringAsFixed(0)}m)');
         }
       }
     } catch (e) {
@@ -243,14 +249,15 @@ class SosService {
       initialLocation: position,
       currentLocation: position,
       customMessage: customMessage,
-      contactStatuses: contacts.map((c) => ContactAlertStatus(contact: c)).toList(),
+      contactStatuses:
+          contacts.map((c) => ContactAlertStatus(contact: c)).toList(),
     );
 
     _notifyAlertListeners();
 
     // Send alerts to all contacts
     final updatedStatuses = <ContactAlertStatus>[];
-    
+
     for (final contactStatus in _activeAlert!.contactStatuses) {
       final result = await _sendAlertToContact(
         contact: contactStatus.contact,
@@ -269,13 +276,11 @@ class SosService {
 
     _notifyAlertListeners();
 
-    // Save alert to Firebase (with real userId)
-    await saveAlertToFirebase(_activeAlert!, userId: userId);
-
     // Start location tracking
     _startLocationTracking();
 
-    Logger.info('✅ SOS Alert active. ${_activeAlert!.notifiedCount}/${contacts.length} contacts notified');
+    Logger.info(
+        '✅ SOS Alert active. ${_activeAlert!.notifiedCount}/${contacts.length} contacts notified');
 
     return _activeAlert;
   }
@@ -331,26 +336,27 @@ class SosService {
     String? customMessage,
   }) {
     final buffer = StringBuffer();
-    
+
     buffer.writeln('🚨 EMERGENCY ALERT 🚨');
     buffer.writeln('$userName needs help!');
-    
+
     if (customMessage != null && customMessage.isNotEmpty) {
       buffer.writeln(customMessage);
     }
-    
+
     if (position != null) {
       buffer.writeln();
       buffer.writeln('📍 Location:');
-      buffer.writeln('https://maps.google.com/?q=${position.latitude},${position.longitude}');
+      buffer.writeln(
+          'https://maps.google.com/?q=${position.latitude},${position.longitude}');
     } else {
       buffer.writeln();
       buffer.writeln('📍 Location unavailable');
     }
-    
+
     buffer.writeln();
     buffer.writeln('Sent via Guardian Safety App');
-    
+
     return buffer.toString();
   }
 
@@ -370,7 +376,10 @@ class SosService {
       // Android: use SmsManager for automatic silent sending
       final result = await _smsChannel.invokeMethod<Map>(
         'sendEmergencySms',
-        {'phones': [phone], 'message': message},
+        {
+          'phones': [phone],
+          'message': message
+        },
       );
 
       if (result != null && result['allSuccess'] == true) {
@@ -432,12 +441,13 @@ class SosService {
         if (_activeAlert != null) {
           _activeAlert = _activeAlert!.copyWith(currentLocation: position);
           _notifyAlertListeners();
-          
+
           for (final callback in _locationListeners) {
             callback(position);
           }
-          
-          Logger.debug('📍 Location updated (accuracy: ${position.accuracy.toStringAsFixed(0)}m)');
+
+          Logger.debug(
+              '📍 Location updated (accuracy: ${position.accuracy.toStringAsFixed(0)}m)');
         }
       },
       onError: (error) {
@@ -477,9 +487,6 @@ class SosService {
 
     Logger.info('✅ User marked as safe');
 
-    // Get alert ID before nullifying
-    final alertId = _activeAlert!.id;
-
     // Get contacts that were notified
     final notifiedContacts = _activeAlert!.contactStatuses
         .where((c) => c.smsSent)
@@ -494,9 +501,6 @@ class SosService {
     _notifyAlertListeners();
     _stopLocationTracking();
 
-    // Update status in Firebase
-    await updateAlertStatusInFirebase(alertId, SosAlertStatus.resolved);
-
     // Send "I'm safe" notification to all contacts that were notified
     for (final contact in notifiedContacts) {
       await _sendSafetyConfirmation(
@@ -505,7 +509,8 @@ class SosService {
       );
     }
 
-    Logger.info('✅ Safety confirmation sent to ${notifiedContacts.length} contacts');
+    Logger.info(
+        '✅ Safety confirmation sent to ${notifiedContacts.length} contacts');
 
     _activeAlert = null;
   }
@@ -528,7 +533,6 @@ class SosService {
     }
   }
 
-
   /// Share live location link
   Future<void> shareLiveLocation() async {
     if (_activeAlert?.locationLink.isEmpty ?? true) {
@@ -548,90 +552,6 @@ class SosService {
     if (await canLaunchUrl(phoneUri)) {
       await launchUrl(phoneUri);
       Logger.info('📞 Calling emergency services: $number');
-    }
-  }
-
-  // ============ FIREBASE STORAGE ============
-
-  /// Firestore collection reference
-  CollectionReference get _alertsCollection => 
-      FirebaseFirestore.instance.collection('sos_alerts');
-
-  /// Save alert to Firebase Firestore
-  Future<void> saveAlertToFirebase(SosAlert alert, {String? userId}) async {
-    try {
-      final alertData = {
-        'id': alert.id,
-        'userId': userId ?? 'unknown',  // Callers must pass real Firebase Auth UID
-        'source': alert.source.name,
-        'status': alert.status.name,
-        'startedAt': Timestamp.fromDate(alert.startedAt),
-        'resolvedAt': alert.resolvedAt != null 
-            ? Timestamp.fromDate(alert.resolvedAt!) 
-            : null,
-        'initialLocation': alert.initialLocation != null
-            ? GeoPoint(
-                alert.initialLocation!.latitude,
-                alert.initialLocation!.longitude,
-              )
-            : null,
-        'currentLocation': alert.currentLocation != null
-            ? GeoPoint(
-                alert.currentLocation!.latitude,
-                alert.currentLocation!.longitude,
-              )
-            : null,
-        'customMessage': alert.customMessage,
-        'notifiedContacts': alert.contactStatuses
-            .where((c) => c.smsSent)
-            .map((c) => {
-                  'name': c.contact.name,
-                  'phone': c.contact.phone,
-                  'sentAt': c.sentAt != null 
-                      ? Timestamp.fromDate(c.sentAt!) 
-                      : null,
-                })
-            .toList(),
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-
-      await _alertsCollection.doc(alert.id).set(alertData);
-      Logger.info('☁️ Alert saved to Firebase: ${alert.id}');
-    } catch (e) {
-      Logger.error('☁️ Failed to save alert to Firebase', e);
-    }
-  }
-
-  /// Update alert status in Firebase
-  Future<void> updateAlertStatusInFirebase(String alertId, SosAlertStatus status) async {
-    try {
-      await _alertsCollection.doc(alertId).update({
-        'status': status.name,
-        'updatedAt': FieldValue.serverTimestamp(),
-        if (status == SosAlertStatus.resolved)
-          'resolvedAt': FieldValue.serverTimestamp(),
-      });
-      Logger.info('☁️ Alert status updated in Firebase: $status');
-    } catch (e) {
-      Logger.error('☁️ Failed to update alert in Firebase', e);
-    }
-  }
-
-  /// Get user's alert history from Firebase
-  Future<List<Map<String, dynamic>>> getAlertHistory(String userId, {int limit = 10}) async {
-    try {
-      final snapshot = await _alertsCollection
-          .where('userId', isEqualTo: userId)
-          .orderBy('startedAt', descending: true)
-          .limit(limit)
-          .get();
-      
-      return snapshot.docs
-          .map((doc) => doc.data() as Map<String, dynamic>)
-          .toList();
-    } catch (e) {
-      Logger.error('☁️ Failed to get alert history', e);
-      return [];
     }
   }
 

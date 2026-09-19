@@ -24,7 +24,7 @@ class PageTransitions {
       },
     );
   }
-  
+
   /// Create a slide transition
   static PageRouteBuilder<T> slide<T>({
     required Widget page,
@@ -36,7 +36,7 @@ class PageTransitions {
       transitionDuration: duration,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         Offset begin;
-        
+
         switch (direction) {
           case SlideDirection.fromRight:
             begin = const Offset(1.0, 0.0);
@@ -51,7 +51,7 @@ class PageTransitions {
             begin = const Offset(0.0, 1.0);
             break;
         }
-        
+
         return SlideTransition(
           position: Tween<Offset>(
             begin: begin,
@@ -67,7 +67,7 @@ class PageTransitions {
       },
     );
   }
-  
+
   /// Create a scale transition
   static PageRouteBuilder<T> scale<T>({
     required Widget page,
@@ -94,7 +94,7 @@ class PageTransitions {
       },
     );
   }
-  
+
   /// Create a fade and slide transition
   static PageRouteBuilder<T> fadeSlide<T>({
     required Widget page,
@@ -106,7 +106,7 @@ class PageTransitions {
       transitionDuration: duration,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         Offset begin;
-        
+
         switch (direction) {
           case SlideDirection.fromRight:
             begin = const Offset(0.2, 0.0);
@@ -121,7 +121,7 @@ class PageTransitions {
             begin = const Offset(0.0, 0.2);
             break;
         }
-        
+
         return FadeTransition(
           opacity: animation,
           child: SlideTransition(
@@ -140,7 +140,7 @@ class PageTransitions {
       },
     );
   }
-  
+
   /// Create a fade and scale transition
   static PageRouteBuilder<T> fadeScale<T>({
     required Widget page,
@@ -170,7 +170,7 @@ class PageTransitions {
       },
     );
   }
-  
+
   /// Create a rotation transition
   static PageRouteBuilder<T> rotation<T>({
     required Widget page,

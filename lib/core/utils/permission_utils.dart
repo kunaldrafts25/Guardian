@@ -15,7 +15,8 @@ class PermissionUtils {
   }
 
   /// Request a single permission
-  static Future<PermissionStatus> requestPermission(Permission permission) async {
+  static Future<PermissionStatus> requestPermission(
+      Permission permission) async {
     return await permission.request();
   }
 
@@ -35,7 +36,8 @@ class PermissionUtils {
   }
 
   /// Request all permissions needed for the app
-  static Future<Map<Permission, PermissionStatus>> requestAllPermissions() async {
+  static Future<Map<Permission, PermissionStatus>>
+      requestAllPermissions() async {
     return await requestMultiplePermissions([
       Permission.location,
       Permission.locationAlways,

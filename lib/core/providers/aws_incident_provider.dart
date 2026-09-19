@@ -30,10 +30,15 @@ class AwsIncidentState {
   String? get incidentId => currentIncident?['incident_id'] as String?;
   String get state => (currentIncident?['state'] as String?) ?? 'IDLE';
   String get eventType => (currentIncident?['event_type'] as String?) ?? 'None';
-  String get agentDecision => (currentIncident?['agent_decision'] as String?) ?? 'PENDING';
-  String get agentRationale => (currentIncident?['agent_rationale'] as String?) ?? '';
-  double get riskScore => (currentIncident?['risk_assessment']?['score'] as num?)?.toDouble() ?? 0.0;
-  String get riskLevel => (currentIncident?['risk_assessment']?['level'] as String?) ?? 'LOW';
+  String get agentDecision =>
+      (currentIncident?['agent_decision'] as String?) ?? 'PENDING';
+  String get agentRationale =>
+      (currentIncident?['agent_rationale'] as String?) ?? '';
+  double get riskScore =>
+      (currentIncident?['risk_assessment']?['score'] as num?)?.toDouble() ??
+      0.0;
+  String get riskLevel =>
+      (currentIncident?['risk_assessment']?['level'] as String?) ?? 'LOW';
 
   bool get isSuspected => state == 'SUSPECTED';
   bool get isVerifying => state == 'VERIFYING';
@@ -42,7 +47,8 @@ class AwsIncidentState {
   bool get hasActiveIncident => currentIncident != null && !isResolved;
   bool get isCommunityDispatched =>
       agentDecision.contains('COMMUNITY') ||
-      (currentIncident?['agent_rationale']?.toString().contains('community') ?? false);
+      (currentIncident?['agent_rationale']?.toString().contains('community') ??
+          false);
 
   AwsIncidentState copyWith({
     Map<String, dynamic>? currentIncident,
@@ -65,7 +71,6 @@ class AwsIncidentState {
     );
   }
 }
-
 
 class AwsIncidentNotifier extends StateNotifier<AwsIncidentState> {
   final AwsIncidentService _service = AwsIncidentService.instance;
@@ -111,13 +116,15 @@ class AwsIncidentNotifier extends StateNotifier<AwsIncidentState> {
   Future<void> _onCountdownExpired() async {
     final iid = state.incidentId;
     if (iid != null && state.isVerifying) {
-      Logger.warning('15s Verification timed out. Escalating to trusted contacts.');
+      Logger.warning(
+          '15s Verification timed out. Escalating to trusted contacts.');
       try {
         await _service.updateIncidentStatus(
           iid,
           'RESPONDING',
           actor: 'SYSTEM',
-          note: 'Verification timeout (15s elapsed without response). Escalating alert.',
+          note:
+              'Verification timeout (15s elapsed without response). Escalating alert.',
         );
         await pollStatus(iid);
       } catch (e) {
@@ -159,35 +166,6 @@ class AwsIncidentNotifier extends StateNotifier<AwsIncidentState> {
     }
   }
 
-  /// Trigger simulation scenario
-  Future<void> simulateScenario(String scenario) async {
-    state = state.copyWith(isLoading: true, errorMessage: null);
-    try {
-      final res = await _service.simulateScenario(scenario);
-      final incident = res['incident'] as Map<String, dynamic>;
-      final iid = incident['incident_id'] as String;
-
-      state = state.copyWith(
-        currentIncident: incident,
-        isLoading: false,
-      );
-
-      _startPolling(iid);
-      await pollStatus(iid);
-    } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: 'Simulation failed: $e',
-      );
-    }
-  }
-
-  /// Trigger Hardware Power Button 3-Tap Panic Simulation
-  /// Covert physical trigger: Skips 15s verification countdown, immediate CRITICAL escalation
-  Future<void> simulateHardwarePanic() async {
-    await simulateScenario('hardware_panic');
-  }
-
   /// Query nearby Good Samaritan community responders
   Future<void> fetchNearbyResponders() async {
     final iid = state.incidentId;
@@ -201,7 +179,8 @@ class AwsIncidentNotifier extends StateNotifier<AwsIncidentState> {
   }
 
   /// Accept rescue mission as a community helper
-  Future<Map<String, dynamic>?> acceptMission({String responderId = 'resp_01'}) async {
+  Future<Map<String, dynamic>?> acceptMission(
+      {String responderId = 'resp_01'}) async {
     final iid = state.incidentId;
     if (iid == null) return null;
     try {
@@ -252,7 +231,8 @@ class AwsIncidentNotifier extends StateNotifier<AwsIncidentState> {
         iid,
         'RESPONDING',
         actor: 'USER',
-        note: "User confirmed emergency alert. Dispatching contacts immediately.",
+        note:
+            "User confirmed emergency alert. Dispatching contacts immediately.",
       );
       await pollStatus(iid);
       state = state.copyWith(isLoading: false);

@@ -49,15 +49,19 @@ class ContactsScreen extends ConsumerWidget {
                         children: [
                           Text(
                             'Your Trusted Contacts',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
                           ),
                           Text(
                             '${contacts.length}/${ContactsState.maxContacts} contacts added',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey,
-                            ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Colors.grey,
+                                    ),
                           ),
                         ],
                       ),
@@ -67,7 +71,7 @@ class ContactsScreen extends ConsumerWidget {
               ),
             ),
           ),
-          
+
           // Contacts List
           Expanded(
             child: contacts.isEmpty
@@ -105,16 +109,16 @@ class ContactsScreen extends ConsumerWidget {
             Text(
               'No Emergency Contacts',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: Colors.grey[600],
-              ),
+                    color: Colors.grey[600],
+                  ),
             ),
             const SizedBox(height: 8),
             Text(
               'Add up to 5 trusted contacts who will be notified during emergencies',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey,
-              ),
+                    color: Colors.grey,
+                  ),
             ),
           ],
         ),
@@ -122,18 +126,20 @@ class ContactsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildContactCard(BuildContext context, WidgetRef ref, EmergencyContact contact, int index) {
+  Widget _buildContactCard(BuildContext context, WidgetRef ref,
+      EmergencyContact contact, int index) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: contact.isPrimary 
+          backgroundColor: contact.isPrimary
               ? AppColors.primary.withOpacity(0.2)
               : AppColors.secondary.withOpacity(0.2),
           child: Text(
             contact.name[0].toUpperCase(),
             style: TextStyle(
-              color: contact.isPrimary ? AppColors.primary : AppColors.secondary,
+              color:
+                  contact.isPrimary ? AppColors.primary : AppColors.secondary,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -215,7 +221,7 @@ class ContactsScreen extends ConsumerWidget {
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
     String relation = 'Family';
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -265,19 +271,22 @@ class ContactsScreen extends ConsumerWidget {
             ),
             ElevatedButton(
               onPressed: () {
-                if (nameController.text.isNotEmpty && phoneController.text.isNotEmpty) {
+                if (nameController.text.isNotEmpty &&
+                    phoneController.text.isNotEmpty) {
                   ref.read(contactsProvider.notifier).addContact(
-                    EmergencyContact(
-                      id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      name: nameController.text,
-                      phone: phoneController.text,
-                      relation: relation,
-                      isPrimary: false,
-                    ),
-                  );
+                        EmergencyContact(
+                          id: DateTime.now().millisecondsSinceEpoch.toString(),
+                          name: nameController.text,
+                          phone: phoneController.text,
+                          relation: relation,
+                          isPrimary: false,
+                        ),
+                      );
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('${nameController.text} added to Guardian Circle')),
+                    SnackBar(
+                        content: Text(
+                            '${nameController.text} added to Guardian Circle')),
                   );
                 }
               },
@@ -289,11 +298,12 @@ class ContactsScreen extends ConsumerWidget {
     );
   }
 
-  void _showEditContactDialog(BuildContext context, WidgetRef ref, EmergencyContact contact, int index) {
+  void _showEditContactDialog(BuildContext context, WidgetRef ref,
+      EmergencyContact contact, int index) {
     final nameController = TextEditingController(text: contact.name);
     final phoneController = TextEditingController(text: contact.phone);
     String relation = contact.relation;
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -341,17 +351,18 @@ class ContactsScreen extends ConsumerWidget {
             ),
             ElevatedButton(
               onPressed: () {
-                if (nameController.text.isNotEmpty && phoneController.text.isNotEmpty) {
+                if (nameController.text.isNotEmpty &&
+                    phoneController.text.isNotEmpty) {
                   ref.read(contactsProvider.notifier).updateContact(
-                    index,
-                    EmergencyContact(
-                      id: contact.id,
-                      name: nameController.text,
-                      phone: phoneController.text,
-                      relation: relation,
-                      isPrimary: contact.isPrimary,
-                    ),
-                  );
+                        index,
+                        EmergencyContact(
+                          id: contact.id,
+                          name: nameController.text,
+                          phone: phoneController.text,
+                          relation: relation,
+                          isPrimary: contact.isPrimary,
+                        ),
+                      );
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Contact updated')),
@@ -366,7 +377,8 @@ class ContactsScreen extends ConsumerWidget {
     );
   }
 
-  void _showDeleteConfirmation(BuildContext context, WidgetRef ref, EmergencyContact contact, int index) {
+  void _showDeleteConfirmation(BuildContext context, WidgetRef ref,
+      EmergencyContact contact, int index) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -402,7 +414,8 @@ class ContactsScreen extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Your Guardian Circle includes trusted contacts who will be notified during emergencies.\n'),
+            Text(
+                'Your Guardian Circle includes trusted contacts who will be notified during emergencies.\n'),
             Text('• Primary contact is notified first'),
             Text('• All contacts receive location'),
             Text('• Maximum 5 contacts allowed'),

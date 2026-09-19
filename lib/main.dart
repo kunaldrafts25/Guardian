@@ -18,6 +18,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:guardian/core/services/aws_auth_service.dart';
 import 'package:guardian/core/services/aws_incident_service.dart';
+import 'package:guardian/core/services/aws_sns_service.dart';
 import 'package:guardian/core/services/safety_service_bridge.dart';
 import 'package:guardian/core/services/power_optimization_service.dart';
 import 'package:guardian/core/utils/logger.dart';
@@ -26,13 +27,13 @@ import 'app/app.dart';
 // Optional Firebase — only init if Firebase options are present
 // Remove this block entirely once you are fully AWS-migrated
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 /// FCM background message handler — kept for backward compatibility
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  Logger.info('Background message received (Firebase legacy)');
+  await Firebase.initializeApp();
+  Logger.info('Background push received: ${message.messageId}');
 }
 
 /// Global navigator key — used for deep-navigation from notifications
@@ -59,14 +60,13 @@ void main() async {
   // ─── Firebase (Graceful Fallback — safe to remove later) ────────────────
 
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    Logger.info('Firebase initialized (legacy fallback)');
+    await Firebase.initializeApp();
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    AwsSnsService.navigatorKey = navigatorKey;
+    await AwsSnsService.initialize();
   } catch (e) {
     // Firebase failure does NOT stop the app — AWS is primary
-    Logger.warning('Firebase init failed (non-critical, AWS is primary): $e');
+    Logger.warning('Push transport initialization failed: $e');
   }
 
   // ─── Platform Services ───────────────────────────────────────────────────

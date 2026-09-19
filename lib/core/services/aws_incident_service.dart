@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:guardian/core/utils/logger.dart';
+import 'package:guardian/core/services/aws_auth_service.dart';
 
 /// Service interfacing with AWS API Gateway / Serverless Incident Handler
 class AwsIncidentService {
@@ -26,9 +27,16 @@ class AwsIncidentService {
 
   String get baseUrl {
     if (_configuredEndpoint.isNotEmpty) {
-      return _configuredEndpoint.endsWith('/')
+      final endpoint = _configuredEndpoint.endsWith('/')
           ? _configuredEndpoint.substring(0, _configuredEndpoint.length - 1)
           : _configuredEndpoint;
+      if (kReleaseMode && !endpoint.startsWith('https://')) {
+        throw StateError('AWS_API_ENDPOINT must use HTTPS in release builds.');
+      }
+      return endpoint;
+    }
+    if (kReleaseMode) {
+      throw StateError('AWS_API_ENDPOINT is required in release builds.');
     }
     // Auto-detect local development environments
     if (kIsWeb) {
@@ -44,6 +52,8 @@ class AwsIncidentService {
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        if (AwsAuthService.instance.accessToken != null)
+          'Authorization': 'Bearer ${AwsAuthService.instance.accessToken}',
       };
 
   /// Ingest a potential incident
@@ -71,7 +81,8 @@ class AwsIncidentService {
       if (response.statusCode == 200 || response.statusCode == 201) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
-      throw Exception('Failed to create incident: HTTP ${response.statusCode} - ${response.body}');
+      throw Exception(
+          'Failed to create incident: HTTP ${response.statusCode} - ${response.body}');
     } catch (e) {
       Logger.error('AWS Incident Service: Error creating incident', e);
       rethrow;
@@ -118,7 +129,8 @@ class AwsIncidentService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
-      throw Exception('Failed to update incident status: HTTP ${response.statusCode} - ${response.body}');
+      throw Exception(
+          'Failed to update incident status: HTTP ${response.statusCode} - ${response.body}');
     } catch (e) {
       Logger.error('AWS Incident Service: Error updating status', e);
       rethrow;
@@ -126,7 +138,8 @@ class AwsIncidentService {
   }
 
   /// Fetch immutable incident timeline audit trail
-  Future<List<Map<String, dynamic>>> getIncidentTimeline(String incidentId) async {
+  Future<List<Map<String, dynamic>>> getIncidentTimeline(
+      String incidentId) async {
     final url = Uri.parse('$baseUrl/incidents/$incidentId/timeline');
     try {
       final response = await http
@@ -136,7 +149,9 @@ class AwsIncidentService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final list = data['timeline'] as List<dynamic>? ?? [];
-        return list.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+        return list
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList();
       }
       return [];
     } catch (e) {
@@ -163,22 +178,28 @@ class AwsIncidentService {
     }
   }
 
-  /// Trigger emergency demo scenario ('fall', 'sos', 'inactivity', 'hardware_panic')
-  Future<Map<String, dynamic>> simulateScenario(String scenario) async {
-    final url = Uri.parse('$baseUrl/simulate/$scenario');
-    try {
-      final response = await http
-          .post(url, headers: _headers)
-          .timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      }
-      throw Exception('Simulation failed: HTTP ${response.statusCode} - ${response.body}');
-    } catch (e) {
-      Logger.error('AWS Incident Service: Error simulating scenario', e);
-      rethrow;
+  /// Ask the production Bedrock safety companion.
+  Future<String> askSafetyCompanion(
+    String message, {
+    Map<String, String>? context,
+  }) async {
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/assistant/chat'),
+          headers: _headers,
+          body: jsonEncode({'message': message, 'context': context}),
+        )
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Safety assistant unavailable: HTTP ${response.statusCode}');
     }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final answer = data['response'] as String?;
+    if (answer == null || answer.trim().isEmpty) {
+      throw Exception('Safety assistant returned no response');
+    }
+    return answer;
   }
 
   /// Query verified nearby responders within radius
@@ -186,7 +207,8 @@ class AwsIncidentService {
     String incidentId, {
     double radiusMeters = 1200.0,
   }) async {
-    final url = Uri.parse('$baseUrl/incidents/$incidentId/nearby?radius_meters=$radiusMeters');
+    final url = Uri.parse(
+        '$baseUrl/incidents/$incidentId/nearby?radius_meters=$radiusMeters');
     try {
       final response = await http
           .get(url, headers: _headers)
@@ -195,7 +217,9 @@ class AwsIncidentService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final list = data['nearby_responders'] as List<dynamic>? ?? [];
-        return list.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+        return list
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList();
       }
       return [];
     } catch (e) {
@@ -220,7 +244,8 @@ class AwsIncidentService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
-      throw Exception('Failed to accept mission: HTTP ${response.statusCode} - ${response.body}');
+      throw Exception(
+          'Failed to accept mission: HTTP ${response.statusCode} - ${response.body}');
     } catch (e) {
       Logger.error('AWS Incident Service: Error accepting mission', e);
       rethrow;
@@ -238,7 +263,8 @@ class AwsIncidentService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
-      throw Exception('Failed to dispatch community: HTTP ${response.statusCode}');
+      throw Exception(
+          'Failed to dispatch community: HTTP ${response.statusCode}');
     } catch (e) {
       Logger.error('AWS Incident Service: Error dispatching community', e);
       rethrow;
@@ -277,4 +303,3 @@ class AwsIncidentService {
     }
   }
 }
-

@@ -115,7 +115,8 @@ class AppTheme {
       primary: AppColors.primary,
       secondary: AppColors.secondary,
       tertiary: AppColors.accent, // Using accent color for tertiary
-      surface: const Color(0xFF121212), // Using dark background color for surface
+      surface:
+          const Color(0xFF121212), // Using dark background color for surface
       surfaceTint: const Color(0xFF121212).withOpacity(0.1),
       error: AppColors.danger,
     ),

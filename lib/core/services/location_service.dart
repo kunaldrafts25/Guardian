@@ -12,7 +12,7 @@ import 'package:guardian/core/utils/logger.dart';
 class LocationService {
   // Private constructor to prevent instantiation
   LocationService._();
-  
+
   /// Get the current location
   static Future<Position?> getCurrentLocation() async {
     try {
@@ -22,14 +22,14 @@ class LocationService {
         Logger.warning('Location services are disabled');
         return null;
       }
-      
+
       // Check if we have permission
       final permissionGranted = await requestLocationPermission();
       if (!permissionGranted) {
         Logger.warning('Location permission denied');
         return null;
       }
-      
+
       // Get the current position
       return await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
@@ -39,7 +39,7 @@ class LocationService {
       return null;
     }
   }
-  
+
   /// Check if location services are enabled
   static Future<bool> isLocationServiceEnabled() async {
     try {
@@ -49,24 +49,24 @@ class LocationService {
       return false;
     }
   }
-  
+
   /// Request location permission
   static Future<bool> requestLocationPermission() async {
     try {
       LocationPermission permission = await Geolocator.checkPermission();
-      
+
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-      
-      return permission == LocationPermission.whileInUse || 
-             permission == LocationPermission.always;
+
+      return permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always;
     } catch (e) {
       Logger.error('Error requesting location permission', e);
       return false;
     }
   }
-  
+
   /// Get a stream of location updates
   static Stream<Position> getLocationStream() {
     return Geolocator.getPositionStream(
@@ -76,7 +76,7 @@ class LocationService {
       ),
     );
   }
-  
+
   /// Calculate distance between two coordinates in meters
   static double calculateDistance(
     double startLatitude,
@@ -91,7 +91,7 @@ class LocationService {
       endLongitude,
     );
   }
-  
+
   /// Get the last known position
   static Future<Position?> getLastKnownPosition() async {
     try {
@@ -101,7 +101,7 @@ class LocationService {
       return null;
     }
   }
-  
+
   /// Open location settings
   static Future<bool> openLocationSettings() async {
     try {
@@ -111,7 +111,7 @@ class LocationService {
       return false;
     }
   }
-  
+
   /// Open app settings
   static Future<bool> openAppSettings() async {
     try {
@@ -122,4 +122,3 @@ class LocationService {
     }
   }
 }
-

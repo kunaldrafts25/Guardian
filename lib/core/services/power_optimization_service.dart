@@ -75,7 +75,8 @@ class PowerOptimizationNotifier extends StateNotifier<PowerOptimizationState> {
           isGpsHardwareActive: true,
           locationIntervalSeconds: 60,
         );
-        Logger.info('⚡ Power Mode: CRITICAL BATTERY SAVER (GPS throttled to 60s)');
+        Logger.info(
+            '⚡ Power Mode: CRITICAL BATTERY SAVER (GPS throttled to 60s)');
       } else {
         // Full emergency tracking
         state = state.copyWith(
@@ -84,7 +85,8 @@ class PowerOptimizationNotifier extends StateNotifier<PowerOptimizationState> {
           isGpsHardwareActive: true,
           locationIntervalSeconds: 10,
         );
-        Logger.info('⚡ Power Mode: ACTIVE EMERGENCY (High-accuracy GPS active)');
+        Logger.info(
+            '⚡ Power Mode: ACTIVE EMERGENCY (High-accuracy GPS active)');
       }
     } else if (isElevatedRisk) {
       state = state.copyWith(
@@ -93,7 +95,8 @@ class PowerOptimizationNotifier extends StateNotifier<PowerOptimizationState> {
         isGpsHardwareActive: false,
         locationIntervalSeconds: 300,
       );
-      Logger.info('⚡ Power Mode: ELEVATED CAUTION (Low-power passive triangulation)');
+      Logger.info(
+          '⚡ Power Mode: ELEVATED CAUTION (Low-power passive triangulation)');
     } else {
       // Normal state: GPS completely off
       state = state.copyWith(
@@ -102,7 +105,8 @@ class PowerOptimizationNotifier extends StateNotifier<PowerOptimizationState> {
         isGpsHardwareActive: false,
         locationIntervalSeconds: 0,
       );
-      Logger.info('⚡ Power Mode: NORMAL PASSIVE (GPS powered OFF, 0% background drain)');
+      Logger.info(
+          '⚡ Power Mode: NORMAL PASSIVE (GPS powered OFF, 0% background drain)');
     }
   }
 }
@@ -116,6 +120,7 @@ class PowerOptimizationService {
   static final PowerOptimizationService instance = PowerOptimizationService._();
 
   Future<void> initialize() async {
-    Logger.info('PowerOptimizationService initialized with sensor duty cycling');
+    Logger.info(
+        'PowerOptimizationService initialized with sensor duty cycling');
   }
 }

@@ -123,7 +123,8 @@ class ValidationUtils {
 
   /// Checks if an email is valid
   static bool isValidEmail(String email) {
-    return RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(email);
+    return RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+        .hasMatch(email);
   }
 
   /// Checks if a password is valid
@@ -169,7 +170,8 @@ class ValidationUtils {
     if (address.isEmpty || address.length < 5) return false;
 
     // Address should contain at least one letter and one number
-    return RegExp(r'[a-zA-Z]').hasMatch(address) && RegExp(r'[0-9]').hasMatch(address);
+    return RegExp(r'[a-zA-Z]').hasMatch(address) &&
+        RegExp(r'[0-9]').hasMatch(address);
   }
 
   /// Checks if a zip code is valid
@@ -180,7 +182,8 @@ class ValidationUtils {
     if (RegExp(r'^\d{5}(-\d{4})?$').hasMatch(zipCode)) return true;
 
     // Canadian postal code (A1A 1A1)
-    if (RegExp(r'^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$').hasMatch(zipCode)) return true;
+    if (RegExp(r'^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$').hasMatch(zipCode))
+      return true;
 
     return false;
   }

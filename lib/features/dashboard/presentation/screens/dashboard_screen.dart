@@ -13,10 +13,10 @@ import '../../../../app/routes.dart';
 import '../../../../core/providers/auth_provider.dart';
 import '../../../../core/providers/settings_provider.dart';
 import '../../../../core/providers/emergency_provider.dart';
+import '../../../../core/providers/user_provider.dart';
 import '../../../../core/services/ble_emergency_mesh.dart';
 import '../../../../core/services/sos_service.dart';
 import '../widgets/agent_observability_card.dart';
-import '../widgets/emergency_simulator_sheet.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -24,8 +24,9 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
+    final profile = ref.watch(userProfileStreamProvider).valueOrNull;
     final locationMode = ref.watch(locationModeProvider);
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Guardian'),
@@ -51,15 +52,17 @@ class DashboardScreen extends ConsumerWidget {
                     children: [
                       Text(
                         'Hello, ${user?.displayName ?? 'Guardian'}! 👋',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style:
+                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
                       ),
                       const SizedBox(height: 8),
                       Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
                               color: AppColors.success.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(12),
@@ -99,15 +102,12 @@ class DashboardScreen extends ConsumerWidget {
                                         ? Icons.bluetooth_searching
                                         : Icons.bluetooth_disabled,
                                     size: 14,
-                                    color: isScanning
-                                        ? Colors.blue
-                                        : Colors.grey,
+                                    color:
+                                        isScanning ? Colors.blue : Colors.grey,
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
-                                    isScanning
-                                        ? 'Mesh active'
-                                        : 'Mesh offline',
+                                    isScanning ? 'Mesh active' : 'Mesh offline',
                                     style: Theme.of(context)
                                         .textTheme
                                         .bodyMedium
@@ -128,12 +128,12 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 24),
-              
+
               // AWS Bedrock Agent Observability & Live State Card
               const AgentObservabilityCard(),
-              
+
               // SOS Button (Large, Prominent)
               Center(
                 child: GestureDetector(
@@ -141,8 +141,8 @@ class DashboardScreen extends ConsumerWidget {
                   onLongPress: () {
                     // Trigger actual SOS via provider
                     ref.read(emergencyProvider.notifier).triggerEmergency(
-                      source: SosTriggerSource.button,
-                    );
+                          source: SosTriggerSource.button,
+                        );
                   },
                   child: Container(
                     width: 180,
@@ -170,16 +170,20 @@ class DashboardScreen extends ConsumerWidget {
                           const SizedBox(height: 8),
                           Text(
                             'SOS',
-                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineMedium
+                                ?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
                           ),
                           Text(
                             'Hold for emergency',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.white70,
-                            ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Colors.white70,
+                                    ),
                           ),
                         ],
                       ),
@@ -187,18 +191,18 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 32),
-              
+
               // Quick Actions
               Text(
                 'Quick Actions',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                      fontWeight: FontWeight.bold,
+                    ),
               ),
               const SizedBox(height: 12),
-              
+
               GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -222,13 +226,6 @@ class DashboardScreen extends ConsumerWidget {
                     onTap: () => context.push(Routes.safeZones),
                   ),
                   _QuickActionCard(
-                    icon: Icons.phone,
-                    title: 'Fake Call',
-                    subtitle: 'Schedule call',
-                    color: AppColors.guardian,
-                    onTap: () => context.push(Routes.quickActions),
-                  ),
-                  _QuickActionCard(
                     icon: Icons.timer,
                     title: 'Check-In Timer',
                     subtitle: 'I\'ll be home by',
@@ -237,9 +234,9 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 24),
-              
+
               // Trust Score Card
               Card(
                 child: ListTile(
@@ -248,29 +245,16 @@ class DashboardScreen extends ConsumerWidget {
                     child: Icon(Icons.star, color: AppColors.guardian),
                   ),
                   title: const Text('Your Trust Score'),
-                  subtitle: const Text('Walker • 75 points'),
+                  subtitle: Text(
+                    '${profile?.trustRankDisplayName ?? 'Watcher'} • '
+                    '${profile?.trustScore ?? 0} points',
+                  ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.push(Routes.profile),
                 ),
               ),
             ],
           ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-            builder: (_) => const EmergencySimulatorSheet(),
-          );
-        },
-        backgroundColor: AppColors.primary,
-        icon: const Icon(Icons.psychology, color: Colors.white),
-        label: const Text(
-          'Simulate Incident',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
     );
@@ -311,8 +295,8 @@ class _QuickActionCard extends StatelessWidget {
                 child: Text(
                   title,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                        fontWeight: FontWeight.bold,
+                      ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -321,8 +305,8 @@ class _QuickActionCard extends StatelessWidget {
                 child: Text(
                   subtitle,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey,
-                  ),
+                        color: Colors.grey,
+                      ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

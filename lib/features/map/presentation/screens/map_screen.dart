@@ -20,6 +20,7 @@ import 'package:guardian/core/providers/safe_route_provider.dart';
 import 'package:guardian/core/services/places_search_service.dart';
 import 'package:guardian/core/providers/settings_provider.dart' as settings;
 import 'package:guardian/app/routes.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
@@ -30,8 +31,9 @@ class MapScreen extends ConsumerStatefulWidget {
 
 class _MapScreenState extends ConsumerState<MapScreen> {
   final MapController _mapController = MapController();
-  
-  static const LatLng _defaultPosition = LatLng(18.5204, 73.8567); // Default to Pune, India
+
+  static const LatLng _defaultPosition =
+      LatLng(18.5204, 73.8567); // Default to Pune, India
 
   @override
   Widget build(BuildContext context) {
@@ -45,12 +47,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     // Update camera when location changes
     if (locationState.hasLocation) {
-      _updateCameraPosition(locationState.position!.latitude, locationState.position!.longitude);
+      _updateCameraPosition(
+          locationState.position!.latitude, locationState.position!.longitude);
     }
 
     // Build safe zone circles
     final List<CircleMarker> circles = _buildSafeZoneCircles(safeZoneState);
-    
+
     // Build markers including safe zone centers and route markers
     final List<Marker> markers = [
       ..._buildMarkers(locationState, safeZoneState),
@@ -81,7 +84,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             color: _getModeColor(locationMode).withOpacity(0.1),
             child: Row(
               children: [
-                Icon(_getModeIcon(locationMode), color: _getModeColor(locationMode)),
+                Icon(_getModeIcon(locationMode),
+                    color: _getModeColor(locationMode)),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -97,8 +101,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       Text(
                         modeInfo['description'] ?? '',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[600],
-                        ),
+                              color: Colors.grey[600],
+                            ),
                       ),
                     ],
                   ),
@@ -110,7 +114,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ],
             ),
           ),
-          
+
           // Google Map
           Expanded(
             child: Stack(
@@ -119,13 +123,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   mapController: _mapController,
                   options: MapOptions(
                     initialCenter: locationState.hasLocation
-                        ? LatLng(locationState.position!.latitude, locationState.position!.longitude)
+                        ? LatLng(locationState.position!.latitude,
+                            locationState.position!.longitude)
                         : _defaultPosition,
                     initialZoom: 15,
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.company.guardian',
                     ),
                     CircleLayer(circles: circles),
@@ -133,7 +139,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     MarkerLayer(markers: markers),
                   ],
                 ),
-                
+
                 // Bottom info card - show route info or default card
                 Positioned(
                   left: 16,
@@ -143,7 +149,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       ? _buildRouteInfoCard(context, ref, routeState)
                       : _buildDefaultInfoCard(context, ref, safeZoneState),
                 ),
-                
+
                 // Loading indicator for route
                 if (routeState.isLoading)
                   Positioned(
@@ -153,14 +159,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     child: Center(
                       child: Card(
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: const [
                               SizedBox(
                                 width: 16,
                                 height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
                               ),
                               SizedBox(width: 8),
                               Text('Finding safe route...'),
@@ -266,23 +274,26 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   ) {
     final currentMode = ref.watch(settings.locationModeProvider);
     final isSelected = currentMode == modeValue;
-    
+
     return ListTile(
       leading: Icon(icon, color: color),
       title: Text(title),
       subtitle: Text(description),
       trailing: isSelected ? Icon(Icons.check_circle, color: color) : null,
       onTap: () {
-        ref.read(settings.locationModeProvider.notifier).setLocationMode(modeValue);
+        ref
+            .read(settings.locationModeProvider.notifier)
+            .setLocationMode(modeValue);
         Navigator.pop(context);
       },
     );
   }
 
   /// Build the route info card when a route is active
-  Widget _buildRouteInfoCard(BuildContext context, WidgetRef ref, SafeRouteState routeState) {
+  Widget _buildRouteInfoCard(
+      BuildContext context, WidgetRef ref, SafeRouteState routeState) {
     final route = routeState.currentRoute!;
-    
+
     return Card(
       color: AppColors.success.withValues(alpha: 0.1),
       child: Padding(
@@ -298,7 +309,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     color: AppColors.success.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.directions_walk, color: AppColors.success),
+                  child: const Icon(Icons.directions_walk,
+                      color: AppColors.success),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -311,14 +323,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       ),
                       Row(
                         children: [
-                          const Icon(Icons.access_time, size: 14, color: Colors.grey),
+                          const Icon(Icons.access_time,
+                              size: 14, color: Colors.grey),
                           const SizedBox(width: 4),
                           Text(
                             route.duration,
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                           const SizedBox(width: 12),
-                          const Icon(Icons.straighten, size: 14, color: Colors.grey),
+                          const Icon(Icons.straighten,
+                              size: 14, color: Colors.grey),
                           const SizedBox(width: 4),
                           Text(
                             route.distance,
@@ -342,10 +356,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () {
-                  // TODO: Start navigation mode
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Navigation mode coming soon!')),
+                  final destination = ref.read(safeRouteProvider).destination;
+                  if (destination == null) return;
+                  final uri = Uri.parse(
+                    'https://www.google.com/maps/dir/?api=1&destination='
+                    '${destination.latitude},${destination.longitude}&travelmode=walking',
                   );
+                  launchUrl(uri, mode: LaunchMode.externalApplication);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.success,
@@ -362,7 +379,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   /// Build the default info card (no route active)
-  Widget _buildDefaultInfoCard(BuildContext context, WidgetRef ref, SafeZoneState safeZoneState) {
+  Widget _buildDefaultInfoCard(
+      BuildContext context, WidgetRef ref, SafeZoneState safeZoneState) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -391,8 +409,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       Text(
                         '${safeZoneState.zones.length} zones • ${safeZoneState.isInSafeZone ? "In safe zone" : "Outside zones"}',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: safeZoneState.isInSafeZone ? AppColors.success : Colors.grey,
-                        ),
+                              color: safeZoneState.isInSafeZone
+                                  ? AppColors.success
+                                  : Colors.grey,
+                            ),
                       ),
                     ],
                   ),
@@ -428,18 +448,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// Build circles for safe zones visualization
   List<CircleMarker> _buildSafeZoneCircles(SafeZoneState safeZoneState) {
     final circles = <CircleMarker>[];
-    
+
     for (final zone in safeZoneState.zones) {
       if (!zone.isActive) continue;
-      
+
       final isCurrentZone = safeZoneState.currentZone?.id == zone.id;
-      
+
       circles.add(
         CircleMarker(
           point: LatLng(zone.latitude, zone.longitude),
           radius: zone.radius,
           useRadiusInMeter: true,
-          color: isCurrentZone 
+          color: isCurrentZone
               ? AppColors.success.withValues(alpha: 0.2)
               : AppColors.primary.withValues(alpha: 0.15),
           borderColor: isCurrentZone ? AppColors.success : AppColors.primary,
@@ -447,19 +467,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ),
       );
     }
-    
+
     return circles;
   }
 
   /// Build markers including user location and safe zone centers
-  List<Marker> _buildMarkers(LocationState locationState, SafeZoneState safeZoneState) {
+  List<Marker> _buildMarkers(
+      LocationState locationState, SafeZoneState safeZoneState) {
     final markers = <Marker>[];
-    
+
     // Add user location marker
     if (locationState.hasLocation) {
       markers.add(
         Marker(
-          point: LatLng(locationState.position!.latitude, locationState.position!.longitude),
+          point: LatLng(locationState.position!.latitude,
+              locationState.position!.longitude),
           width: 44,
           height: 44,
           child: const Icon(
@@ -470,11 +492,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ),
       );
     }
-    
+
     // Add safe zone markers
     for (final zone in safeZoneState.zones) {
       if (!zone.isActive) continue;
-      
+
       final isCurrent = safeZoneState.currentZone?.id == zone.id;
       markers.add(
         Marker(
@@ -489,7 +511,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ),
       );
     }
-    
+
     return markers;
   }
 
@@ -513,8 +535,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               Text(
                 'Navigate safely with well-lit paths and populated areas',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey,
-                ),
+                      color: Colors.grey,
+                    ),
               ),
               const SizedBox(height: 16),
               // Quick destinations
@@ -527,13 +549,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 builder: (context, ref, child) {
                   final zones = ref.watch(safeZoneProvider).zones;
                   final locationState = ref.watch(locationProvider);
-                  
+
                   if (zones.isEmpty) {
                     return Padding(
                       padding: const EdgeInsets.all(8.0),
                       child: Column(
                         children: [
-                          const Text('No saved locations. Add Safe Zones first.'),
+                          const Text(
+                              'No saved locations. Add Safe Zones first.'),
                           const SizedBox(height: 8),
                           TextButton.icon(
                             onPressed: () {
@@ -547,38 +570,47 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       ),
                     );
                   }
-                  
+
                   return Column(
-                    children: zones.take(3).map((zone) => ListTile(
-                      leading: Icon(_getZoneTypeIcon(zone.type)),
-                      title: Text(zone.name),
-                      subtitle: Text('${zone.radius.toInt()}m radius'),
-                      trailing: const Icon(Icons.directions, color: AppColors.primary),
-                      onTap: () {
-                        Navigator.pop(context);
-                        
-                        if (!locationState.hasLocation) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Current location not available')),
-                          );
-                          return;
-                        }
-                        
-                        // Fetch route using Directions API
-                        ref.read(safeRouteProvider.notifier).fetchRoute(
-                          origin: LatLng(
-                            locationState.position!.latitude,
-                            locationState.position!.longitude,
-                          ),
-                          destination: LatLng(zone.latitude, zone.longitude),
-                          destinationName: zone.name,
-                        );
-                        
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Getting route to ${zone.name}...')),
-                        );
-                      },
-                    )).toList(),
+                    children: zones
+                        .take(3)
+                        .map((zone) => ListTile(
+                              leading: Icon(_getZoneTypeIcon(zone.type)),
+                              title: Text(zone.name),
+                              subtitle: Text('${zone.radius.toInt()}m radius'),
+                              trailing: const Icon(Icons.directions,
+                                  color: AppColors.primary),
+                              onTap: () {
+                                Navigator.pop(context);
+
+                                if (!locationState.hasLocation) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text(
+                                            'Current location not available')),
+                                  );
+                                  return;
+                                }
+
+                                // Fetch route using Directions API
+                                ref.read(safeRouteProvider.notifier).fetchRoute(
+                                      origin: LatLng(
+                                        locationState.position!.latitude,
+                                        locationState.position!.longitude,
+                                      ),
+                                      destination:
+                                          LatLng(zone.latitude, zone.longitude),
+                                      destinationName: zone.name,
+                                    );
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(
+                                          'Getting route to ${zone.name}...')),
+                                );
+                              },
+                            ))
+                        .toList(),
                   );
                 },
               ),
@@ -661,7 +693,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               icon: const Icon(Icons.clear),
                               onPressed: () {
                                 searchController.clear();
-                                ref.read(placesSearchProvider.notifier).clearSearch();
+                                ref
+                                    .read(placesSearchProvider.notifier)
+                                    .clearSearch();
                               },
                             )
                           : null,
@@ -674,9 +708,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       debounce?.cancel();
                       debounce = Timer(const Duration(milliseconds: 500), () {
                         final location = locationState.hasLocation
-                            ? LatLng(locationState.position!.latitude, locationState.position!.longitude)
+                            ? LatLng(locationState.position!.latitude,
+                                locationState.position!.longitude)
                             : null;
-                        ref.read(placesSearchProvider.notifier).searchPlaces(value, location: location);
+                        ref
+                            .read(placesSearchProvider.notifier)
+                            .searchPlaces(value, location: location);
                       });
                     },
                   ),
@@ -694,7 +731,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             child: CircularProgressIndicator(),
                           ),
                         )
-                      else if (searchState.predictions.isEmpty && searchController.text.isNotEmpty)
+                      else if (searchState.predictions.isEmpty &&
+                          searchController.text.isNotEmpty)
                         const Center(
                           child: Padding(
                             padding: EdgeInsets.all(32),
@@ -703,36 +741,43 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         )
                       else
                         ...searchState.predictions.map((prediction) => ListTile(
-                          leading: const Icon(Icons.location_on),
-                          title: Text(prediction.mainText),
-                          subtitle: prediction.secondaryText != null
-                              ? Text(prediction.secondaryText!, maxLines: 1, overflow: TextOverflow.ellipsis)
-                              : null,
-                          onTap: () async {
-                            // Get place details
-                            final details = await ref
-                                .read(placesSearchProvider.notifier)
-                                .getPlaceDetails(prediction.placeId);
+                              leading: const Icon(Icons.location_on),
+                              title: Text(prediction.mainText),
+                              subtitle: prediction.secondaryText != null
+                                  ? Text(prediction.secondaryText!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis)
+                                  : null,
+                              onTap: () async {
+                                // Get place details
+                                final details = await ref
+                                    .read(placesSearchProvider.notifier)
+                                    .getPlaceDetails(prediction.placeId);
 
-                            if (details != null && locationState.hasLocation) {
-                              Navigator.pop(context);
+                                if (details != null &&
+                                    locationState.hasLocation) {
+                                  Navigator.pop(context);
 
-                              // Fetch route
-                              ref.read(safeRouteProvider.notifier).fetchRoute(
-                                origin: LatLng(
-                                  locationState.position!.latitude,
-                                  locationState.position!.longitude,
-                                ),
-                                destination: details.location,
-                                destinationName: details.name,
-                              );
+                                  // Fetch route
+                                  ref
+                                      .read(safeRouteProvider.notifier)
+                                      .fetchRoute(
+                                        origin: LatLng(
+                                          locationState.position!.latitude,
+                                          locationState.position!.longitude,
+                                        ),
+                                        destination: details.location,
+                                        destinationName: details.name,
+                                      );
 
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Getting route to ${details.name}...')),
-                              );
-                            }
-                          },
-                        )),
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content: Text(
+                                            'Getting route to ${details.name}...')),
+                                  );
+                                }
+                              },
+                            )),
                     ],
                   ),
                 ),

@@ -68,14 +68,7 @@ def initiate_phone_auth(phone_number: str) -> Dict[str, Any]:
     """
     client = _cognito_client()
     if not client or not COGNITO_USER_POOL_ID or not COGNITO_CLIENT_ID:
-        # Development fallback — return a mock session
-        logger.warning("Cognito not configured. Using dev fallback OTP flow.")
-        return {
-            "session": f"dev_session_{phone_number}",
-            "user_exists": True,
-            "dev_mode": True,
-            "message": "DEV MODE: Use OTP code 123456"
-        }
+        raise ValueError("AWS Cognito is not configured; OTP authentication is unavailable")
 
     # Normalize phone number to E.164 format
     phone = phone_number.strip()
@@ -140,23 +133,8 @@ def verify_otp(phone_number: str, otp_code: str, session: str) -> Dict[str, Any]
     Returns: { "access_token": str, "id_token": str, "refresh_token": str, "user_id": str }
     """
     client = _cognito_client()
-
-    # Dev mode bypass
-    if session.startswith("dev_session_"):
-        if otp_code == "123456":
-            user_id = f"dev_user_{phone_number.replace('+', '').replace(' ', '')}"
-            return {
-                "access_token": f"dev_access_token_{user_id}",
-                "id_token": f"dev_id_token_{user_id}",
-                "refresh_token": f"dev_refresh_{user_id}",
-                "user_id": user_id,
-                "phone": phone_number,
-                "dev_mode": True,
-            }
-        raise ValueError("Invalid OTP code. Dev mode accepts: 123456")
-
-    if not client:
-        raise ValueError("AWS Cognito not available")
+    if not client or not COGNITO_USER_POOL_ID or not COGNITO_CLIENT_ID:
+        raise ValueError("AWS Cognito is not configured; OTP authentication is unavailable")
 
     phone = phone_number.strip()
     if not phone.startswith("+"):
@@ -231,8 +209,8 @@ def refresh_tokens(refresh_token: str, user_id: str) -> Dict[str, Any]:
 def sign_out(access_token: str) -> Dict[str, Any]:
     """Revoke all tokens for the user (global sign out)."""
     client = _cognito_client()
-    if not client:
-        return {"success": True, "dev_mode": True}
+    if not client or not COGNITO_USER_POOL_ID:
+        raise ValueError("AWS Cognito is not configured; sign-out is unavailable")
     try:
         client.global_sign_out(AccessToken=access_token)
         return {"success": True}

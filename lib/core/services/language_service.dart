@@ -29,21 +29,21 @@ class LanguageService extends ChangeNotifier {
 
   /// Get supported locales
   List<Locale> get supportedLocales => [
-    const Locale('en', 'US'), // English
-    const Locale('hi', 'IN'), // Hindi
-    const Locale('mr', 'IN'), // Marathi
-    const Locale('ta', 'IN'), // Tamil
-    const Locale('bn', 'IN'), // Bengali
-  ];
+        const Locale('en', 'US'), // English
+        const Locale('hi', 'IN'), // Hindi
+        const Locale('mr', 'IN'), // Marathi
+        const Locale('ta', 'IN'), // Tamil
+        const Locale('bn', 'IN'), // Bengali
+      ];
 
   /// Get supported languages
   List<Language> get supportedLanguages => [
-    Language(code: 'en', name: 'English', countryCode: 'US'),
-    Language(code: 'hi', name: 'हिंदी', countryCode: 'IN'),
-    Language(code: 'mr', name: 'मराठी', countryCode: 'IN'),
-    Language(code: 'ta', name: 'தமிழ்', countryCode: 'IN'),
-    Language(code: 'bn', name: 'বাংলা', countryCode: 'IN'),
-  ];
+        Language(code: 'en', name: 'English', countryCode: 'US'),
+        Language(code: 'hi', name: 'हिंदी', countryCode: 'IN'),
+        Language(code: 'mr', name: 'मराठी', countryCode: 'IN'),
+        Language(code: 'ta', name: 'தமிழ்', countryCode: 'IN'),
+        Language(code: 'bn', name: 'বাংলা', countryCode: 'IN'),
+      ];
 
   /// Initialize language service
   Future<void> init() async {
@@ -62,7 +62,8 @@ class LanguageService extends ChangeNotifier {
         }
       }
 
-      Logger.info('Language initialized: ${_locale.languageCode}_${_locale.countryCode}');
+      Logger.info(
+          'Language initialized: ${_locale.languageCode}_${_locale.countryCode}');
     } catch (e) {
       Logger.error('Error initializing language', e);
     }
@@ -71,7 +72,8 @@ class LanguageService extends ChangeNotifier {
   /// Set locale
   Future<void> setLocale(Locale locale) async {
     if (!isSupported(locale)) {
-      Logger.warning('Unsupported locale: ${locale.languageCode}_${locale.countryCode}');
+      Logger.warning(
+          'Unsupported locale: ${locale.languageCode}_${locale.countryCode}');
       return;
     }
 
@@ -87,7 +89,8 @@ class LanguageService extends ChangeNotifier {
         await prefs.setString('${_languageKey}_country', locale.countryCode!);
       }
 
-      Logger.info('Language changed to: ${locale.languageCode}_${locale.countryCode}');
+      Logger.info(
+          'Language changed to: ${locale.languageCode}_${locale.countryCode}');
     } catch (e) {
       Logger.error('Error setting locale', e);
     }
@@ -102,7 +105,7 @@ class LanguageService extends ChangeNotifier {
   /// Check if locale is supported
   bool isSupported(Locale locale) {
     return supportedLocales.any((supportedLocale) =>
-      supportedLocale.languageCode == locale.languageCode);
+        supportedLocale.languageCode == locale.languageCode);
   }
 
   /// Get language name by code
@@ -127,4 +130,3 @@ class Language {
     this.countryCode,
   });
 }
-

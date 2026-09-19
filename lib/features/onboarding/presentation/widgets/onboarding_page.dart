@@ -11,7 +11,7 @@ import 'package:guardian/features/onboarding/data/onboarding_page_model.dart';
 
 class OnboardingPage extends StatelessWidget {
   final OnboardingPageModel pageModel;
-  
+
   const OnboardingPage({
     super.key,
     required this.pageModel,
@@ -49,7 +49,7 @@ class OnboardingPage extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 40),
-          
+
           // Title
           Text(
             pageModel.title,
@@ -59,7 +59,7 @@ class OnboardingPage extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
-          
+
           // Description
           Text(
             pageModel.description,

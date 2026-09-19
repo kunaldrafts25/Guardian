@@ -14,41 +14,41 @@ abstract class AppColors {
   static const primary = Color(0xFFE53935);
   static const primaryLight = Color(0xFFFF6F60);
   static const primaryDark = Color(0xFFAB000D);
-  
+
   // Secondary - Calm Blue
   static const secondary = Color(0xFF1E88E5);
   static const secondaryLight = Color(0xFF6AB7FF);
   static const secondaryDark = Color(0xFF005CB2);
-  
+
   // Success - Safe Green
   static const success = Color(0xFF43A047);
   static const successLight = Color(0xFF76D275);
   static const successDark = Color(0xFF00701A);
-  
+
   // Warning
   static const warning = Color(0xFFFF9100);
   static const warningLight = Color(0xFFFFC246);
   static const warningDark = Color(0xFFC56200);
-  
+
   // Error
   static const error = Color(0xFFD32F2F);
   static const errorLight = Color(0xFFFF6659);
   static const errorDark = Color(0xFF9A0007);
-  
+
   // Neutral
   static const background = Color(0xFFFAFAFA);
   static const surface = Color(0xFFFFFFFF);
   static const surfaceVariant = Color(0xFFF5F5F5);
   static const onSurface = Color(0xFF212121);
   static const onSurfaceVariant = Color(0xFF757575);
-  
+
   // Dark Theme
   static const backgroundDark = Color(0xFF121212);
   static const surfaceDark = Color(0xFF1E1E1E);
   static const surfaceVariantDark = Color(0xFF2C2C2C);
   static const onSurfaceDark = Color(0xFFE0E0E0);
   static const onSurfaceVariantDark = Color(0xFFB0B0B0);
-  
+
   // Special
   static const sos = Color(0xFFFF1744);
   static const sosGlow = Color(0x40FF1744);
@@ -63,7 +63,7 @@ abstract class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
-      
+
       // Color scheme
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
@@ -73,10 +73,10 @@ abstract class AppTheme {
         error: AppColors.error,
         surface: AppColors.surface,
       ),
-      
+
       // Scaffold
       scaffoldBackgroundColor: AppColors.background,
-      
+
       // App Bar
       appBarTheme: AppBarTheme(
         backgroundColor: AppColors.surface,
@@ -89,13 +89,13 @@ abstract class AppTheme {
           color: AppColors.onSurface,
         ),
       ),
-      
+
       // Text
       textTheme: GoogleFonts.poppinsTextTheme().apply(
         bodyColor: AppColors.onSurface,
         displayColor: AppColors.onSurface,
       ),
-      
+
       // Card
       cardTheme: CardThemeData(
         color: AppColors.surface,
@@ -104,7 +104,7 @@ abstract class AppTheme {
           borderRadius: BorderRadius.circular(16),
         ),
       ),
-      
+
       // Button
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -121,7 +121,7 @@ abstract class AppTheme {
           ),
         ),
       ),
-      
+
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.primary,
@@ -136,7 +136,7 @@ abstract class AppTheme {
           ),
         ),
       ),
-      
+
       // Input
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -157,9 +157,10 @@ abstract class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.error, width: 1),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
-      
+
       // Navigation Bar
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: AppColors.surface,
@@ -168,7 +169,7 @@ abstract class AppTheme {
           GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w500),
         ),
       ),
-      
+
       // Floating Action Button
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: AppColors.sos,
@@ -177,13 +178,13 @@ abstract class AppTheme {
       ),
     );
   }
-  
+
   /// Dark theme
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      
+
       // Color scheme
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
@@ -193,10 +194,10 @@ abstract class AppTheme {
         error: AppColors.errorLight,
         surface: AppColors.surfaceDark,
       ),
-      
+
       // Scaffold
       scaffoldBackgroundColor: AppColors.backgroundDark,
-      
+
       // App Bar
       appBarTheme: AppBarTheme(
         backgroundColor: AppColors.surfaceDark,
@@ -209,13 +210,13 @@ abstract class AppTheme {
           color: AppColors.onSurfaceDark,
         ),
       ),
-      
+
       // Text
       textTheme: GoogleFonts.poppinsTextTheme().apply(
         bodyColor: AppColors.onSurfaceDark,
         displayColor: AppColors.onSurfaceDark,
       ),
-      
+
       // Card
       cardTheme: CardThemeData(
         color: AppColors.surfaceDark,
@@ -224,7 +225,7 @@ abstract class AppTheme {
           borderRadius: BorderRadius.circular(16),
         ),
       ),
-      
+
       // Button
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -241,7 +242,7 @@ abstract class AppTheme {
           ),
         ),
       ),
-      
+
       // Input
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -258,9 +259,10 @@ abstract class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.primaryLight, width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
-      
+
       // Navigation Bar
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: AppColors.surfaceDark,
@@ -269,7 +271,7 @@ abstract class AppTheme {
           GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w500),
         ),
       ),
-      
+
       // Floating Action Button
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: AppColors.sos,

@@ -209,7 +209,8 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
     // (SosService handles all transport layers including offline)
     // Note: We call through the method channel to avoid circular dependency
     // The actual SOS trigger happens via the emergency provider
-    Logger.warning('🚨 Check-in SOS escalated — emergency_provider should be triggered by UI');
+    Logger.warning(
+        '🚨 Check-in SOS escalated — emergency_provider should be triggered by UI');
   }
 
   // ─────────────────────────────────────────────────

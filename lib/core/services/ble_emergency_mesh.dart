@@ -59,7 +59,7 @@ class MeshBeacon {
   static const Duration beaconTtl = Duration(hours: 24);
 
   final String beaconId;
-  final String userHash;       // Pseudonymous — not real UID
+  final String userHash; // Pseudonymous — not real UID
   final double? latitude;
   final double? longitude;
   final int hopCount;
@@ -76,8 +76,7 @@ class MeshBeacon {
     this.signature,
   });
 
-  bool get isExpired =>
-      DateTime.now().difference(timestamp) > beaconTtl;
+  bool get isExpired => DateTime.now().difference(timestamp) > beaconTtl;
 
   bool get canRelay => hopCount < maxHops && !isExpired;
 
@@ -152,7 +151,8 @@ class MeshBeacon {
       sha256.convert(utf8.encode(userId)).bytes.sublist(0, 8),
     );
     final beaconId = sha256
-        .convert(utf8.encode('$userHash${DateTime.now().millisecondsSinceEpoch}'))
+        .convert(
+            utf8.encode('$userHash${DateTime.now().millisecondsSinceEpoch}'))
         .toString()
         .substring(0, 16);
 
@@ -218,7 +218,8 @@ class BleEmergencyMesh {
 
       // On Android: the actual BLE advertising is handled in SafetyForegroundService.kt
       // Here we log the intent; the Kotlin service does the real advertising
-      Logger.info('📡 BLE beacon queued for broadcast (${beacon.beaconId.substring(0, 8)}...)');
+      Logger.info(
+          '📡 BLE beacon queued for broadcast (${beacon.beaconId.substring(0, 8)}...)');
       _isAdvertising = true;
       return true;
     } catch (e) {

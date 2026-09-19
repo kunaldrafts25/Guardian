@@ -108,7 +108,8 @@ class PlacesSearchNotifier extends StateNotifier<PlacesSearchState> {
     state = state.copyWith(isSearching: true, errorMessage: null);
 
     try {
-      var urlStr = 'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&addressdetails=1&limit=6';
+      var urlStr =
+          'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&addressdetails=1&limit=6';
 
       if (location != null) {
         // Bias search to near user
@@ -150,7 +151,8 @@ class PlacesSearchNotifier extends StateNotifier<PlacesSearchState> {
   }
 
   /// Get place details including coordinates
-  Future<PlaceDetails?> getPlaceDetails(String placeId, {PlacePrediction? prediction}) async {
+  Future<PlaceDetails?> getPlaceDetails(String placeId,
+      {PlacePrediction? prediction}) async {
     state = state.copyWith(isLoadingDetails: true, errorMessage: null);
 
     try {
@@ -170,7 +172,8 @@ class PlacesSearchNotifier extends StateNotifier<PlacesSearchState> {
       }
 
       // Query Nominatim lookup
-      final url = 'https://nominatim.openstreetmap.org/lookup?osm_ids=N$placeId,W$placeId,R$placeId&format=json';
+      final url =
+          'https://nominatim.openstreetmap.org/lookup?osm_ids=N$placeId,W$placeId,R$placeId&format=json';
       final response = await http.get(
         Uri.parse(url),
         headers: {
@@ -217,6 +220,7 @@ class PlacesSearchNotifier extends StateNotifier<PlacesSearchState> {
 }
 
 /// Places search provider
-final placesSearchProvider = StateNotifierProvider<PlacesSearchNotifier, PlacesSearchState>((ref) {
+final placesSearchProvider =
+    StateNotifierProvider<PlacesSearchNotifier, PlacesSearchState>((ref) {
   return PlacesSearchNotifier();
 });

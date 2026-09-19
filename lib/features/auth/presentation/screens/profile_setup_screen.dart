@@ -10,7 +10,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:guardian/app/routes.dart';
 import 'package:guardian/core/providers/auth_provider.dart';
-import 'package:guardian/core/providers/user_provider.dart';
 
 class ProfileSetupScreen extends ConsumerStatefulWidget {
   const ProfileSetupScreen({super.key});
@@ -32,25 +31,17 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
 
   Future<void> _saveProfile() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    
+
     setState(() => _isLoading = true);
-    
+
     try {
-      final user = ref.read(currentUserProvider);
-      if (user == null) throw Exception('No authenticated user');
-      
-      // 1. Create user profile in Firestore
-      final userService = ref.read(userServiceProvider);
-      final exists = await userService.userProfileExists(user.uid);
-      
-      if (!exists) {
-        await userService.createUserProfile(user);
-      }
-      
-      // 2. Update display name in both Firebase Auth and Firestore
-      await ref.read(authServiceProvider).updateDisplayName(_nameController.text.trim());
-      await userService.updateDisplayName(user.uid, _nameController.text.trim());
-      
+      final auth = ref.read(authServiceProvider);
+      if (auth.currentUserId == null) throw Exception('No authenticated user');
+      final updated = await auth.updateProfile({
+        'display_name': _nameController.text.trim(),
+      });
+      if (!updated) throw Exception('Profile update failed');
+
       if (mounted) {
         context.go(Routes.dashboard);
       }
@@ -82,54 +73,27 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 32),
-                
+
                 // Avatar placeholder
                 Center(
                   child: Stack(
                     children: [
                       CircleAvatar(
                         radius: 50,
-                        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                        backgroundColor:
+                            Theme.of(context).colorScheme.primaryContainer,
                         child: Icon(
                           Icons.person,
                           size: 50,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                       ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.camera_alt,
-                            size: 16,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                Center(
-                  child: TextButton(
-                    onPressed: () {
-                      // TODO: Implement photo upload
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Photo upload coming soon!')),
-                      );
-                    },
-                    child: const Text('Add Photo (optional)'),
-                  ),
-                ),
-                
+
                 const SizedBox(height: 24),
-                
+
                 // Name Input
                 Text(
                   'What should we call you?',
@@ -153,16 +117,17 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                     return null;
                   },
                 ),
-                
+
                 const SizedBox(height: 16),
-                
+
                 // Info card
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Row(
                       children: [
-                        Icon(Icons.shield, color: Theme.of(context).colorScheme.primary),
+                        Icon(Icons.shield,
+                            color: Theme.of(context).colorScheme.primary),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
@@ -174,9 +139,12 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                               ),
                               Text(
                                 'Help others and earn trust points',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Colors.grey,
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: Colors.grey,
+                                    ),
                               ),
                             ],
                           ),
@@ -185,9 +153,9 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                     ),
                   ),
                 ),
-                
+
                 const Spacer(),
-                
+
                 // Continue Button
                 ElevatedButton(
                   onPressed: _isLoading ? null : _saveProfile,
@@ -199,7 +167,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                         )
                       : const Text('Get Started'),
                 ),
-                
+
                 const SizedBox(height: 24),
               ],
             ),

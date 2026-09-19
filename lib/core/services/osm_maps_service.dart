@@ -107,13 +107,15 @@ class OsmMapsService {
       final url = Uri.parse(
         '$_nominatimBase/search?q=${Uri.encodeComponent(query)}&format=json&limit=1&addressdetails=1',
       );
-      final resp = await http.get(url, headers: _nominatimHeaders)
+      final resp = await http
+          .get(url, headers: _nominatimHeaders)
           .timeout(const Duration(seconds: 8));
 
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body) as List;
         if (data.isNotEmpty) {
-          final result = _parseNominatimResult(data.first as Map<String, dynamic>);
+          final result =
+              _parseNominatimResult(data.first as Map<String, dynamic>);
           _setCache(cacheKey, result);
           return result;
         }
@@ -134,7 +136,8 @@ class OsmMapsService {
       final url = Uri.parse(
         '$_nominatimBase/reverse?lat=${point.latitude}&lon=${point.longitude}&format=json&addressdetails=1',
       );
-      final resp = await http.get(url, headers: _nominatimHeaders)
+      final resp = await http
+          .get(url, headers: _nominatimHeaders)
           .timeout(const Duration(seconds: 8));
 
       if (resp.statusCode == 200) {
@@ -161,12 +164,14 @@ class OsmMapsService {
 
   /// Get walking route between two points using OSRM (free, open-source).
   /// Returns a list of LatLng waypoints to draw on the map.
-  static Future<RouteResult?> getWalkingRoute(LatLng origin, LatLng destination) async {
+  static Future<RouteResult?> getWalkingRoute(
+      LatLng origin, LatLng destination) async {
     return _getRoute(origin, destination, profile: 'foot');
   }
 
   /// Get driving route between two points.
-  static Future<RouteResult?> getDrivingRoute(LatLng origin, LatLng destination) async {
+  static Future<RouteResult?> getDrivingRoute(
+      LatLng origin, LatLng destination) async {
     return _getRoute(origin, destination, profile: 'car');
   }
 
@@ -175,7 +180,8 @@ class OsmMapsService {
     LatLng destination, {
     String profile = 'foot',
   }) async {
-    final cacheKey = 'route_${profile}_${origin.latitude}_${origin.longitude}_${destination.latitude}_${destination.longitude}';
+    final cacheKey =
+        'route_${profile}_${origin.latitude}_${origin.longitude}_${destination.latitude}_${destination.longitude}';
     if (_cached(cacheKey) != null) return _cached(cacheKey) as RouteResult?;
 
     try {
@@ -187,8 +193,7 @@ class OsmMapsService {
         '?overview=full&geometries=geojson&steps=false',
       );
 
-      final resp = await http.get(url)
-          .timeout(const Duration(seconds: 10));
+      final resp = await http.get(url).timeout(const Duration(seconds: 10));
 
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
@@ -206,7 +211,8 @@ class OsmMapsService {
             points: points,
             distanceMeters: (route['distance'] as num).toDouble(),
             durationSeconds: (route['duration'] as num).round(),
-            summary: '${((route['distance'] as num) / 1000).toStringAsFixed(1)} km — ${((route['duration'] as num) / 60).ceil()} min walk',
+            summary:
+                '${((route['distance'] as num) / 1000).toStringAsFixed(1)} km — ${((route['duration'] as num) / 60).ceil()} min walk',
           );
 
           _setCache(cacheKey, result);
@@ -227,7 +233,8 @@ class OsmMapsService {
     LatLng center, {
     int radiusMeters = 2000,
   }) async {
-    final cacheKey = 'places_${center.latitude}_${center.longitude}_$radiusMeters';
+    final cacheKey =
+        'places_${center.latitude}_${center.longitude}_$radiusMeters';
     if (_cached(cacheKey) != null) {
       return List<Map<String, dynamic>>.from(_cached(cacheKey) as List);
     }
@@ -259,7 +266,8 @@ class OsmMapsService {
         final places = elements.map((e) {
           final el = e as Map<String, dynamic>;
           final tags = el['tags'] as Map<String, dynamic>? ?? {};
-          final amenity = tags['amenity'] as String? ?? tags['shop'] as String? ?? 'place';
+          final amenity =
+              tags['amenity'] as String? ?? tags['shop'] as String? ?? 'place';
           return {
             'id': el['id'],
             'name': tags['name'] ?? tags['name:en'] ?? _amenityLabel(amenity),
@@ -306,9 +314,7 @@ class OsmMapsService {
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
         final elements = data['elements'] as List? ?? [];
-        return elements
-            .where((e) => (e as Map)['lat'] != null)
-            .map((e) {
+        return elements.where((e) => (e as Map)['lat'] != null).map((e) {
           final el = e as Map<String, dynamic>;
           final tags = el['tags'] as Map<String, dynamic>? ?? {};
           return {
@@ -337,8 +343,10 @@ class OsmMapsService {
     final dLng = _toRad(b.longitude - a.longitude);
 
     final s = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(lat1) * math.cos(lat2) *
-            math.sin(dLng / 2) * math.sin(dLng / 2);
+        math.cos(lat1) *
+            math.cos(lat2) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
     final c = 2 * math.atan2(math.sqrt(s), math.sqrt(1 - s));
     return R * c;
   }
@@ -421,7 +429,12 @@ class OsmMapsService {
   }
 
   static String _travelMode(String mode) {
-    const modes = {'w': 'walking', 'd': 'driving', 'b': 'bicycling', 'l': 'transit'};
+    const modes = {
+      'w': 'walking',
+      'd': 'driving',
+      'b': 'bicycling',
+      'l': 'transit'
+    };
     return modes[mode] ?? 'walking';
   }
 

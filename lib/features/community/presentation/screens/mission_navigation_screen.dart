@@ -88,7 +88,8 @@ class _MissionNavigationScreenState
 
         final initial = await Geolocator.getLastKnownPosition() ??
             await Geolocator.getCurrentPosition(
-              locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+              locationSettings:
+                  const LocationSettings(accuracy: LocationAccuracy.high),
             );
         _updatePosition(initial);
 
@@ -175,9 +176,8 @@ class _MissionNavigationScreenState
         _strobeTimer = Timer.periodic(const Duration(milliseconds: 120), (_) {
           if (mounted) {
             setState(() {
-              _strobeBgColor = _strobeBgColor == Colors.white
-                  ? Colors.black
-                  : Colors.white;
+              _strobeBgColor =
+                  _strobeBgColor == Colors.white ? Colors.black : Colors.white;
             });
           }
         });
@@ -196,8 +196,8 @@ class _MissionNavigationScreenState
       SnackBar(
         content: Text(
           _isSirenActive
-            ? '🚨 High-decibel audible alert triggered to deter attacker!'
-            : 'Siren silenced.',
+              ? '🚨 High-decibel audible alert triggered to deter attacker!'
+              : 'Siren silenced.',
         ),
         backgroundColor: _isSirenActive ? AppColors.danger : Colors.black87,
         duration: const Duration(seconds: 2),
@@ -226,7 +226,8 @@ class _MissionNavigationScreenState
             ),
             Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 decoration: BoxDecoration(
                   color: AppColors.success.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
@@ -261,13 +262,15 @@ class _MissionNavigationScreenState
               Navigator.pop(context); // Close navigation screen
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('✅ Mission marked resolved. Good Samaritan record updated!'),
+                  content: Text(
+                      '✅ Mission marked resolved. Good Samaritan record updated!'),
                   backgroundColor: AppColors.success,
                 ),
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
-            child: const Text('Confirm & Complete', style: TextStyle(color: Colors.white)),
+            child: const Text('Confirm & Complete',
+                style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -293,7 +296,8 @@ class _MissionNavigationScreenState
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+            child:
+                const Text('Cancel', style: TextStyle(color: Colors.white70)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -303,13 +307,15 @@ class _MissionNavigationScreenState
                   );
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('🚨 Helper SOS Triggered! Dispatched to contacts & police.'),
+                  content: Text(
+                      '🚨 Helper SOS Triggered! Dispatched to contacts & police.'),
                   backgroundColor: Colors.red,
                 ),
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('YES, ESCALATE NOW', style: TextStyle(color: Colors.white)),
+            child: const Text('YES, ESCALATE NOW',
+                style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -366,7 +372,8 @@ class _MissionNavigationScreenState
             ),
             child: Row(
               children: [
-                const Icon(Icons.group_rounded, color: AppColors.success, size: 16),
+                const Icon(Icons.group_rounded,
+                    color: AppColors.success, size: 16),
                 const SizedBox(width: 4),
                 Text(
                   '${widget.coRespondersCount} Responders',
@@ -393,7 +400,10 @@ class _MissionNavigationScreenState
                       children: [
                         const Text(
                           'DISTANCE TO VICTIM',
-                          style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -413,9 +423,11 @@ class _MissionNavigationScreenState
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: AppColors.primary.withValues(alpha: 0.2),
-                          border: Border.all(color: AppColors.primary, width: 2),
+                          border:
+                              Border.all(color: AppColors.primary, width: 2),
                         ),
-                        child: const Icon(Icons.navigation_rounded, color: AppColors.primary, size: 28),
+                        child: const Icon(Icons.navigation_rounded,
+                            color: AppColors.primary, size: 28),
                       ),
                     ),
                     Column(
@@ -423,7 +435,10 @@ class _MissionNavigationScreenState
                       children: [
                         const Text(
                           'WALK TIME',
-                          style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -464,21 +479,29 @@ class _MissionNavigationScreenState
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: Colors.redAccent.withValues(alpha: 0.25),
-                                border: Border.all(color: Colors.redAccent, width: 2),
+                                border: Border.all(
+                                    color: Colors.redAccent, width: 2),
                               ),
-                              child: const Icon(Icons.person_pin_circle_rounded, color: Colors.redAccent, size: 36),
+                              child: const Icon(Icons.person_pin_circle_rounded,
+                                  color: Colors.redAccent, size: 36),
                             ),
                             const SizedBox(height: 6),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
                                 color: Colors.black87,
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: Colors.redAccent.withValues(alpha: 0.5)),
+                                border: Border.all(
+                                    color: Colors.redAccent
+                                        .withValues(alpha: 0.5)),
                               ),
                               child: Text(
                                 widget.approximateArea,
-                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold),
                               ),
                             ),
                           ],
@@ -495,21 +518,28 @@ class _MissionNavigationScreenState
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: AppColors.success.withValues(alpha: 0.25),
-                                border: Border.all(color: AppColors.success, width: 2),
+                                color:
+                                    AppColors.success.withValues(alpha: 0.25),
+                                border: Border.all(
+                                    color: AppColors.success, width: 2),
                               ),
-                              child: const Icon(Icons.directions_walk_rounded, color: AppColors.success, size: 20),
+                              child: const Icon(Icons.directions_walk_rounded,
+                                  color: AppColors.success, size: 20),
                             ),
                             const SizedBox(height: 4),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
                                 color: Colors.black87,
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: const Text(
                                 'Co-Responder #2 (~120m)',
-                                style: TextStyle(color: AppColors.success, fontSize: 10, fontWeight: FontWeight.bold),
+                                style: TextStyle(
+                                    color: AppColors.success,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold),
                               ),
                             ),
                           ],
@@ -525,17 +555,23 @@ class _MissionNavigationScreenState
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Colors.blueAccent.withValues(alpha: 0.25),
-                                border: Border.all(color: Colors.blueAccent, width: 2),
+                                color:
+                                    Colors.blueAccent.withValues(alpha: 0.25),
+                                border: Border.all(
+                                    color: Colors.blueAccent, width: 2),
                               ),
-                              child: const Icon(Icons.my_location_rounded, color: Colors.blueAccent, size: 28),
+                              child: const Icon(Icons.my_location_rounded,
+                                  color: Colors.blueAccent, size: 28),
                             ),
                             const SizedBox(height: 4),
                             Text(
                               _currentPosition != null
                                   ? 'YOU (${_currentPosition!.latitude.toStringAsFixed(4)}, ${_currentPosition!.longitude.toStringAsFixed(4)})'
                                   : 'YOU (ACQUIRING GPS...)',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 11),
                             ),
                           ],
                         ),
@@ -552,7 +588,10 @@ class _MissionNavigationScreenState
                   color: Colors.black,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                   boxShadow: [
-                    BoxShadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, -4)),
+                    BoxShadow(
+                        color: Colors.black54,
+                        blurRadius: 10,
+                        offset: Offset(0, -4)),
                   ],
                 ),
                 child: Column(
@@ -566,13 +605,17 @@ class _MissionNavigationScreenState
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary,
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14)),
                           elevation: 6,
                         ),
                         icon: const Icon(Icons.turn_right_rounded, size: 24),
                         label: const Text(
                           'OPEN IN GOOGLE MAPS (TURN-BY-TURN)',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 0.8),
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8),
                         ),
                       ),
                     ),
@@ -585,13 +628,25 @@ class _MissionNavigationScreenState
                           child: OutlinedButton.icon(
                             onPressed: _toggleStrobe,
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: _isStrobeActive ? Colors.amberAccent : Colors.white70,
-                              side: BorderSide(color: _isStrobeActive ? Colors.amberAccent : Colors.white24),
+                              foregroundColor: _isStrobeActive
+                                  ? Colors.amberAccent
+                                  : Colors.white70,
+                              side: BorderSide(
+                                  color: _isStrobeActive
+                                      ? Colors.amberAccent
+                                      : Colors.white24),
                               padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
                             ),
-                            icon: Icon(_isStrobeActive ? Icons.flash_on : Icons.flash_off, size: 18),
-                            label: Text(_isStrobeActive ? 'Strobe ON' : 'Flashlight Strobe'),
+                            icon: Icon(
+                                _isStrobeActive
+                                    ? Icons.flash_on
+                                    : Icons.flash_off,
+                                size: 18),
+                            label: Text(_isStrobeActive
+                                ? 'Strobe ON'
+                                : 'Flashlight Strobe'),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -599,13 +654,25 @@ class _MissionNavigationScreenState
                           child: OutlinedButton.icon(
                             onPressed: _toggleSiren,
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: _isSirenActive ? Colors.redAccent : Colors.white70,
-                              side: BorderSide(color: _isSirenActive ? Colors.redAccent : Colors.white24),
+                              foregroundColor: _isSirenActive
+                                  ? Colors.redAccent
+                                  : Colors.white70,
+                              side: BorderSide(
+                                  color: _isSirenActive
+                                      ? Colors.redAccent
+                                      : Colors.white24),
                               padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
                             ),
-                            icon: Icon(_isSirenActive ? Icons.volume_up : Icons.volume_off, size: 18),
-                            label: Text(_isSirenActive ? 'Siren Active' : 'Audible Alarm'),
+                            icon: Icon(
+                                _isSirenActive
+                                    ? Icons.volume_up
+                                    : Icons.volume_off,
+                                size: 18),
+                            label: Text(_isSirenActive
+                                ? 'Siren Active'
+                                : 'Audible Alarm'),
                           ),
                         ),
                       ],
@@ -623,10 +690,13 @@ class _MissionNavigationScreenState
                               backgroundColor: AppColors.success,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
                             ),
-                            icon: const Icon(Icons.check_circle_rounded, size: 18),
-                            label: const Text('I Have Reached Victim', style: TextStyle(fontWeight: FontWeight.bold)),
+                            icon: const Icon(Icons.check_circle_rounded,
+                                size: 18),
+                            label: const Text('I Have Reached Victim',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -637,10 +707,12 @@ class _MissionNavigationScreenState
                               backgroundColor: Colors.red.shade900,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
                             ),
                             icon: const Icon(Icons.sos_rounded, size: 18),
-                            label: const Text('In Danger', style: TextStyle(fontWeight: FontWeight.bold)),
+                            label: const Text('In Danger',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ],
@@ -694,8 +766,10 @@ class _RadarPainter extends CustomPainter {
     final axisPaint = Paint()
       ..color = Colors.cyanAccent.withValues(alpha: 0.08)
       ..strokeWidth = 1.0;
-    canvas.drawLine(Offset(center.dx, 0), Offset(center.dx, size.height), axisPaint);
-    canvas.drawLine(Offset(0, center.dy), Offset(size.width, center.dy), axisPaint);
+    canvas.drawLine(
+        Offset(center.dx, 0), Offset(center.dx, size.height), axisPaint);
+    canvas.drawLine(
+        Offset(0, center.dy), Offset(size.width, center.dy), axisPaint);
   }
 
   @override

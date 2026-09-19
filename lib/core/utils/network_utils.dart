@@ -12,35 +12,35 @@ class NetworkUtils {
   /// Checks if an error is a network-related error
   static bool isNetworkError(dynamic error) {
     final errorString = error.toString().toLowerCase();
-    
+
     return errorString.contains('socketexception') ||
-           errorString.contains('failed host lookup') ||
-           errorString.contains('connection refused') ||
-           errorString.contains('connection timed out') ||
-           errorString.contains('network is unreachable') ||
-           errorString.contains('no internet');
+        errorString.contains('failed host lookup') ||
+        errorString.contains('connection refused') ||
+        errorString.contains('connection timed out') ||
+        errorString.contains('network is unreachable') ||
+        errorString.contains('no internet');
   }
-  
+
   /// Formats a URL by ensuring it has the correct scheme and path
   static String formatUrl(String baseUrl, String path) {
     // Add https:// if not present
     if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
       baseUrl = 'https://$baseUrl';
     }
-    
+
     // Remove trailing slash from baseUrl
     if (baseUrl.endsWith('/')) {
       baseUrl = baseUrl.substring(0, baseUrl.length - 1);
     }
-    
+
     // Add leading slash to path if not present
     if (!path.startsWith('/')) {
       path = '/$path';
     }
-    
+
     return baseUrl + path;
   }
-  
+
   /// Gets a user-friendly error message based on the error
   static String getErrorMessage(dynamic error) {
     if (error is int) {
@@ -65,7 +65,7 @@ class NetworkUtils {
     } else {
       // Exception or other error
       final errorString = error.toString().toLowerCase();
-      
+
       if (errorString.contains('failed host lookup')) {
         return 'No internet connection';
       } else if (errorString.contains('connection refused')) {
@@ -77,11 +77,11 @@ class NetworkUtils {
       }
     }
   }
-  
+
   /// Parses a JSON string into a Map
   static dynamic parseJson(String jsonString) {
     if (jsonString.isEmpty) return null;
-    
+
     try {
       return json.decode(jsonString);
     } catch (e) {
@@ -89,36 +89,38 @@ class NetworkUtils {
       return null;
     }
   }
-  
+
   /// Encodes query parameters for a URL
   static String encodeQueryParameters(Map<String, dynamic> params) {
     if (params.isEmpty) return '';
-    
+
     return params.entries
         .where((entry) => entry.value != null)
-        .map((entry) => '${Uri.encodeComponent(entry.key)}=${Uri.encodeComponent(entry.value.toString())}')
+        .map((entry) =>
+            '${Uri.encodeComponent(entry.key)}=${Uri.encodeComponent(entry.value.toString())}')
         .join('&');
   }
-  
+
   /// Builds a URL with base URL, path, and query parameters
-  static String buildUrl(String baseUrl, String path, [Map<String, dynamic>? queryParams]) {
+  static String buildUrl(String baseUrl, String path,
+      [Map<String, dynamic>? queryParams]) {
     // Format the base URL and path
     final formattedUrl = formatUrl(baseUrl, path);
-    
+
     // Add query parameters if provided
     if (queryParams != null && queryParams.isNotEmpty) {
       final queryString = encodeQueryParameters(queryParams);
       return '$formattedUrl?$queryString';
     }
-    
+
     return formattedUrl;
   }
-  
+
   /// Checks if an HTTP status code indicates success
   static bool isSuccessStatusCode(int statusCode) {
     return statusCode >= 200 && statusCode < 300;
   }
-  
+
   /// Extracts the domain from a URL
   static String extractDomain(String url) {
     try {
@@ -129,7 +131,7 @@ class NetworkUtils {
       return url;
     }
   }
-  
+
   /// Checks if a URL is valid
   static bool isValidUrl(String url) {
     try {
@@ -139,7 +141,7 @@ class NetworkUtils {
       return false;
     }
   }
-  
+
   /// Converts a Map to a JSON string
   static String toJson(Map<String, dynamic> data) {
     try {
@@ -149,11 +151,11 @@ class NetworkUtils {
       return '{}';
     }
   }
-  
+
   /// Gets the content type from a file extension
   static String getContentType(String fileName) {
     final extension = fileName.split('.').last.toLowerCase();
-    
+
     switch (extension) {
       case 'jpg':
       case 'jpeg':
@@ -181,4 +183,3 @@ class NetworkUtils {
     }
   }
 }
-

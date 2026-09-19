@@ -75,7 +75,8 @@ class SafetyServiceBridge {
   /// Start the Android SafetyForegroundService
   Future<bool> startService() async {
     try {
-      final result = await _serviceChannel.invokeMethod<bool>('startSafetyService');
+      final result =
+          await _serviceChannel.invokeMethod<bool>('startSafetyService');
       Logger.info('🛡️ SafetyForegroundService started');
       return result ?? false;
     } on MissingPluginException {
@@ -90,7 +91,8 @@ class SafetyServiceBridge {
   /// Stop the Android SafetyForegroundService
   Future<bool> stopService() async {
     try {
-      final result = await _serviceChannel.invokeMethod<bool>('stopSafetyService');
+      final result =
+          await _serviceChannel.invokeMethod<bool>('stopSafetyService');
       Logger.info('🛡️ SafetyForegroundService stopped');
       return result ?? false;
     } catch (e) {
@@ -102,7 +104,8 @@ class SafetyServiceBridge {
   /// Check if service is running
   Future<bool> isRunning() async {
     try {
-      return await _serviceChannel.invokeMethod<bool>('isServiceRunning') ?? false;
+      return await _serviceChannel.invokeMethod<bool>('isServiceRunning') ??
+          false;
     } catch (_) {
       return false;
     }
@@ -153,7 +156,8 @@ class SafetyServiceBridge {
         break;
 
       case 'onServiceSosTrigger':
-        final source = (call.arguments as Map?)?['source'] as String? ?? 'unknown';
+        final source =
+            (call.arguments as Map?)?['source'] as String? ?? 'unknown';
         Logger.info('🚨 SOS triggered from native service: $source');
         onSosTrigger?.call(source);
         break;
@@ -166,7 +170,8 @@ class SafetyServiceBridge {
   Future<void> _handleEmergencyCall(MethodCall call) async {
     switch (call.method) {
       case 'onHardwarePanic':
-        Logger.info('🚨 Hardware power button 3-tap panic received from native!');
+        Logger.info(
+            '🚨 Hardware power button 3-tap panic received from native!');
         onHardwarePanic?.call();
         break;
 

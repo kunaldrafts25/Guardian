@@ -21,6 +21,7 @@ def test_agent_tools_execution():
         "event_type": "fall_detected",
         "location": {"latitude": 19.0760, "longitude": 72.8777},
         "motion_data": {"g_force": 4.5},
+        "contacts": [{"id": "contact_1", "name": "Test Contact", "phone": "+10000000000", "authorized": True}],
     })
     incident_id = rec["incident_id"]
 
@@ -66,6 +67,7 @@ def test_agent_critical_immediate_escalation():
         "event_id": "test_agent_evt_3",
         "user_id": "test_user_3",
         "event_type": "sos_button",
+        "contacts": [{"id": "contact_1", "name": "Test Contact", "phone": "+10000000000", "authorized": True}],
     })
     iid = sos_rec["incident_id"]
 
@@ -81,6 +83,7 @@ def test_hardware_panic_immediate_critical_and_community_dispatch():
         "user_id": "test_panic_user",
         "event_type": "hardware_power_panic",
         "location": {"latitude": 19.0760, "longitude": 72.8777, "is_isolated": False},
+        "contacts": [{"id": "contact_1", "name": "Test Contact", "phone": "+10000000000", "authorized": True}],
     })
     iid = panic_rec["incident_id"]
     assert panic_rec["risk_assessment"]["score"] >= 0.95

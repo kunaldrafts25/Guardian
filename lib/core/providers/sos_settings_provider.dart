@@ -79,7 +79,7 @@ class SosSettingsNotifier extends StateNotifier<SosSettings> {
   Future<void> _loadSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       state = SosSettings(
         shakeToSosEnabled: prefs.getBool(_keyShakeEnabled) ?? true,
         countdownSeconds: prefs.getInt(_keyCountdown) ?? 3,
@@ -89,7 +89,7 @@ class SosSettingsNotifier extends StateNotifier<SosSettings> {
         autoCallEmergency: prefs.getBool(_keyAutoCall) ?? false,
         emergencyNumber: prefs.getString(_keyEmergencyNumber) ?? '112',
       );
-      
+
       Logger.info('⚙️ SOS settings loaded');
     } catch (e) {
       Logger.error('Failed to load SOS settings', e);
@@ -100,7 +100,7 @@ class SosSettingsNotifier extends StateNotifier<SosSettings> {
   Future<void> _saveSetting(String key, dynamic value) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       if (value is bool) {
         await prefs.setBool(key, value);
       } else if (value is int) {
@@ -123,7 +123,7 @@ class SosSettingsNotifier extends StateNotifier<SosSettings> {
   /// Set countdown duration
   Future<void> setCountdownSeconds(int seconds) async {
     if (!SosSettings.countdownOptions.contains(seconds)) return;
-    
+
     state = state.copyWith(countdownSeconds: seconds);
     await _saveSetting(_keyCountdown, seconds);
     Logger.info('⚙️ SOS countdown set to $seconds seconds');
@@ -170,14 +170,15 @@ class SosSettingsNotifier extends StateNotifier<SosSettings> {
     await prefs.remove(_keyCustomMessage);
     await prefs.remove(_keyAutoCall);
     await prefs.remove(_keyEmergencyNumber);
-    
+
     state = const SosSettings();
     Logger.info('⚙️ SOS settings reset to defaults');
   }
 }
 
 /// SOS Settings provider
-final sosSettingsProvider = StateNotifierProvider<SosSettingsNotifier, SosSettings>((ref) {
+final sosSettingsProvider =
+    StateNotifierProvider<SosSettingsNotifier, SosSettings>((ref) {
   return SosSettingsNotifier();
 });
 

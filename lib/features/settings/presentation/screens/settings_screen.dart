@@ -13,6 +13,7 @@ import 'package:guardian/app/routes.dart';
 import 'package:guardian/core/models/user_model.dart';
 import 'package:guardian/core/providers/settings_provider.dart';
 import 'package:guardian/core/providers/auth_provider.dart';
+import 'package:guardian/core/providers/sos_settings_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -35,41 +36,56 @@ class SettingsScreen extends ConsumerWidget {
             child: Column(
               children: [
                 ListTile(
-                  leading: Icon(Icons.location_off, color: locationMode == LocationMode.ghost ? AppColors.primary : Colors.grey),
+                  leading: Icon(Icons.location_off,
+                      color: locationMode == LocationMode.ghost
+                          ? AppColors.primary
+                          : Colors.grey),
                   title: const Text('Ghost Mode'),
                   subtitle: const Text('Location only during SOS'),
                   trailing: Radio<LocationMode>(
                     value: LocationMode.ghost,
                     groupValue: locationMode,
-                    onChanged: (value) => ref.read(locationModeProvider.notifier).setLocationMode(value!),
+                    onChanged: (value) => ref
+                        .read(locationModeProvider.notifier)
+                        .setLocationMode(value!),
                   ),
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading: Icon(Icons.smart_toy, color: locationMode == LocationMode.smart ? AppColors.primary : Colors.grey),
+                  leading: Icon(Icons.smart_toy,
+                      color: locationMode == LocationMode.smart
+                          ? AppColors.primary
+                          : Colors.grey),
                   title: const Text('Smart Mode'),
                   subtitle: const Text('Auto-activate at night'),
                   trailing: Radio<LocationMode>(
                     value: LocationMode.smart,
                     groupValue: locationMode,
-                    onChanged: (value) => ref.read(locationModeProvider.notifier).setLocationMode(value!),
+                    onChanged: (value) => ref
+                        .read(locationModeProvider.notifier)
+                        .setLocationMode(value!),
                   ),
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading: Icon(Icons.shield, color: locationMode == LocationMode.guardian ? AppColors.primary : Colors.grey),
+                  leading: Icon(Icons.shield,
+                      color: locationMode == LocationMode.guardian
+                          ? AppColors.primary
+                          : Colors.grey),
                   title: const Text('Guardian Mode'),
                   subtitle: const Text('Always on (higher battery use)'),
                   trailing: Radio<LocationMode>(
                     value: LocationMode.guardian,
                     groupValue: locationMode,
-                    onChanged: (value) => ref.read(locationModeProvider.notifier).setLocationMode(value!),
+                    onChanged: (value) => ref
+                        .read(locationModeProvider.notifier)
+                        .setLocationMode(value!),
                   ),
                 ),
               ],
             ),
           ),
-          
+
           // Appearance Section
           _SectionHeader(title: 'Appearance'),
           Card(
@@ -94,7 +110,7 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
-          
+
           // Safety Section
           _SectionHeader(title: 'Safety'),
           Card(
@@ -105,8 +121,10 @@ class SettingsScreen extends ConsumerWidget {
                   secondary: const Icon(Icons.vibration),
                   title: const Text('Shake to SOS'),
                   subtitle: const Text('Shake phone to trigger emergency'),
-                  value: true,
-                  onChanged: (value) {},
+                  value: ref.watch(shakeToSosEnabledProvider),
+                  onChanged: (value) => ref
+                      .read(sosSettingsProvider.notifier)
+                      .setShakeToSosEnabled(value),
                 ),
                 const Divider(height: 1),
                 ListTile(
@@ -120,14 +138,14 @@ class SettingsScreen extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.flash_on),
                   title: const Text('Quick Actions'),
-                  subtitle: const Text('Fake call, check-in timer'),
+                  subtitle: const Text('Check-in timer and SOS controls'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.push(Routes.quickActions),
                 ),
               ],
             ),
           ),
-          
+
           // Account Section
           _SectionHeader(title: 'Account'),
           Card(
@@ -150,7 +168,8 @@ class SettingsScreen extends ConsumerWidget {
                 const Divider(height: 1),
                 ListTile(
                   leading: Icon(Icons.logout, color: AppColors.error),
-                  title: Text('Sign Out', style: TextStyle(color: AppColors.error)),
+                  title: Text('Sign Out',
+                      style: TextStyle(color: AppColors.error)),
                   onTap: () async {
                     await ref.read(signOutProvider)();
                   },
@@ -158,12 +177,15 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 24),
           Center(
             child: Text(
               'Guardian v2.0.0',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: Colors.grey),
             ),
           ),
           const SizedBox(height: 24),
@@ -183,7 +205,8 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
-  void _showThemeDialog(BuildContext context, WidgetRef ref, ThemeMode currentMode) {
+  void _showThemeDialog(
+      BuildContext context, WidgetRef ref, ThemeMode currentMode) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -218,9 +241,9 @@ class _SectionHeader extends StatelessWidget {
       child: Text(
         title,
         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-          color: Colors.grey,
-          fontWeight: FontWeight.bold,
-        ),
+              color: Colors.grey,
+              fontWeight: FontWeight.bold,
+            ),
       ),
     );
   }

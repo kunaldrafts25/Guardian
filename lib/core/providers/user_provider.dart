@@ -1,142 +1,142 @@
-/*
- * Guardian 2.0 - Women's Safety App
- * © 2025 All Rights Reserved - Kunal Singh
- * 
- * User Provider - Riverpod providers for user profile management
- */
-
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:guardian/core/models/user_model.dart';
 import 'package:guardian/core/providers/auth_provider.dart';
-import 'package:guardian/core/services/user_service.dart';
+import 'package:guardian/core/services/aws_auth_service.dart';
 
-/// Firestore instance provider
-final firestoreProvider = Provider<FirebaseFirestore>((ref) {
-  return FirebaseFirestore.instance;
-});
+UserModel _profileFromApi(
+  Map<String, dynamic> data,
+  AwsAuthUser session,
+) {
+  final rawContacts = data['emergency_contacts'] as List<dynamic>? ?? const [];
+  final contacts = rawContacts
+      .whereType<Map>()
+      .map((item) => EmergencyContact.fromJson(
+            Map<String, dynamic>.from(item),
+          ))
+      .toList();
+  final now = DateTime.now();
+  DateTime parseDate(Object? value) =>
+      value is String ? DateTime.tryParse(value) ?? now : now;
+  final score = (data['trust_score'] as num?)?.toInt() ?? 0;
 
-/// User service provider
-final userServiceProvider = Provider<UserService>((ref) {
-  return UserService(ref.watch(firestoreProvider));
-});
+  return UserModel(
+    uid: session.uid,
+    phoneNumber: data['phone'] as String? ?? session.phoneNumber ?? '',
+    displayName: data['display_name'] as String? ?? session.displayName,
+    photoUrl: data['photo_url'] as String? ?? session.photoURL,
+    trustScore: score,
+    trustRank: UserModel.calculateRank(score),
+    locationMode: LocationMode.values.firstWhere(
+      (mode) => mode.name == data['location_mode'],
+      orElse: () => LocationMode.smart,
+    ),
+    emergencyContacts: contacts,
+    helpedCount: (data['helped_count'] as num?)?.toInt() ?? 0,
+    sosUsedCount: (data['sos_used_count'] as num?)?.toInt() ?? 0,
+    walkSessionsCount: (data['walk_sessions_count'] as num?)?.toInt() ?? 0,
+    isPhoneVerified: true,
+    isIdVerified: data['is_id_verified'] as bool? ?? false,
+    createdAt: parseDate(data['created_at']),
+    updatedAt: parseDate(data['updated_at']),
+  );
+}
 
-/// Stream of current user's profile from Firestore
-final userProfileStreamProvider = StreamProvider<UserModel?>((ref) {
-  final user = ref.watch(currentUserProvider);
-  if (user == null) {
-    return Stream.value(null);
+final userProfileStreamProvider = StreamProvider<UserModel?>((ref) async* {
+  final session = ref.watch(currentUserProvider);
+  if (session == null) {
+    yield null;
+    return;
   }
-  return ref.watch(userServiceProvider).streamUserProfile(user.uid);
+  final data = await ref.watch(authServiceProvider).getUserProfile();
+  yield data == null ? null : _profileFromApi(data, session);
 });
 
-/// Current user profile (async)
 final userProfileProvider = FutureProvider<UserModel?>((ref) async {
-  final user = ref.watch(currentUserProvider);
-  if (user == null) return null;
-  return ref.watch(userServiceProvider).getUserProfile(user.uid);
+  final session = ref.watch(currentUserProvider);
+  if (session == null) return null;
+  final data = await ref.watch(authServiceProvider).getUserProfile();
+  return data == null ? null : _profileFromApi(data, session);
 });
 
-/// Create or get user profile on first login
-final ensureUserProfileProvider = FutureProvider.family<UserModel, void>((ref, _) async {
-  final firebaseUser = ref.watch(currentUserProvider);
-  if (firebaseUser == null) {
-    throw Exception('No authenticated user');
-  }
-  
-  final userService = ref.watch(userServiceProvider);
-  
-  // Check if profile exists
-  final existing = await userService.getUserProfile(firebaseUser.uid);
-  if (existing != null) {
-    return existing;
-  }
-  
-  // Create new profile
-  return userService.createUserProfile(firebaseUser);
+final ensureUserProfileProvider =
+    FutureProvider.family<UserModel, void>((ref, _) async {
+  final session = ref.watch(currentUserProvider);
+  if (session == null) throw StateError('No authenticated user');
+  final data = await ref.watch(authServiceProvider).getUserProfile();
+  if (data == null) throw StateError('User profile is unavailable');
+  return _profileFromApi(data, session);
 });
 
-/// Update profile mutation provider
 class ProfileUpdateNotifier extends StateNotifier<AsyncValue<void>> {
-  final UserService _userService;
-  final String _uid;
-  
-  ProfileUpdateNotifier(this._userService, this._uid) : super(const AsyncValue.data(null));
-  
-  Future<void> updateDisplayName(String name) async {
+  final Ref _ref;
+  final AwsAuthService _service;
+
+  ProfileUpdateNotifier(this._ref, this._service)
+      : super(const AsyncValue.data(null));
+
+  Future<void> _update(Map<String, dynamic> values) async {
     state = const AsyncValue.loading();
     try {
-      await _userService.updateDisplayName(_uid, name);
+      final success = await _service.updateProfile(values);
+      if (!success) throw StateError('Profile update failed');
+      _ref.invalidate(userProfileProvider);
+      _ref.invalidate(userProfileStreamProvider);
       state = const AsyncValue.data(null);
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
+    } catch (error, stackTrace) {
+      state = AsyncValue.error(error, stackTrace);
     }
   }
-  
-  Future<void> updatePhotoUrl(String url) async {
-    state = const AsyncValue.loading();
-    try {
-      await _userService.updatePhotoUrl(_uid, url);
-      state = const AsyncValue.data(null);
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
-    }
-  }
-  
-  Future<void> updateLocationMode(LocationMode mode) async {
-    state = const AsyncValue.loading();
-    try {
-      await _userService.updateLocationMode(_uid, mode);
-      state = const AsyncValue.data(null);
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
-    }
-  }
-  
+
+  Future<void> updateDisplayName(String name) =>
+      _update({'display_name': name});
+
+  Future<void> updatePhotoUrl(String url) => _update({'photo_url': url});
+
+  Future<void> updateLocationMode(LocationMode mode) => _update({
+        'settings': {'location_mode': mode.name}
+      });
+
   Future<void> addEmergencyContact(EmergencyContact contact) async {
-    state = const AsyncValue.loading();
-    try {
-      await _userService.addEmergencyContact(_uid, contact);
-      state = const AsyncValue.data(null);
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
-    }
+    final current = await _ref.read(userProfileProvider.future);
+    final contacts = [...?current?.emergencyContacts, contact];
+    await _saveContacts(contacts);
   }
-  
+
   Future<void> removeEmergencyContact(String contactId) async {
+    final current = await _ref.read(userProfileProvider.future);
+    final contacts = [...?current?.emergencyContacts]
+      ..removeWhere((contact) => contact.id == contactId);
+    await _saveContacts(contacts);
+  }
+
+  Future<void> _saveContacts(List<EmergencyContact> contacts) async {
     state = const AsyncValue.loading();
     try {
-      await _userService.removeEmergencyContact(_uid, contactId);
+      final success = await _service.saveEmergencyContacts(
+        contacts.map((contact) => contact.toJson()).toList(),
+      );
+      if (!success) throw StateError('Contact update failed');
+      _ref.invalidate(userProfileProvider);
+      _ref.invalidate(userProfileStreamProvider);
       state = const AsyncValue.data(null);
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
+    } catch (error, stackTrace) {
+      state = AsyncValue.error(error, stackTrace);
     }
   }
 }
 
-/// Profile update notifier provider
-final profileUpdateProvider = StateNotifierProvider<ProfileUpdateNotifier, AsyncValue<void>>((ref) {
-  final user = ref.watch(currentUserProvider);
-  if (user == null) {
-    throw Exception('No authenticated user');
-  }
-  return ProfileUpdateNotifier(ref.watch(userServiceProvider), user.uid);
+final profileUpdateProvider =
+    StateNotifierProvider<ProfileUpdateNotifier, AsyncValue<void>>((ref) {
+  return ProfileUpdateNotifier(ref, ref.watch(authServiceProvider));
 });
 
-/// Trust score from user profile
-final trustScoreProvider = Provider<int>((ref) {
-  final profile = ref.watch(userProfileStreamProvider).valueOrNull;
-  return profile?.trustScore ?? 0;
-});
+final trustScoreProvider = Provider<int>(
+    (ref) => ref.watch(userProfileStreamProvider).valueOrNull?.trustScore ?? 0);
 
-/// Trust rank from user profile
-final trustRankProvider = Provider<TrustRank>((ref) {
-  final profile = ref.watch(userProfileStreamProvider).valueOrNull;
-  return profile?.trustRank ?? TrustRank.watcher;
-});
+final trustRankProvider = Provider<TrustRank>((ref) =>
+    ref.watch(userProfileStreamProvider).valueOrNull?.trustRank ??
+    TrustRank.watcher);
 
-/// Emergency contacts from user profile
-final emergencyContactsProvider = Provider<List<EmergencyContact>>((ref) {
-  final profile = ref.watch(userProfileStreamProvider).valueOrNull;
-  return profile?.emergencyContacts ?? [];
-});
+final emergencyContactsProvider = Provider<List<EmergencyContact>>((ref) =>
+    ref.watch(userProfileStreamProvider).valueOrNull?.emergencyContacts ??
+    const []);
