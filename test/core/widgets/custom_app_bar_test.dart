@@ -25,7 +25,8 @@ void main() {
       expect(find.text('Test Title'), findsOneWidget);
     });
 
-    testWidgets('renders back button when showBackButton is true', (WidgetTester tester) async {
+    testWidgets('renders back button when showBackButton is true',
+        (WidgetTester tester) async {
       bool backButtonPressed = false;
 
       await tester.pumpWidget(
@@ -53,7 +54,8 @@ void main() {
       expect(backButtonPressed, true);
     });
 
-    testWidgets('does not render back button when showBackButton is false', (WidgetTester tester) async {
+    testWidgets('does not render back button when showBackButton is false',
+        (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(

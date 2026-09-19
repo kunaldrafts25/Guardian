@@ -17,7 +17,8 @@ void main() {
     });
 
     test('truncate returns truncated string with ellipsis', () {
-      expect(StringUtils.truncate('This is a long string', 10), 'This is a ...');
+      expect(
+          StringUtils.truncate('This is a long string', 10), 'This is a ...');
       expect(StringUtils.truncate('Short', 10), 'Short');
       expect(StringUtils.truncate('', 10), '');
     });
@@ -42,7 +43,8 @@ void main() {
 
     test('formatPhoneNumber formats phone number correctly', () {
       expect(StringUtils.formatPhoneNumber('1234567890'), '(123) 456-7890');
-      expect(StringUtils.formatPhoneNumber('123456789'), '123456789'); // Invalid length
+      expect(StringUtils.formatPhoneNumber('123456789'),
+          '123456789'); // Invalid length
       expect(StringUtils.formatPhoneNumber(''), '');
     });
 

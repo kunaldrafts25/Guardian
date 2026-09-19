@@ -28,7 +28,7 @@ dependencies:
   # ═══════════════════════════════════════════════
   # Offline-First Database (Drift + SQLite)
   # ═══════════════════════════════════════════════
-  drift: ^2.18.0
+  drift: ^2.35.0
   sqlite3_flutter_libs: ^0.5.24
   path_provider: ^2.1.4
   path: ^1.9.0
@@ -92,8 +92,6 @@ dependencies:
   # Code Generation Support
   # ═══════════════════════════════════════════════
   equatable: ^2.0.7
-  freezed_annotation: ^2.4.4
-  json_annotation: ^4.9.0
 
 dev_dependencies:
   flutter_test:
@@ -104,10 +102,8 @@ dev_dependencies:
   flutter_lints: ^4.0.0
 
   # Code Generation
-  build_runner: ^2.4.13
-  freezed: ^2.5.7
-  json_serializable: ^6.8.0
-  drift_dev: ^2.18.0
+  build_runner: ^2.16.1
+  drift_dev: ^2.35.0
 
   # Testing
   mockito: ^5.4.4

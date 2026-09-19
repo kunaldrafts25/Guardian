@@ -11,7 +11,8 @@ import 'package:guardian/core/widgets/custom_button.dart';
 
 void main() {
   group('CustomButton', () {
-    testWidgets('renders primary button correctly', (WidgetTester tester) async {
+    testWidgets('renders primary button correctly',
+        (WidgetTester tester) async {
       bool buttonPressed = false;
 
       await tester.pumpWidget(
@@ -32,11 +33,13 @@ void main() {
       expect(find.text('Primary Button'), findsOneWidget);
 
       // Verify button has correct style
-      final elevatedButton = tester.widget<ElevatedButton>(find.byType(ElevatedButton));
+      final elevatedButton =
+          tester.widget<ElevatedButton>(find.byType(ElevatedButton));
       final buttonStyle = elevatedButton.style as ButtonStyle;
 
       // Verify button has correct background color
-      final backgroundColor = buttonStyle.backgroundColor?.resolve({WidgetState.pressed});
+      final backgroundColor =
+          buttonStyle.backgroundColor?.resolve({WidgetState.pressed});
       expect(backgroundColor, AppColors.primary);
 
       // Tap the button
@@ -47,7 +50,8 @@ void main() {
       expect(buttonPressed, true);
     });
 
-    testWidgets('renders secondary button correctly', (WidgetTester tester) async {
+    testWidgets('renders secondary button correctly',
+        (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -64,7 +68,8 @@ void main() {
       expect(find.text('Secondary Button'), findsOneWidget);
     });
 
-    testWidgets('renders outline button correctly', (WidgetTester tester) async {
+    testWidgets('renders outline button correctly',
+        (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -118,7 +123,8 @@ void main() {
       expect(find.text('Loading Button'), findsNothing);
     });
 
-    testWidgets('renders button with icon correctly', (WidgetTester tester) async {
+    testWidgets('renders button with icon correctly',
+        (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -136,7 +142,8 @@ void main() {
       expect(find.text('Icon Button'), findsOneWidget);
     });
 
-    testWidgets('disabled button does not trigger onPressed', (WidgetTester tester) async {
+    testWidgets('disabled button does not trigger onPressed',
+        (WidgetTester tester) async {
       bool buttonPressed = false;
 
       await tester.pumpWidget(

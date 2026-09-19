@@ -48,7 +48,8 @@ void main() {
 
       // Months ago
       final threeMonthsAgo = DateTime(now.year, now.month - 3, now.day);
-      expect(DateUtils.getTimeAgo(threeMonthsAgo).contains('months ago'), isTrue);
+      expect(
+          DateUtils.getTimeAgo(threeMonthsAgo).contains('months ago'), isTrue);
 
       // Years ago
       final twoYearsAgo = DateTime(now.year - 2, now.month, now.day);

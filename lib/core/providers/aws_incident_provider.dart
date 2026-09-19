@@ -86,7 +86,7 @@ class AwsIncidentNotifier extends StateNotifier<AwsIncidentState> {
     super.dispose();
   }
 
-  void _startPolling(String incidentId) {
+  void startPolling(String incidentId) {
     _pollingTimer?.cancel();
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       await pollStatus(incidentId);

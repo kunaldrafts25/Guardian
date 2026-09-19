@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -47,18 +48,75 @@ class OfflineSyncService {
     if (_isSyncing || !AwsAuthService.instance.isSignedIn) return;
     _isSyncing = true;
     try {
-      await _syncAlerts();
+      await _syncOutbox();
+      await _syncLegacyAlerts();
       await _syncContacts();
     } finally {
       _isSyncing = false;
     }
   }
 
-  Future<void> _syncAlerts() async {
+  Future<void> _syncOutbox() async {
+    final userId = AwsAuthService.instance.currentUserId;
+    if (userId == null) return;
+
+    final operations = await _db.getDueOutboxOperations();
+    for (final operation in operations) {
+      if (operation.operationType != 'createIncident') {
+        await _db.markOutboxRetry(
+          operationId: operation.operationId,
+          previousAttemptCount: operation.attemptCount,
+          error: 'Unsupported outbox operation: ${operation.operationType}',
+        );
+        continue;
+      }
+
+      try {
+        final payload = jsonDecode(operation.payloadJson);
+        if (payload is! Map<String, dynamic>) {
+          throw const FormatException('Outbox payload must be a JSON object');
+        }
+        final locationValue = payload['location'];
+        final motionValue = payload['motion_data'];
+        final incident = await AwsIncidentService.instance.createIncident(
+          eventId: operation.aggregateId,
+          userId: userId,
+          eventType: payload['event_type'] as String,
+          location: locationValue is Map
+              ? Map<String, dynamic>.from(locationValue)
+              : null,
+          motionData: motionValue is Map
+              ? Map<String, dynamic>.from(motionValue)
+              : const <String, dynamic>{'offline_sync': true},
+        );
+        if (incident['incident_id'] == null) {
+          throw const FormatException('Incident response has no incident_id');
+        }
+        await _db.markAlertSynced(operation.aggregateId);
+        await _db.markOutboxSucceeded(operation.operationId);
+      } catch (error) {
+        await _db.markOutboxRetry(
+          operationId: operation.operationId,
+          previousAttemptCount: operation.attemptCount,
+          error: error.toString(),
+        );
+        Logger.warning(
+          'Outbox ${operation.operationId} remains queued: $error',
+        );
+      }
+    }
+  }
+
+  /// Migrates alerts created by database schema v1, before the durable outbox
+  /// existed. New alerts are handled only by [_syncOutbox].
+  Future<void> _syncLegacyAlerts() async {
     final userId = AwsAuthService.instance.currentUserId;
     if (userId == null) return;
     final alerts = await _db.getUnsyncedAlerts();
     for (final alert in alerts) {
+      final operation =
+          await _db.getOutboxOperation('${alert.alertId}:createIncident');
+      if (operation != null) continue;
       try {
         await AwsIncidentService.instance.createIncident(
           eventId: alert.alertId,

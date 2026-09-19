@@ -18,25 +18,37 @@ void main() {
     });
 
     test('isNetworkError identifies network errors correctly', () {
-      expect(NetworkUtils.isNetworkError(Exception('Failed host lookup')), true);
-      expect(NetworkUtils.isNetworkError(Exception('Connection refused')), true);
-      expect(NetworkUtils.isNetworkError(Exception('Connection timed out')), true);
-      expect(NetworkUtils.isNetworkError(Exception('Network is unreachable')), true);
+      expect(
+          NetworkUtils.isNetworkError(Exception('Failed host lookup')), true);
+      expect(
+          NetworkUtils.isNetworkError(Exception('Connection refused')), true);
+      expect(
+          NetworkUtils.isNetworkError(Exception('Connection timed out')), true);
+      expect(NetworkUtils.isNetworkError(Exception('Network is unreachable')),
+          true);
       expect(NetworkUtils.isNetworkError(Exception('Other error')), false);
     });
 
     test('formatUrl formats URL correctly', () {
-      expect(NetworkUtils.formatUrl('example.com', '/path'), 'https://example.com/path');
-      expect(NetworkUtils.formatUrl('https://example.com', '/path'), 'https://example.com/path');
-      expect(NetworkUtils.formatUrl('example.com', 'path'), 'https://example.com/path');
-      expect(NetworkUtils.formatUrl('example.com/', '/path'), 'https://example.com/path');
+      expect(NetworkUtils.formatUrl('example.com', '/path'),
+          'https://example.com/path');
+      expect(NetworkUtils.formatUrl('https://example.com', '/path'),
+          'https://example.com/path');
+      expect(NetworkUtils.formatUrl('example.com', 'path'),
+          'https://example.com/path');
+      expect(NetworkUtils.formatUrl('example.com/', '/path'),
+          'https://example.com/path');
     });
 
     test('getErrorMessage returns appropriate error message', () {
-      expect(NetworkUtils.getErrorMessage(Exception('Failed host lookup')), 'No internet connection');
-      expect(NetworkUtils.getErrorMessage(Exception('Connection refused')), 'Server is not responding');
-      expect(NetworkUtils.getErrorMessage(Exception('Connection timed out')), 'Request timed out');
-      expect(NetworkUtils.getErrorMessage(Exception('Other error')), 'An error occurred');
+      expect(NetworkUtils.getErrorMessage(Exception('Failed host lookup')),
+          'No internet connection');
+      expect(NetworkUtils.getErrorMessage(Exception('Connection refused')),
+          'Server is not responding');
+      expect(NetworkUtils.getErrorMessage(Exception('Connection timed out')),
+          'Request timed out');
+      expect(NetworkUtils.getErrorMessage(Exception('Other error')),
+          'An error occurred');
     });
 
     test('parseJson parses JSON correctly', () {
@@ -50,7 +62,8 @@ void main() {
 
     test('encodeQueryParameters encodes parameters correctly', () {
       final params = {'name': 'John Doe', 'age': '30'};
-      expect(NetworkUtils.encodeQueryParameters(params), 'name=John%20Doe&age=30');
+      expect(
+          NetworkUtils.encodeQueryParameters(params), 'name=John%20Doe&age=30');
     });
 
     test('isSuccessStatusCode identifies success status codes correctly', () {

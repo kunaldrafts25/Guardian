@@ -2,7 +2,7 @@
  * Guardian — GuardianDatabase (Drift + SQLite)
  *
  * This is the OFFLINE-FIRST local database. All safety-critical data
- * lives here first and syncs to Firestore when connectivity is available.
+ * lives here first and syncs to AWS when connectivity is available.
  *
  * Tables:
  *   - local_contacts      — emergency contacts (most critical: must survive offline)
@@ -14,7 +14,10 @@
  *   - local_incidents     — community incidents pending sync
  */
 
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
+import 'package:guardian/core/models/emergency_domain.dart';
 import 'connection/connection.dart' as impl;
 
 part 'guardian_database.g.dart';
@@ -130,6 +133,60 @@ class LocalIncidents extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+/// Append-only audit journal for local emergency lifecycle events.
+class LocalIncidentEvents extends Table {
+  TextColumn get eventId => text()();
+  TextColumn get incidentId => text()();
+  TextColumn get eventType => text()();
+  TextColumn get incidentState => text()();
+  TextColumn get actorType => text()();
+  TextColumn get actorId => text().nullable()();
+  TextColumn get payloadJson => text().withDefault(const Constant('{}'))();
+  DateTimeColumn get occurredAt => dateTime()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {eventId};
+}
+
+/// Durable operations awaiting an authenticated cloud write.
+class LocalOutboxOperations extends Table {
+  TextColumn get operationId => text()();
+  TextColumn get aggregateType => text()();
+  TextColumn get aggregateId => text()();
+  TextColumn get operationType => text()();
+  TextColumn get payloadJson => text()();
+  TextColumn get dependencyId => text().nullable()();
+  TextColumn get status => text().withDefault(const Constant('pending'))();
+  IntColumn get attemptCount => integer().withDefault(const Constant(0))();
+  DateTimeColumn get nextAttemptAt =>
+      dateTime().withDefault(currentDateAndTime)();
+  TextColumn get lastError => text().nullable()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {operationId};
+}
+
+/// Evidence for each recipient/channel delivery. Provider acceptance is not
+/// represented as delivery or acknowledgement unless a later receipt proves it.
+class LocalDeliveryAttempts extends Table {
+  TextColumn get attemptId => text()();
+  TextColumn get incidentId => text()();
+  TextColumn get channel => text()();
+  TextColumn get recipientRef => text()();
+  TextColumn get status => text()();
+  TextColumn get providerMessageId => text().nullable()();
+  TextColumn get failureCode => text().nullable()();
+  DateTimeColumn get queuedAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get acknowledgedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {attemptId};
+}
+
 // ═══════════════════════════════════════════════════════
 // DATABASE
 // ═══════════════════════════════════════════════════════
@@ -142,12 +199,31 @@ class LocalIncidents extends Table {
   LocalLocationLog,
   LocalMeshBeacons,
   LocalIncidents,
+  LocalIncidentEvents,
+  LocalOutboxOperations,
+  LocalDeliveryAttempts,
 ])
 class GuardianDatabase extends _$GuardianDatabase {
   GuardianDatabase() : super(_openConnection());
 
+  GuardianDatabase.forTesting(super.executor);
+
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 3;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (migrator) => migrator.createAll(),
+        onUpgrade: (migrator, from, to) async {
+          if (from < 2) {
+            await migrator.createTable(localIncidentEvents);
+            await migrator.createTable(localOutboxOperations);
+          }
+          if (from < 3) {
+            await migrator.createTable(localDeliveryAttempts);
+          }
+        },
+      );
 
   // ─────────────────────────────────────────────────
   // Contacts
@@ -187,6 +263,116 @@ class GuardianDatabase extends _$GuardianDatabase {
           resolvedAt: Value(resolvedAt),
         ),
       );
+
+  /// Atomically records an alert, its first immutable lifecycle event, and the
+  /// cloud operation. Replaying the same identifiers is safe.
+  Future<void> queueAlertForCloud({
+    required LocalAlertsCompanion alert,
+    required String alertId,
+    required String eventType,
+    required DateTime occurredAt,
+    required Map<String, dynamic> cloudPayload,
+    List<LocalDeliveryAttemptsCompanion> deliveryAttempts = const [],
+  }) =>
+      transaction(() async {
+        await into(localAlerts).insertOnConflictUpdate(alert);
+        await into(localIncidentEvents).insert(
+          LocalIncidentEventsCompanion.insert(
+            eventId: '$alertId:triggered',
+            incidentId: alertId,
+            eventType: eventType,
+            incidentState: EmergencyIncidentState.triggered.name,
+            actorType: EmergencyActorType.device.name,
+            occurredAt: occurredAt,
+            payloadJson: Value(jsonEncode({
+              'source': eventType,
+              'schema_version': 1,
+            })),
+          ),
+          mode: InsertMode.insertOrIgnore,
+        );
+        await into(localOutboxOperations).insert(
+          LocalOutboxOperationsCompanion.insert(
+            operationId: '$alertId:createIncident',
+            aggregateType: 'incident',
+            aggregateId: alertId,
+            operationType: 'createIncident',
+            payloadJson: jsonEncode(cloudPayload),
+          ),
+          mode: InsertMode.insertOrIgnore,
+        );
+        for (final attempt in deliveryAttempts) {
+          await into(localDeliveryAttempts).insert(
+            attempt,
+            mode: InsertMode.insertOrIgnore,
+          );
+        }
+      });
+
+  Future<List<LocalIncidentEvent>> getIncidentEvents(String incidentId) =>
+      (select(localIncidentEvents)
+            ..where((event) => event.incidentId.equals(incidentId))
+            ..orderBy([(event) => OrderingTerm.asc(event.occurredAt)]))
+          .get();
+
+  Future<List<LocalDeliveryAttempt>> getDeliveryAttempts(String incidentId) =>
+      (select(localDeliveryAttempts)
+            ..where((attempt) => attempt.incidentId.equals(incidentId))
+            ..orderBy([(attempt) => OrderingTerm.asc(attempt.queuedAt)]))
+          .get();
+
+  Future<List<LocalOutboxOperation>> getDueOutboxOperations({
+    DateTime? now,
+    int limit = 25,
+  }) =>
+      (select(localOutboxOperations)
+            ..where((operation) =>
+                operation.status.equals(OutboxOperationState.pending.name) &
+                operation.nextAttemptAt
+                    .isSmallerOrEqualValue(now ?? DateTime.now()))
+            ..orderBy([(operation) => OrderingTerm.asc(operation.createdAt)])
+            ..limit(limit))
+          .get();
+
+  Future<LocalOutboxOperation?> getOutboxOperation(String operationId) =>
+      (select(localOutboxOperations)
+            ..where((operation) => operation.operationId.equals(operationId)))
+          .getSingleOrNull();
+
+  Future<void> markOutboxSucceeded(String operationId) =>
+      (update(localOutboxOperations)
+            ..where((operation) => operation.operationId.equals(operationId)))
+          .write(LocalOutboxOperationsCompanion(
+        status: Value(OutboxOperationState.succeeded.name),
+        lastError: const Value(null),
+        updatedAt: Value(DateTime.now()),
+      ));
+
+  Future<void> markOutboxRetry({
+    required String operationId,
+    required int previousAttemptCount,
+    required String error,
+    DateTime? now,
+  }) {
+    final attemptCount = previousAttemptCount + 1;
+    final base = now ?? DateTime.now();
+    final delaySeconds = switch (attemptCount) {
+      <= 1 => 5,
+      2 => 15,
+      3 => 60,
+      4 => 300,
+      _ => 900,
+    };
+    return (update(localOutboxOperations)
+          ..where((operation) => operation.operationId.equals(operationId)))
+        .write(LocalOutboxOperationsCompanion(
+      status: Value(OutboxOperationState.pending.name),
+      attemptCount: Value(attemptCount),
+      nextAttemptAt: Value(base.add(Duration(seconds: delaySeconds))),
+      lastError: Value(error.length > 500 ? error.substring(0, 500) : error),
+      updatedAt: Value(base),
+    ));
+  }
 
   // ─────────────────────────────────────────────────
   // Location log — keep only last 500 positions

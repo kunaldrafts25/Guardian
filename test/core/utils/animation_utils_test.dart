@@ -25,7 +25,8 @@ void main() {
       controller.dispose();
     });
 
-    testWidgets('fadeTransition creates a FadeTransition', (WidgetTester tester) async {
+    testWidgets('fadeTransition creates a FadeTransition',
+        (WidgetTester tester) async {
       final widget = AnimationUtils.fadeTransition(
         animation: animation,
         child: const SizedBox(),
@@ -38,7 +39,8 @@ void main() {
       expect(find.byType(FadeTransition), findsOneWidget);
     });
 
-    testWidgets('slideTransition creates a SlideTransition', (WidgetTester tester) async {
+    testWidgets('slideTransition creates a SlideTransition',
+        (WidgetTester tester) async {
       final widget = AnimationUtils.slideTransition(
         animation: animation,
         child: const SizedBox(),
@@ -51,7 +53,8 @@ void main() {
       expect(find.byType(SlideTransition), findsOneWidget);
     });
 
-    testWidgets('scaleTransition creates a ScaleTransition', (WidgetTester tester) async {
+    testWidgets('scaleTransition creates a ScaleTransition',
+        (WidgetTester tester) async {
       final widget = AnimationUtils.scaleTransition(
         animation: animation,
         child: const SizedBox(),
@@ -64,7 +67,8 @@ void main() {
       expect(find.byType(ScaleTransition), findsOneWidget);
     });
 
-    testWidgets('fadeSlideTransition creates a FadeTransition and SlideTransition', 
+    testWidgets(
+        'fadeSlideTransition creates a FadeTransition and SlideTransition',
         (WidgetTester tester) async {
       final widget = AnimationUtils.fadeSlideTransition(
         animation: animation,
@@ -79,7 +83,8 @@ void main() {
       expect(find.byType(SlideTransition), findsOneWidget);
     });
 
-    testWidgets('fadeScaleTransition creates a FadeTransition and ScaleTransition', 
+    testWidgets(
+        'fadeScaleTransition creates a FadeTransition and ScaleTransition',
         (WidgetTester tester) async {
       final widget = AnimationUtils.fadeScaleTransition(
         animation: animation,

@@ -40,7 +40,8 @@ void main() {
       expect(find.byIcon(Icons.error_outline), findsOneWidget);
     });
 
-    testWidgets('renders custom icon when provided', (WidgetTester tester) async {
+    testWidgets('renders custom icon when provided',
+        (WidgetTester tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -56,7 +57,8 @@ void main() {
       expect(find.byIcon(Icons.warning), findsOneWidget);
     });
 
-    testWidgets('renders retry button when onRetry is provided', (WidgetTester tester) async {
+    testWidgets('renders retry button when onRetry is provided',
+        (WidgetTester tester) async {
       bool retryPressed = false;
 
       await tester.pumpWidget(
@@ -83,7 +85,8 @@ void main() {
       expect(retryPressed, true);
     });
 
-    testWidgets('does not render retry button when onRetry is not provided', (WidgetTester tester) async {
+    testWidgets('does not render retry button when onRetry is not provided',
+        (WidgetTester tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(

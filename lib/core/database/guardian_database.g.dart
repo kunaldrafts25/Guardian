@@ -3483,6 +3483,1654 @@ class LocalIncidentsCompanion extends UpdateCompanion<LocalIncident> {
   }
 }
 
+class $LocalIncidentEventsTable extends LocalIncidentEvents
+    with TableInfo<$LocalIncidentEventsTable, LocalIncidentEvent> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalIncidentEventsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _eventIdMeta =
+      const VerificationMeta('eventId');
+  @override
+  late final GeneratedColumn<String> eventId = GeneratedColumn<String>(
+      'event_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _incidentIdMeta =
+      const VerificationMeta('incidentId');
+  @override
+  late final GeneratedColumn<String> incidentId = GeneratedColumn<String>(
+      'incident_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _eventTypeMeta =
+      const VerificationMeta('eventType');
+  @override
+  late final GeneratedColumn<String> eventType = GeneratedColumn<String>(
+      'event_type', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _incidentStateMeta =
+      const VerificationMeta('incidentState');
+  @override
+  late final GeneratedColumn<String> incidentState = GeneratedColumn<String>(
+      'incident_state', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _actorTypeMeta =
+      const VerificationMeta('actorType');
+  @override
+  late final GeneratedColumn<String> actorType = GeneratedColumn<String>(
+      'actor_type', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _actorIdMeta =
+      const VerificationMeta('actorId');
+  @override
+  late final GeneratedColumn<String> actorId = GeneratedColumn<String>(
+      'actor_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _payloadJsonMeta =
+      const VerificationMeta('payloadJson');
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+      'payload_json', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('{}'));
+  static const VerificationMeta _occurredAtMeta =
+      const VerificationMeta('occurredAt');
+  @override
+  late final GeneratedColumn<DateTime> occurredAt = GeneratedColumn<DateTime>(
+      'occurred_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns => [
+        eventId,
+        incidentId,
+        eventType,
+        incidentState,
+        actorType,
+        actorId,
+        payloadJson,
+        occurredAt,
+        createdAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_incident_events';
+  @override
+  VerificationContext validateIntegrity(Insertable<LocalIncidentEvent> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('event_id')) {
+      context.handle(_eventIdMeta,
+          eventId.isAcceptableOrUnknown(data['event_id']!, _eventIdMeta));
+    } else if (isInserting) {
+      context.missing(_eventIdMeta);
+    }
+    if (data.containsKey('incident_id')) {
+      context.handle(
+          _incidentIdMeta,
+          incidentId.isAcceptableOrUnknown(
+              data['incident_id']!, _incidentIdMeta));
+    } else if (isInserting) {
+      context.missing(_incidentIdMeta);
+    }
+    if (data.containsKey('event_type')) {
+      context.handle(_eventTypeMeta,
+          eventType.isAcceptableOrUnknown(data['event_type']!, _eventTypeMeta));
+    } else if (isInserting) {
+      context.missing(_eventTypeMeta);
+    }
+    if (data.containsKey('incident_state')) {
+      context.handle(
+          _incidentStateMeta,
+          incidentState.isAcceptableOrUnknown(
+              data['incident_state']!, _incidentStateMeta));
+    } else if (isInserting) {
+      context.missing(_incidentStateMeta);
+    }
+    if (data.containsKey('actor_type')) {
+      context.handle(_actorTypeMeta,
+          actorType.isAcceptableOrUnknown(data['actor_type']!, _actorTypeMeta));
+    } else if (isInserting) {
+      context.missing(_actorTypeMeta);
+    }
+    if (data.containsKey('actor_id')) {
+      context.handle(_actorIdMeta,
+          actorId.isAcceptableOrUnknown(data['actor_id']!, _actorIdMeta));
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+          _payloadJsonMeta,
+          payloadJson.isAcceptableOrUnknown(
+              data['payload_json']!, _payloadJsonMeta));
+    }
+    if (data.containsKey('occurred_at')) {
+      context.handle(
+          _occurredAtMeta,
+          occurredAt.isAcceptableOrUnknown(
+              data['occurred_at']!, _occurredAtMeta));
+    } else if (isInserting) {
+      context.missing(_occurredAtMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {eventId};
+  @override
+  LocalIncidentEvent map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalIncidentEvent(
+      eventId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}event_id'])!,
+      incidentId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}incident_id'])!,
+      eventType: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}event_type'])!,
+      incidentState: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}incident_state'])!,
+      actorType: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}actor_type'])!,
+      actorId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}actor_id']),
+      payloadJson: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}payload_json'])!,
+      occurredAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}occurred_at'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+    );
+  }
+
+  @override
+  $LocalIncidentEventsTable createAlias(String alias) {
+    return $LocalIncidentEventsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalIncidentEvent extends DataClass
+    implements Insertable<LocalIncidentEvent> {
+  final String eventId;
+  final String incidentId;
+  final String eventType;
+  final String incidentState;
+  final String actorType;
+  final String? actorId;
+  final String payloadJson;
+  final DateTime occurredAt;
+  final DateTime createdAt;
+  const LocalIncidentEvent(
+      {required this.eventId,
+      required this.incidentId,
+      required this.eventType,
+      required this.incidentState,
+      required this.actorType,
+      this.actorId,
+      required this.payloadJson,
+      required this.occurredAt,
+      required this.createdAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['event_id'] = Variable<String>(eventId);
+    map['incident_id'] = Variable<String>(incidentId);
+    map['event_type'] = Variable<String>(eventType);
+    map['incident_state'] = Variable<String>(incidentState);
+    map['actor_type'] = Variable<String>(actorType);
+    if (!nullToAbsent || actorId != null) {
+      map['actor_id'] = Variable<String>(actorId);
+    }
+    map['payload_json'] = Variable<String>(payloadJson);
+    map['occurred_at'] = Variable<DateTime>(occurredAt);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  LocalIncidentEventsCompanion toCompanion(bool nullToAbsent) {
+    return LocalIncidentEventsCompanion(
+      eventId: Value(eventId),
+      incidentId: Value(incidentId),
+      eventType: Value(eventType),
+      incidentState: Value(incidentState),
+      actorType: Value(actorType),
+      actorId: actorId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(actorId),
+      payloadJson: Value(payloadJson),
+      occurredAt: Value(occurredAt),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory LocalIncidentEvent.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalIncidentEvent(
+      eventId: serializer.fromJson<String>(json['eventId']),
+      incidentId: serializer.fromJson<String>(json['incidentId']),
+      eventType: serializer.fromJson<String>(json['eventType']),
+      incidentState: serializer.fromJson<String>(json['incidentState']),
+      actorType: serializer.fromJson<String>(json['actorType']),
+      actorId: serializer.fromJson<String?>(json['actorId']),
+      payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      occurredAt: serializer.fromJson<DateTime>(json['occurredAt']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'eventId': serializer.toJson<String>(eventId),
+      'incidentId': serializer.toJson<String>(incidentId),
+      'eventType': serializer.toJson<String>(eventType),
+      'incidentState': serializer.toJson<String>(incidentState),
+      'actorType': serializer.toJson<String>(actorType),
+      'actorId': serializer.toJson<String?>(actorId),
+      'payloadJson': serializer.toJson<String>(payloadJson),
+      'occurredAt': serializer.toJson<DateTime>(occurredAt),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  LocalIncidentEvent copyWith(
+          {String? eventId,
+          String? incidentId,
+          String? eventType,
+          String? incidentState,
+          String? actorType,
+          Value<String?> actorId = const Value.absent(),
+          String? payloadJson,
+          DateTime? occurredAt,
+          DateTime? createdAt}) =>
+      LocalIncidentEvent(
+        eventId: eventId ?? this.eventId,
+        incidentId: incidentId ?? this.incidentId,
+        eventType: eventType ?? this.eventType,
+        incidentState: incidentState ?? this.incidentState,
+        actorType: actorType ?? this.actorType,
+        actorId: actorId.present ? actorId.value : this.actorId,
+        payloadJson: payloadJson ?? this.payloadJson,
+        occurredAt: occurredAt ?? this.occurredAt,
+        createdAt: createdAt ?? this.createdAt,
+      );
+  LocalIncidentEvent copyWithCompanion(LocalIncidentEventsCompanion data) {
+    return LocalIncidentEvent(
+      eventId: data.eventId.present ? data.eventId.value : this.eventId,
+      incidentId:
+          data.incidentId.present ? data.incidentId.value : this.incidentId,
+      eventType: data.eventType.present ? data.eventType.value : this.eventType,
+      incidentState: data.incidentState.present
+          ? data.incidentState.value
+          : this.incidentState,
+      actorType: data.actorType.present ? data.actorType.value : this.actorType,
+      actorId: data.actorId.present ? data.actorId.value : this.actorId,
+      payloadJson:
+          data.payloadJson.present ? data.payloadJson.value : this.payloadJson,
+      occurredAt:
+          data.occurredAt.present ? data.occurredAt.value : this.occurredAt,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalIncidentEvent(')
+          ..write('eventId: $eventId, ')
+          ..write('incidentId: $incidentId, ')
+          ..write('eventType: $eventType, ')
+          ..write('incidentState: $incidentState, ')
+          ..write('actorType: $actorType, ')
+          ..write('actorId: $actorId, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('occurredAt: $occurredAt, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(eventId, incidentId, eventType, incidentState,
+      actorType, actorId, payloadJson, occurredAt, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalIncidentEvent &&
+          other.eventId == this.eventId &&
+          other.incidentId == this.incidentId &&
+          other.eventType == this.eventType &&
+          other.incidentState == this.incidentState &&
+          other.actorType == this.actorType &&
+          other.actorId == this.actorId &&
+          other.payloadJson == this.payloadJson &&
+          other.occurredAt == this.occurredAt &&
+          other.createdAt == this.createdAt);
+}
+
+class LocalIncidentEventsCompanion extends UpdateCompanion<LocalIncidentEvent> {
+  final Value<String> eventId;
+  final Value<String> incidentId;
+  final Value<String> eventType;
+  final Value<String> incidentState;
+  final Value<String> actorType;
+  final Value<String?> actorId;
+  final Value<String> payloadJson;
+  final Value<DateTime> occurredAt;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const LocalIncidentEventsCompanion({
+    this.eventId = const Value.absent(),
+    this.incidentId = const Value.absent(),
+    this.eventType = const Value.absent(),
+    this.incidentState = const Value.absent(),
+    this.actorType = const Value.absent(),
+    this.actorId = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.occurredAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalIncidentEventsCompanion.insert({
+    required String eventId,
+    required String incidentId,
+    required String eventType,
+    required String incidentState,
+    required String actorType,
+    this.actorId = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    required DateTime occurredAt,
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : eventId = Value(eventId),
+        incidentId = Value(incidentId),
+        eventType = Value(eventType),
+        incidentState = Value(incidentState),
+        actorType = Value(actorType),
+        occurredAt = Value(occurredAt);
+  static Insertable<LocalIncidentEvent> custom({
+    Expression<String>? eventId,
+    Expression<String>? incidentId,
+    Expression<String>? eventType,
+    Expression<String>? incidentState,
+    Expression<String>? actorType,
+    Expression<String>? actorId,
+    Expression<String>? payloadJson,
+    Expression<DateTime>? occurredAt,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (eventId != null) 'event_id': eventId,
+      if (incidentId != null) 'incident_id': incidentId,
+      if (eventType != null) 'event_type': eventType,
+      if (incidentState != null) 'incident_state': incidentState,
+      if (actorType != null) 'actor_type': actorType,
+      if (actorId != null) 'actor_id': actorId,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (occurredAt != null) 'occurred_at': occurredAt,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalIncidentEventsCompanion copyWith(
+      {Value<String>? eventId,
+      Value<String>? incidentId,
+      Value<String>? eventType,
+      Value<String>? incidentState,
+      Value<String>? actorType,
+      Value<String?>? actorId,
+      Value<String>? payloadJson,
+      Value<DateTime>? occurredAt,
+      Value<DateTime>? createdAt,
+      Value<int>? rowid}) {
+    return LocalIncidentEventsCompanion(
+      eventId: eventId ?? this.eventId,
+      incidentId: incidentId ?? this.incidentId,
+      eventType: eventType ?? this.eventType,
+      incidentState: incidentState ?? this.incidentState,
+      actorType: actorType ?? this.actorType,
+      actorId: actorId ?? this.actorId,
+      payloadJson: payloadJson ?? this.payloadJson,
+      occurredAt: occurredAt ?? this.occurredAt,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (eventId.present) {
+      map['event_id'] = Variable<String>(eventId.value);
+    }
+    if (incidentId.present) {
+      map['incident_id'] = Variable<String>(incidentId.value);
+    }
+    if (eventType.present) {
+      map['event_type'] = Variable<String>(eventType.value);
+    }
+    if (incidentState.present) {
+      map['incident_state'] = Variable<String>(incidentState.value);
+    }
+    if (actorType.present) {
+      map['actor_type'] = Variable<String>(actorType.value);
+    }
+    if (actorId.present) {
+      map['actor_id'] = Variable<String>(actorId.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (occurredAt.present) {
+      map['occurred_at'] = Variable<DateTime>(occurredAt.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalIncidentEventsCompanion(')
+          ..write('eventId: $eventId, ')
+          ..write('incidentId: $incidentId, ')
+          ..write('eventType: $eventType, ')
+          ..write('incidentState: $incidentState, ')
+          ..write('actorType: $actorType, ')
+          ..write('actorId: $actorId, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('occurredAt: $occurredAt, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LocalOutboxOperationsTable extends LocalOutboxOperations
+    with TableInfo<$LocalOutboxOperationsTable, LocalOutboxOperation> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalOutboxOperationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _operationIdMeta =
+      const VerificationMeta('operationId');
+  @override
+  late final GeneratedColumn<String> operationId = GeneratedColumn<String>(
+      'operation_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _aggregateTypeMeta =
+      const VerificationMeta('aggregateType');
+  @override
+  late final GeneratedColumn<String> aggregateType = GeneratedColumn<String>(
+      'aggregate_type', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _aggregateIdMeta =
+      const VerificationMeta('aggregateId');
+  @override
+  late final GeneratedColumn<String> aggregateId = GeneratedColumn<String>(
+      'aggregate_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _operationTypeMeta =
+      const VerificationMeta('operationType');
+  @override
+  late final GeneratedColumn<String> operationType = GeneratedColumn<String>(
+      'operation_type', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _payloadJsonMeta =
+      const VerificationMeta('payloadJson');
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+      'payload_json', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _dependencyIdMeta =
+      const VerificationMeta('dependencyId');
+  @override
+  late final GeneratedColumn<String> dependencyId = GeneratedColumn<String>(
+      'dependency_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+      'status', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('pending'));
+  static const VerificationMeta _attemptCountMeta =
+      const VerificationMeta('attemptCount');
+  @override
+  late final GeneratedColumn<int> attemptCount = GeneratedColumn<int>(
+      'attempt_count', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _nextAttemptAtMeta =
+      const VerificationMeta('nextAttemptAt');
+  @override
+  late final GeneratedColumn<DateTime> nextAttemptAt =
+      GeneratedColumn<DateTime>('next_attempt_at', aliasedName, false,
+          type: DriftSqlType.dateTime,
+          requiredDuringInsert: false,
+          defaultValue: currentDateAndTime);
+  static const VerificationMeta _lastErrorMeta =
+      const VerificationMeta('lastError');
+  @override
+  late final GeneratedColumn<String> lastError = GeneratedColumn<String>(
+      'last_error', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns => [
+        operationId,
+        aggregateType,
+        aggregateId,
+        operationType,
+        payloadJson,
+        dependencyId,
+        status,
+        attemptCount,
+        nextAttemptAt,
+        lastError,
+        createdAt,
+        updatedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_outbox_operations';
+  @override
+  VerificationContext validateIntegrity(
+      Insertable<LocalOutboxOperation> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('operation_id')) {
+      context.handle(
+          _operationIdMeta,
+          operationId.isAcceptableOrUnknown(
+              data['operation_id']!, _operationIdMeta));
+    } else if (isInserting) {
+      context.missing(_operationIdMeta);
+    }
+    if (data.containsKey('aggregate_type')) {
+      context.handle(
+          _aggregateTypeMeta,
+          aggregateType.isAcceptableOrUnknown(
+              data['aggregate_type']!, _aggregateTypeMeta));
+    } else if (isInserting) {
+      context.missing(_aggregateTypeMeta);
+    }
+    if (data.containsKey('aggregate_id')) {
+      context.handle(
+          _aggregateIdMeta,
+          aggregateId.isAcceptableOrUnknown(
+              data['aggregate_id']!, _aggregateIdMeta));
+    } else if (isInserting) {
+      context.missing(_aggregateIdMeta);
+    }
+    if (data.containsKey('operation_type')) {
+      context.handle(
+          _operationTypeMeta,
+          operationType.isAcceptableOrUnknown(
+              data['operation_type']!, _operationTypeMeta));
+    } else if (isInserting) {
+      context.missing(_operationTypeMeta);
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+          _payloadJsonMeta,
+          payloadJson.isAcceptableOrUnknown(
+              data['payload_json']!, _payloadJsonMeta));
+    } else if (isInserting) {
+      context.missing(_payloadJsonMeta);
+    }
+    if (data.containsKey('dependency_id')) {
+      context.handle(
+          _dependencyIdMeta,
+          dependencyId.isAcceptableOrUnknown(
+              data['dependency_id']!, _dependencyIdMeta));
+    }
+    if (data.containsKey('status')) {
+      context.handle(_statusMeta,
+          status.isAcceptableOrUnknown(data['status']!, _statusMeta));
+    }
+    if (data.containsKey('attempt_count')) {
+      context.handle(
+          _attemptCountMeta,
+          attemptCount.isAcceptableOrUnknown(
+              data['attempt_count']!, _attemptCountMeta));
+    }
+    if (data.containsKey('next_attempt_at')) {
+      context.handle(
+          _nextAttemptAtMeta,
+          nextAttemptAt.isAcceptableOrUnknown(
+              data['next_attempt_at']!, _nextAttemptAtMeta));
+    }
+    if (data.containsKey('last_error')) {
+      context.handle(_lastErrorMeta,
+          lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {operationId};
+  @override
+  LocalOutboxOperation map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalOutboxOperation(
+      operationId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}operation_id'])!,
+      aggregateType: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}aggregate_type'])!,
+      aggregateId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}aggregate_id'])!,
+      operationType: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}operation_type'])!,
+      payloadJson: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}payload_json'])!,
+      dependencyId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}dependency_id']),
+      status: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}status'])!,
+      attemptCount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}attempt_count'])!,
+      nextAttemptAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}next_attempt_at'])!,
+      lastError: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}last_error']),
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+    );
+  }
+
+  @override
+  $LocalOutboxOperationsTable createAlias(String alias) {
+    return $LocalOutboxOperationsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalOutboxOperation extends DataClass
+    implements Insertable<LocalOutboxOperation> {
+  final String operationId;
+  final String aggregateType;
+  final String aggregateId;
+  final String operationType;
+  final String payloadJson;
+  final String? dependencyId;
+  final String status;
+  final int attemptCount;
+  final DateTime nextAttemptAt;
+  final String? lastError;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const LocalOutboxOperation(
+      {required this.operationId,
+      required this.aggregateType,
+      required this.aggregateId,
+      required this.operationType,
+      required this.payloadJson,
+      this.dependencyId,
+      required this.status,
+      required this.attemptCount,
+      required this.nextAttemptAt,
+      this.lastError,
+      required this.createdAt,
+      required this.updatedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['operation_id'] = Variable<String>(operationId);
+    map['aggregate_type'] = Variable<String>(aggregateType);
+    map['aggregate_id'] = Variable<String>(aggregateId);
+    map['operation_type'] = Variable<String>(operationType);
+    map['payload_json'] = Variable<String>(payloadJson);
+    if (!nullToAbsent || dependencyId != null) {
+      map['dependency_id'] = Variable<String>(dependencyId);
+    }
+    map['status'] = Variable<String>(status);
+    map['attempt_count'] = Variable<int>(attemptCount);
+    map['next_attempt_at'] = Variable<DateTime>(nextAttemptAt);
+    if (!nullToAbsent || lastError != null) {
+      map['last_error'] = Variable<String>(lastError);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  LocalOutboxOperationsCompanion toCompanion(bool nullToAbsent) {
+    return LocalOutboxOperationsCompanion(
+      operationId: Value(operationId),
+      aggregateType: Value(aggregateType),
+      aggregateId: Value(aggregateId),
+      operationType: Value(operationType),
+      payloadJson: Value(payloadJson),
+      dependencyId: dependencyId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dependencyId),
+      status: Value(status),
+      attemptCount: Value(attemptCount),
+      nextAttemptAt: Value(nextAttemptAt),
+      lastError: lastError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastError),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory LocalOutboxOperation.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalOutboxOperation(
+      operationId: serializer.fromJson<String>(json['operationId']),
+      aggregateType: serializer.fromJson<String>(json['aggregateType']),
+      aggregateId: serializer.fromJson<String>(json['aggregateId']),
+      operationType: serializer.fromJson<String>(json['operationType']),
+      payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      dependencyId: serializer.fromJson<String?>(json['dependencyId']),
+      status: serializer.fromJson<String>(json['status']),
+      attemptCount: serializer.fromJson<int>(json['attemptCount']),
+      nextAttemptAt: serializer.fromJson<DateTime>(json['nextAttemptAt']),
+      lastError: serializer.fromJson<String?>(json['lastError']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'operationId': serializer.toJson<String>(operationId),
+      'aggregateType': serializer.toJson<String>(aggregateType),
+      'aggregateId': serializer.toJson<String>(aggregateId),
+      'operationType': serializer.toJson<String>(operationType),
+      'payloadJson': serializer.toJson<String>(payloadJson),
+      'dependencyId': serializer.toJson<String?>(dependencyId),
+      'status': serializer.toJson<String>(status),
+      'attemptCount': serializer.toJson<int>(attemptCount),
+      'nextAttemptAt': serializer.toJson<DateTime>(nextAttemptAt),
+      'lastError': serializer.toJson<String?>(lastError),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  LocalOutboxOperation copyWith(
+          {String? operationId,
+          String? aggregateType,
+          String? aggregateId,
+          String? operationType,
+          String? payloadJson,
+          Value<String?> dependencyId = const Value.absent(),
+          String? status,
+          int? attemptCount,
+          DateTime? nextAttemptAt,
+          Value<String?> lastError = const Value.absent(),
+          DateTime? createdAt,
+          DateTime? updatedAt}) =>
+      LocalOutboxOperation(
+        operationId: operationId ?? this.operationId,
+        aggregateType: aggregateType ?? this.aggregateType,
+        aggregateId: aggregateId ?? this.aggregateId,
+        operationType: operationType ?? this.operationType,
+        payloadJson: payloadJson ?? this.payloadJson,
+        dependencyId:
+            dependencyId.present ? dependencyId.value : this.dependencyId,
+        status: status ?? this.status,
+        attemptCount: attemptCount ?? this.attemptCount,
+        nextAttemptAt: nextAttemptAt ?? this.nextAttemptAt,
+        lastError: lastError.present ? lastError.value : this.lastError,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+  LocalOutboxOperation copyWithCompanion(LocalOutboxOperationsCompanion data) {
+    return LocalOutboxOperation(
+      operationId:
+          data.operationId.present ? data.operationId.value : this.operationId,
+      aggregateType: data.aggregateType.present
+          ? data.aggregateType.value
+          : this.aggregateType,
+      aggregateId:
+          data.aggregateId.present ? data.aggregateId.value : this.aggregateId,
+      operationType: data.operationType.present
+          ? data.operationType.value
+          : this.operationType,
+      payloadJson:
+          data.payloadJson.present ? data.payloadJson.value : this.payloadJson,
+      dependencyId: data.dependencyId.present
+          ? data.dependencyId.value
+          : this.dependencyId,
+      status: data.status.present ? data.status.value : this.status,
+      attemptCount: data.attemptCount.present
+          ? data.attemptCount.value
+          : this.attemptCount,
+      nextAttemptAt: data.nextAttemptAt.present
+          ? data.nextAttemptAt.value
+          : this.nextAttemptAt,
+      lastError: data.lastError.present ? data.lastError.value : this.lastError,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalOutboxOperation(')
+          ..write('operationId: $operationId, ')
+          ..write('aggregateType: $aggregateType, ')
+          ..write('aggregateId: $aggregateId, ')
+          ..write('operationType: $operationType, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('dependencyId: $dependencyId, ')
+          ..write('status: $status, ')
+          ..write('attemptCount: $attemptCount, ')
+          ..write('nextAttemptAt: $nextAttemptAt, ')
+          ..write('lastError: $lastError, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      operationId,
+      aggregateType,
+      aggregateId,
+      operationType,
+      payloadJson,
+      dependencyId,
+      status,
+      attemptCount,
+      nextAttemptAt,
+      lastError,
+      createdAt,
+      updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalOutboxOperation &&
+          other.operationId == this.operationId &&
+          other.aggregateType == this.aggregateType &&
+          other.aggregateId == this.aggregateId &&
+          other.operationType == this.operationType &&
+          other.payloadJson == this.payloadJson &&
+          other.dependencyId == this.dependencyId &&
+          other.status == this.status &&
+          other.attemptCount == this.attemptCount &&
+          other.nextAttemptAt == this.nextAttemptAt &&
+          other.lastError == this.lastError &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class LocalOutboxOperationsCompanion
+    extends UpdateCompanion<LocalOutboxOperation> {
+  final Value<String> operationId;
+  final Value<String> aggregateType;
+  final Value<String> aggregateId;
+  final Value<String> operationType;
+  final Value<String> payloadJson;
+  final Value<String?> dependencyId;
+  final Value<String> status;
+  final Value<int> attemptCount;
+  final Value<DateTime> nextAttemptAt;
+  final Value<String?> lastError;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const LocalOutboxOperationsCompanion({
+    this.operationId = const Value.absent(),
+    this.aggregateType = const Value.absent(),
+    this.aggregateId = const Value.absent(),
+    this.operationType = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.dependencyId = const Value.absent(),
+    this.status = const Value.absent(),
+    this.attemptCount = const Value.absent(),
+    this.nextAttemptAt = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalOutboxOperationsCompanion.insert({
+    required String operationId,
+    required String aggregateType,
+    required String aggregateId,
+    required String operationType,
+    required String payloadJson,
+    this.dependencyId = const Value.absent(),
+    this.status = const Value.absent(),
+    this.attemptCount = const Value.absent(),
+    this.nextAttemptAt = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : operationId = Value(operationId),
+        aggregateType = Value(aggregateType),
+        aggregateId = Value(aggregateId),
+        operationType = Value(operationType),
+        payloadJson = Value(payloadJson);
+  static Insertable<LocalOutboxOperation> custom({
+    Expression<String>? operationId,
+    Expression<String>? aggregateType,
+    Expression<String>? aggregateId,
+    Expression<String>? operationType,
+    Expression<String>? payloadJson,
+    Expression<String>? dependencyId,
+    Expression<String>? status,
+    Expression<int>? attemptCount,
+    Expression<DateTime>? nextAttemptAt,
+    Expression<String>? lastError,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (operationId != null) 'operation_id': operationId,
+      if (aggregateType != null) 'aggregate_type': aggregateType,
+      if (aggregateId != null) 'aggregate_id': aggregateId,
+      if (operationType != null) 'operation_type': operationType,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (dependencyId != null) 'dependency_id': dependencyId,
+      if (status != null) 'status': status,
+      if (attemptCount != null) 'attempt_count': attemptCount,
+      if (nextAttemptAt != null) 'next_attempt_at': nextAttemptAt,
+      if (lastError != null) 'last_error': lastError,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalOutboxOperationsCompanion copyWith(
+      {Value<String>? operationId,
+      Value<String>? aggregateType,
+      Value<String>? aggregateId,
+      Value<String>? operationType,
+      Value<String>? payloadJson,
+      Value<String?>? dependencyId,
+      Value<String>? status,
+      Value<int>? attemptCount,
+      Value<DateTime>? nextAttemptAt,
+      Value<String?>? lastError,
+      Value<DateTime>? createdAt,
+      Value<DateTime>? updatedAt,
+      Value<int>? rowid}) {
+    return LocalOutboxOperationsCompanion(
+      operationId: operationId ?? this.operationId,
+      aggregateType: aggregateType ?? this.aggregateType,
+      aggregateId: aggregateId ?? this.aggregateId,
+      operationType: operationType ?? this.operationType,
+      payloadJson: payloadJson ?? this.payloadJson,
+      dependencyId: dependencyId ?? this.dependencyId,
+      status: status ?? this.status,
+      attemptCount: attemptCount ?? this.attemptCount,
+      nextAttemptAt: nextAttemptAt ?? this.nextAttemptAt,
+      lastError: lastError ?? this.lastError,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (operationId.present) {
+      map['operation_id'] = Variable<String>(operationId.value);
+    }
+    if (aggregateType.present) {
+      map['aggregate_type'] = Variable<String>(aggregateType.value);
+    }
+    if (aggregateId.present) {
+      map['aggregate_id'] = Variable<String>(aggregateId.value);
+    }
+    if (operationType.present) {
+      map['operation_type'] = Variable<String>(operationType.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (dependencyId.present) {
+      map['dependency_id'] = Variable<String>(dependencyId.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (attemptCount.present) {
+      map['attempt_count'] = Variable<int>(attemptCount.value);
+    }
+    if (nextAttemptAt.present) {
+      map['next_attempt_at'] = Variable<DateTime>(nextAttemptAt.value);
+    }
+    if (lastError.present) {
+      map['last_error'] = Variable<String>(lastError.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalOutboxOperationsCompanion(')
+          ..write('operationId: $operationId, ')
+          ..write('aggregateType: $aggregateType, ')
+          ..write('aggregateId: $aggregateId, ')
+          ..write('operationType: $operationType, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('dependencyId: $dependencyId, ')
+          ..write('status: $status, ')
+          ..write('attemptCount: $attemptCount, ')
+          ..write('nextAttemptAt: $nextAttemptAt, ')
+          ..write('lastError: $lastError, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LocalDeliveryAttemptsTable extends LocalDeliveryAttempts
+    with TableInfo<$LocalDeliveryAttemptsTable, LocalDeliveryAttempt> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalDeliveryAttemptsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _attemptIdMeta =
+      const VerificationMeta('attemptId');
+  @override
+  late final GeneratedColumn<String> attemptId = GeneratedColumn<String>(
+      'attempt_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _incidentIdMeta =
+      const VerificationMeta('incidentId');
+  @override
+  late final GeneratedColumn<String> incidentId = GeneratedColumn<String>(
+      'incident_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _channelMeta =
+      const VerificationMeta('channel');
+  @override
+  late final GeneratedColumn<String> channel = GeneratedColumn<String>(
+      'channel', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _recipientRefMeta =
+      const VerificationMeta('recipientRef');
+  @override
+  late final GeneratedColumn<String> recipientRef = GeneratedColumn<String>(
+      'recipient_ref', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+      'status', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _providerMessageIdMeta =
+      const VerificationMeta('providerMessageId');
+  @override
+  late final GeneratedColumn<String> providerMessageId =
+      GeneratedColumn<String>('provider_message_id', aliasedName, true,
+          type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _failureCodeMeta =
+      const VerificationMeta('failureCode');
+  @override
+  late final GeneratedColumn<String> failureCode = GeneratedColumn<String>(
+      'failure_code', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _queuedAtMeta =
+      const VerificationMeta('queuedAt');
+  @override
+  late final GeneratedColumn<DateTime> queuedAt = GeneratedColumn<DateTime>(
+      'queued_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _acknowledgedAtMeta =
+      const VerificationMeta('acknowledgedAt');
+  @override
+  late final GeneratedColumn<DateTime> acknowledgedAt =
+      GeneratedColumn<DateTime>('acknowledged_at', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns => [
+        attemptId,
+        incidentId,
+        channel,
+        recipientRef,
+        status,
+        providerMessageId,
+        failureCode,
+        queuedAt,
+        updatedAt,
+        acknowledgedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_delivery_attempts';
+  @override
+  VerificationContext validateIntegrity(
+      Insertable<LocalDeliveryAttempt> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('attempt_id')) {
+      context.handle(_attemptIdMeta,
+          attemptId.isAcceptableOrUnknown(data['attempt_id']!, _attemptIdMeta));
+    } else if (isInserting) {
+      context.missing(_attemptIdMeta);
+    }
+    if (data.containsKey('incident_id')) {
+      context.handle(
+          _incidentIdMeta,
+          incidentId.isAcceptableOrUnknown(
+              data['incident_id']!, _incidentIdMeta));
+    } else if (isInserting) {
+      context.missing(_incidentIdMeta);
+    }
+    if (data.containsKey('channel')) {
+      context.handle(_channelMeta,
+          channel.isAcceptableOrUnknown(data['channel']!, _channelMeta));
+    } else if (isInserting) {
+      context.missing(_channelMeta);
+    }
+    if (data.containsKey('recipient_ref')) {
+      context.handle(
+          _recipientRefMeta,
+          recipientRef.isAcceptableOrUnknown(
+              data['recipient_ref']!, _recipientRefMeta));
+    } else if (isInserting) {
+      context.missing(_recipientRefMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(_statusMeta,
+          status.isAcceptableOrUnknown(data['status']!, _statusMeta));
+    } else if (isInserting) {
+      context.missing(_statusMeta);
+    }
+    if (data.containsKey('provider_message_id')) {
+      context.handle(
+          _providerMessageIdMeta,
+          providerMessageId.isAcceptableOrUnknown(
+              data['provider_message_id']!, _providerMessageIdMeta));
+    }
+    if (data.containsKey('failure_code')) {
+      context.handle(
+          _failureCodeMeta,
+          failureCode.isAcceptableOrUnknown(
+              data['failure_code']!, _failureCodeMeta));
+    }
+    if (data.containsKey('queued_at')) {
+      context.handle(_queuedAtMeta,
+          queuedAt.isAcceptableOrUnknown(data['queued_at']!, _queuedAtMeta));
+    } else if (isInserting) {
+      context.missing(_queuedAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('acknowledged_at')) {
+      context.handle(
+          _acknowledgedAtMeta,
+          acknowledgedAt.isAcceptableOrUnknown(
+              data['acknowledged_at']!, _acknowledgedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {attemptId};
+  @override
+  LocalDeliveryAttempt map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalDeliveryAttempt(
+      attemptId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}attempt_id'])!,
+      incidentId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}incident_id'])!,
+      channel: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}channel'])!,
+      recipientRef: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}recipient_ref'])!,
+      status: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}status'])!,
+      providerMessageId: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}provider_message_id']),
+      failureCode: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}failure_code']),
+      queuedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}queued_at'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+      acknowledgedAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}acknowledged_at']),
+    );
+  }
+
+  @override
+  $LocalDeliveryAttemptsTable createAlias(String alias) {
+    return $LocalDeliveryAttemptsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalDeliveryAttempt extends DataClass
+    implements Insertable<LocalDeliveryAttempt> {
+  final String attemptId;
+  final String incidentId;
+  final String channel;
+  final String recipientRef;
+  final String status;
+  final String? providerMessageId;
+  final String? failureCode;
+  final DateTime queuedAt;
+  final DateTime updatedAt;
+  final DateTime? acknowledgedAt;
+  const LocalDeliveryAttempt(
+      {required this.attemptId,
+      required this.incidentId,
+      required this.channel,
+      required this.recipientRef,
+      required this.status,
+      this.providerMessageId,
+      this.failureCode,
+      required this.queuedAt,
+      required this.updatedAt,
+      this.acknowledgedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['attempt_id'] = Variable<String>(attemptId);
+    map['incident_id'] = Variable<String>(incidentId);
+    map['channel'] = Variable<String>(channel);
+    map['recipient_ref'] = Variable<String>(recipientRef);
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || providerMessageId != null) {
+      map['provider_message_id'] = Variable<String>(providerMessageId);
+    }
+    if (!nullToAbsent || failureCode != null) {
+      map['failure_code'] = Variable<String>(failureCode);
+    }
+    map['queued_at'] = Variable<DateTime>(queuedAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || acknowledgedAt != null) {
+      map['acknowledged_at'] = Variable<DateTime>(acknowledgedAt);
+    }
+    return map;
+  }
+
+  LocalDeliveryAttemptsCompanion toCompanion(bool nullToAbsent) {
+    return LocalDeliveryAttemptsCompanion(
+      attemptId: Value(attemptId),
+      incidentId: Value(incidentId),
+      channel: Value(channel),
+      recipientRef: Value(recipientRef),
+      status: Value(status),
+      providerMessageId: providerMessageId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(providerMessageId),
+      failureCode: failureCode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(failureCode),
+      queuedAt: Value(queuedAt),
+      updatedAt: Value(updatedAt),
+      acknowledgedAt: acknowledgedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(acknowledgedAt),
+    );
+  }
+
+  factory LocalDeliveryAttempt.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalDeliveryAttempt(
+      attemptId: serializer.fromJson<String>(json['attemptId']),
+      incidentId: serializer.fromJson<String>(json['incidentId']),
+      channel: serializer.fromJson<String>(json['channel']),
+      recipientRef: serializer.fromJson<String>(json['recipientRef']),
+      status: serializer.fromJson<String>(json['status']),
+      providerMessageId:
+          serializer.fromJson<String?>(json['providerMessageId']),
+      failureCode: serializer.fromJson<String?>(json['failureCode']),
+      queuedAt: serializer.fromJson<DateTime>(json['queuedAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      acknowledgedAt: serializer.fromJson<DateTime?>(json['acknowledgedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'attemptId': serializer.toJson<String>(attemptId),
+      'incidentId': serializer.toJson<String>(incidentId),
+      'channel': serializer.toJson<String>(channel),
+      'recipientRef': serializer.toJson<String>(recipientRef),
+      'status': serializer.toJson<String>(status),
+      'providerMessageId': serializer.toJson<String?>(providerMessageId),
+      'failureCode': serializer.toJson<String?>(failureCode),
+      'queuedAt': serializer.toJson<DateTime>(queuedAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'acknowledgedAt': serializer.toJson<DateTime?>(acknowledgedAt),
+    };
+  }
+
+  LocalDeliveryAttempt copyWith(
+          {String? attemptId,
+          String? incidentId,
+          String? channel,
+          String? recipientRef,
+          String? status,
+          Value<String?> providerMessageId = const Value.absent(),
+          Value<String?> failureCode = const Value.absent(),
+          DateTime? queuedAt,
+          DateTime? updatedAt,
+          Value<DateTime?> acknowledgedAt = const Value.absent()}) =>
+      LocalDeliveryAttempt(
+        attemptId: attemptId ?? this.attemptId,
+        incidentId: incidentId ?? this.incidentId,
+        channel: channel ?? this.channel,
+        recipientRef: recipientRef ?? this.recipientRef,
+        status: status ?? this.status,
+        providerMessageId: providerMessageId.present
+            ? providerMessageId.value
+            : this.providerMessageId,
+        failureCode: failureCode.present ? failureCode.value : this.failureCode,
+        queuedAt: queuedAt ?? this.queuedAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+        acknowledgedAt:
+            acknowledgedAt.present ? acknowledgedAt.value : this.acknowledgedAt,
+      );
+  LocalDeliveryAttempt copyWithCompanion(LocalDeliveryAttemptsCompanion data) {
+    return LocalDeliveryAttempt(
+      attemptId: data.attemptId.present ? data.attemptId.value : this.attemptId,
+      incidentId:
+          data.incidentId.present ? data.incidentId.value : this.incidentId,
+      channel: data.channel.present ? data.channel.value : this.channel,
+      recipientRef: data.recipientRef.present
+          ? data.recipientRef.value
+          : this.recipientRef,
+      status: data.status.present ? data.status.value : this.status,
+      providerMessageId: data.providerMessageId.present
+          ? data.providerMessageId.value
+          : this.providerMessageId,
+      failureCode:
+          data.failureCode.present ? data.failureCode.value : this.failureCode,
+      queuedAt: data.queuedAt.present ? data.queuedAt.value : this.queuedAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      acknowledgedAt: data.acknowledgedAt.present
+          ? data.acknowledgedAt.value
+          : this.acknowledgedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalDeliveryAttempt(')
+          ..write('attemptId: $attemptId, ')
+          ..write('incidentId: $incidentId, ')
+          ..write('channel: $channel, ')
+          ..write('recipientRef: $recipientRef, ')
+          ..write('status: $status, ')
+          ..write('providerMessageId: $providerMessageId, ')
+          ..write('failureCode: $failureCode, ')
+          ..write('queuedAt: $queuedAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('acknowledgedAt: $acknowledgedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      attemptId,
+      incidentId,
+      channel,
+      recipientRef,
+      status,
+      providerMessageId,
+      failureCode,
+      queuedAt,
+      updatedAt,
+      acknowledgedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalDeliveryAttempt &&
+          other.attemptId == this.attemptId &&
+          other.incidentId == this.incidentId &&
+          other.channel == this.channel &&
+          other.recipientRef == this.recipientRef &&
+          other.status == this.status &&
+          other.providerMessageId == this.providerMessageId &&
+          other.failureCode == this.failureCode &&
+          other.queuedAt == this.queuedAt &&
+          other.updatedAt == this.updatedAt &&
+          other.acknowledgedAt == this.acknowledgedAt);
+}
+
+class LocalDeliveryAttemptsCompanion
+    extends UpdateCompanion<LocalDeliveryAttempt> {
+  final Value<String> attemptId;
+  final Value<String> incidentId;
+  final Value<String> channel;
+  final Value<String> recipientRef;
+  final Value<String> status;
+  final Value<String?> providerMessageId;
+  final Value<String?> failureCode;
+  final Value<DateTime> queuedAt;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> acknowledgedAt;
+  final Value<int> rowid;
+  const LocalDeliveryAttemptsCompanion({
+    this.attemptId = const Value.absent(),
+    this.incidentId = const Value.absent(),
+    this.channel = const Value.absent(),
+    this.recipientRef = const Value.absent(),
+    this.status = const Value.absent(),
+    this.providerMessageId = const Value.absent(),
+    this.failureCode = const Value.absent(),
+    this.queuedAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.acknowledgedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalDeliveryAttemptsCompanion.insert({
+    required String attemptId,
+    required String incidentId,
+    required String channel,
+    required String recipientRef,
+    required String status,
+    this.providerMessageId = const Value.absent(),
+    this.failureCode = const Value.absent(),
+    required DateTime queuedAt,
+    required DateTime updatedAt,
+    this.acknowledgedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : attemptId = Value(attemptId),
+        incidentId = Value(incidentId),
+        channel = Value(channel),
+        recipientRef = Value(recipientRef),
+        status = Value(status),
+        queuedAt = Value(queuedAt),
+        updatedAt = Value(updatedAt);
+  static Insertable<LocalDeliveryAttempt> custom({
+    Expression<String>? attemptId,
+    Expression<String>? incidentId,
+    Expression<String>? channel,
+    Expression<String>? recipientRef,
+    Expression<String>? status,
+    Expression<String>? providerMessageId,
+    Expression<String>? failureCode,
+    Expression<DateTime>? queuedAt,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? acknowledgedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (attemptId != null) 'attempt_id': attemptId,
+      if (incidentId != null) 'incident_id': incidentId,
+      if (channel != null) 'channel': channel,
+      if (recipientRef != null) 'recipient_ref': recipientRef,
+      if (status != null) 'status': status,
+      if (providerMessageId != null) 'provider_message_id': providerMessageId,
+      if (failureCode != null) 'failure_code': failureCode,
+      if (queuedAt != null) 'queued_at': queuedAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (acknowledgedAt != null) 'acknowledged_at': acknowledgedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalDeliveryAttemptsCompanion copyWith(
+      {Value<String>? attemptId,
+      Value<String>? incidentId,
+      Value<String>? channel,
+      Value<String>? recipientRef,
+      Value<String>? status,
+      Value<String?>? providerMessageId,
+      Value<String?>? failureCode,
+      Value<DateTime>? queuedAt,
+      Value<DateTime>? updatedAt,
+      Value<DateTime?>? acknowledgedAt,
+      Value<int>? rowid}) {
+    return LocalDeliveryAttemptsCompanion(
+      attemptId: attemptId ?? this.attemptId,
+      incidentId: incidentId ?? this.incidentId,
+      channel: channel ?? this.channel,
+      recipientRef: recipientRef ?? this.recipientRef,
+      status: status ?? this.status,
+      providerMessageId: providerMessageId ?? this.providerMessageId,
+      failureCode: failureCode ?? this.failureCode,
+      queuedAt: queuedAt ?? this.queuedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      acknowledgedAt: acknowledgedAt ?? this.acknowledgedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (attemptId.present) {
+      map['attempt_id'] = Variable<String>(attemptId.value);
+    }
+    if (incidentId.present) {
+      map['incident_id'] = Variable<String>(incidentId.value);
+    }
+    if (channel.present) {
+      map['channel'] = Variable<String>(channel.value);
+    }
+    if (recipientRef.present) {
+      map['recipient_ref'] = Variable<String>(recipientRef.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (providerMessageId.present) {
+      map['provider_message_id'] = Variable<String>(providerMessageId.value);
+    }
+    if (failureCode.present) {
+      map['failure_code'] = Variable<String>(failureCode.value);
+    }
+    if (queuedAt.present) {
+      map['queued_at'] = Variable<DateTime>(queuedAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (acknowledgedAt.present) {
+      map['acknowledged_at'] = Variable<DateTime>(acknowledgedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalDeliveryAttemptsCompanion(')
+          ..write('attemptId: $attemptId, ')
+          ..write('incidentId: $incidentId, ')
+          ..write('channel: $channel, ')
+          ..write('recipientRef: $recipientRef, ')
+          ..write('status: $status, ')
+          ..write('providerMessageId: $providerMessageId, ')
+          ..write('failureCode: $failureCode, ')
+          ..write('queuedAt: $queuedAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('acknowledgedAt: $acknowledgedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$GuardianDatabase extends GeneratedDatabase {
   _$GuardianDatabase(QueryExecutor e) : super(e);
   $GuardianDatabaseManager get managers => $GuardianDatabaseManager(this);
@@ -3495,6 +5143,12 @@ abstract class _$GuardianDatabase extends GeneratedDatabase {
   late final $LocalMeshBeaconsTable localMeshBeacons =
       $LocalMeshBeaconsTable(this);
   late final $LocalIncidentsTable localIncidents = $LocalIncidentsTable(this);
+  late final $LocalIncidentEventsTable localIncidentEvents =
+      $LocalIncidentEventsTable(this);
+  late final $LocalOutboxOperationsTable localOutboxOperations =
+      $LocalOutboxOperationsTable(this);
+  late final $LocalDeliveryAttemptsTable localDeliveryAttempts =
+      $LocalDeliveryAttemptsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3506,7 +5160,10 @@ abstract class _$GuardianDatabase extends GeneratedDatabase {
         localCheckIns,
         localLocationLog,
         localMeshBeacons,
-        localIncidents
+        localIncidents,
+        localIncidentEvents,
+        localOutboxOperations,
+        localDeliveryAttempts
       ];
 }
 
@@ -3718,7 +5375,11 @@ class $$LocalContactsTableTableManager extends RootTableManager<
             pendingSync: pendingSync,
           ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map((e) => (
+                    e.readTable<$LocalContactsTable, LocalContact>(table),
+                    BaseReferences<_$GuardianDatabase, $LocalContactsTable,
+                        LocalContact>(db, table, e)
+                  ))
               .toList(),
           prefetchHooksCallback: null,
         ));
@@ -4028,7 +5689,11 @@ class $$LocalAlertsTableTableManager extends RootTableManager<
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map((e) => (
+                    e.readTable<$LocalAlertsTable, LocalAlert>(table),
+                    BaseReferences<_$GuardianDatabase, $LocalAlertsTable,
+                        LocalAlert>(db, table, e)
+                  ))
               .toList(),
           prefetchHooksCallback: null,
         ));
@@ -4257,7 +5922,11 @@ class $$LocalSafeZonesTableTableManager extends RootTableManager<
             createdAt: createdAt,
           ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map((e) => (
+                    e.readTable<$LocalSafeZonesTable, LocalSafeZone>(table),
+                    BaseReferences<_$GuardianDatabase, $LocalSafeZonesTable,
+                        LocalSafeZone>(db, table, e)
+                  ))
               .toList(),
           prefetchHooksCallback: null,
         ));
@@ -4472,7 +6141,11 @@ class $$LocalCheckInsTableTableManager extends RootTableManager<
             location: location,
           ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map((e) => (
+                    e.readTable<$LocalCheckInsTable, LocalCheckIn>(table),
+                    BaseReferences<_$GuardianDatabase, $LocalCheckInsTable,
+                        LocalCheckIn>(db, table, e)
+                  ))
               .toList(),
           prefetchHooksCallback: null,
         ));
@@ -4701,7 +6374,12 @@ class $$LocalLocationLogTableTableManager extends RootTableManager<
             timestamp: timestamp,
           ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map((e) => (
+                    e.readTable<$LocalLocationLogTable, LocalLocationLogData>(
+                        table),
+                    BaseReferences<_$GuardianDatabase, $LocalLocationLogTable,
+                        LocalLocationLogData>(db, table, e)
+                  ))
               .toList(),
           prefetchHooksCallback: null,
         ));
@@ -4954,7 +6632,11 @@ class $$LocalMeshBeaconsTableTableManager extends RootTableManager<
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map((e) => (
+                    e.readTable<$LocalMeshBeaconsTable, LocalMeshBeacon>(table),
+                    BaseReferences<_$GuardianDatabase, $LocalMeshBeaconsTable,
+                        LocalMeshBeacon>(db, table, e)
+                  ))
               .toList(),
           prefetchHooksCallback: null,
         ));
@@ -5184,7 +6866,11 @@ class $$LocalIncidentsTableTableManager extends RootTableManager<
             createdAt: createdAt,
           ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map((e) => (
+                    e.readTable<$LocalIncidentsTable, LocalIncident>(table),
+                    BaseReferences<_$GuardianDatabase, $LocalIncidentsTable,
+                        LocalIncident>(db, table, e)
+                  ))
               .toList(),
           prefetchHooksCallback: null,
         ));
@@ -5205,6 +6891,816 @@ typedef $$LocalIncidentsTableProcessedTableManager = ProcessedTableManager<
     ),
     LocalIncident,
     PrefetchHooks Function()>;
+typedef $$LocalIncidentEventsTableCreateCompanionBuilder
+    = LocalIncidentEventsCompanion Function({
+  required String eventId,
+  required String incidentId,
+  required String eventType,
+  required String incidentState,
+  required String actorType,
+  Value<String?> actorId,
+  Value<String> payloadJson,
+  required DateTime occurredAt,
+  Value<DateTime> createdAt,
+  Value<int> rowid,
+});
+typedef $$LocalIncidentEventsTableUpdateCompanionBuilder
+    = LocalIncidentEventsCompanion Function({
+  Value<String> eventId,
+  Value<String> incidentId,
+  Value<String> eventType,
+  Value<String> incidentState,
+  Value<String> actorType,
+  Value<String?> actorId,
+  Value<String> payloadJson,
+  Value<DateTime> occurredAt,
+  Value<DateTime> createdAt,
+  Value<int> rowid,
+});
+
+class $$LocalIncidentEventsTableFilterComposer
+    extends Composer<_$GuardianDatabase, $LocalIncidentEventsTable> {
+  $$LocalIncidentEventsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get eventId => $composableBuilder(
+      column: $table.eventId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get incidentId => $composableBuilder(
+      column: $table.incidentId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get eventType => $composableBuilder(
+      column: $table.eventType, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get incidentState => $composableBuilder(
+      column: $table.incidentState, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get actorType => $composableBuilder(
+      column: $table.actorType, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get actorId => $composableBuilder(
+      column: $table.actorId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+      column: $table.payloadJson, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get occurredAt => $composableBuilder(
+      column: $table.occurredAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$LocalIncidentEventsTableOrderingComposer
+    extends Composer<_$GuardianDatabase, $LocalIncidentEventsTable> {
+  $$LocalIncidentEventsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get eventId => $composableBuilder(
+      column: $table.eventId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get incidentId => $composableBuilder(
+      column: $table.incidentId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get eventType => $composableBuilder(
+      column: $table.eventType, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get incidentState => $composableBuilder(
+      column: $table.incidentState,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get actorType => $composableBuilder(
+      column: $table.actorType, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get actorId => $composableBuilder(
+      column: $table.actorId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+      column: $table.payloadJson, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get occurredAt => $composableBuilder(
+      column: $table.occurredAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$LocalIncidentEventsTableAnnotationComposer
+    extends Composer<_$GuardianDatabase, $LocalIncidentEventsTable> {
+  $$LocalIncidentEventsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get eventId =>
+      $composableBuilder(column: $table.eventId, builder: (column) => column);
+
+  GeneratedColumn<String> get incidentId => $composableBuilder(
+      column: $table.incidentId, builder: (column) => column);
+
+  GeneratedColumn<String> get eventType =>
+      $composableBuilder(column: $table.eventType, builder: (column) => column);
+
+  GeneratedColumn<String> get incidentState => $composableBuilder(
+      column: $table.incidentState, builder: (column) => column);
+
+  GeneratedColumn<String> get actorType =>
+      $composableBuilder(column: $table.actorType, builder: (column) => column);
+
+  GeneratedColumn<String> get actorId =>
+      $composableBuilder(column: $table.actorId, builder: (column) => column);
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+      column: $table.payloadJson, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get occurredAt => $composableBuilder(
+      column: $table.occurredAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$LocalIncidentEventsTableTableManager extends RootTableManager<
+    _$GuardianDatabase,
+    $LocalIncidentEventsTable,
+    LocalIncidentEvent,
+    $$LocalIncidentEventsTableFilterComposer,
+    $$LocalIncidentEventsTableOrderingComposer,
+    $$LocalIncidentEventsTableAnnotationComposer,
+    $$LocalIncidentEventsTableCreateCompanionBuilder,
+    $$LocalIncidentEventsTableUpdateCompanionBuilder,
+    (
+      LocalIncidentEvent,
+      BaseReferences<_$GuardianDatabase, $LocalIncidentEventsTable,
+          LocalIncidentEvent>
+    ),
+    LocalIncidentEvent,
+    PrefetchHooks Function()> {
+  $$LocalIncidentEventsTableTableManager(
+      _$GuardianDatabase db, $LocalIncidentEventsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalIncidentEventsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalIncidentEventsTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalIncidentEventsTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> eventId = const Value.absent(),
+            Value<String> incidentId = const Value.absent(),
+            Value<String> eventType = const Value.absent(),
+            Value<String> incidentState = const Value.absent(),
+            Value<String> actorType = const Value.absent(),
+            Value<String?> actorId = const Value.absent(),
+            Value<String> payloadJson = const Value.absent(),
+            Value<DateTime> occurredAt = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LocalIncidentEventsCompanion(
+            eventId: eventId,
+            incidentId: incidentId,
+            eventType: eventType,
+            incidentState: incidentState,
+            actorType: actorType,
+            actorId: actorId,
+            payloadJson: payloadJson,
+            occurredAt: occurredAt,
+            createdAt: createdAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String eventId,
+            required String incidentId,
+            required String eventType,
+            required String incidentState,
+            required String actorType,
+            Value<String?> actorId = const Value.absent(),
+            Value<String> payloadJson = const Value.absent(),
+            required DateTime occurredAt,
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LocalIncidentEventsCompanion.insert(
+            eventId: eventId,
+            incidentId: incidentId,
+            eventType: eventType,
+            incidentState: incidentState,
+            actorType: actorType,
+            actorId: actorId,
+            payloadJson: payloadJson,
+            occurredAt: occurredAt,
+            createdAt: createdAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable<$LocalIncidentEventsTable, LocalIncidentEvent>(
+                        table),
+                    BaseReferences<
+                        _$GuardianDatabase,
+                        $LocalIncidentEventsTable,
+                        LocalIncidentEvent>(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$LocalIncidentEventsTableProcessedTableManager = ProcessedTableManager<
+    _$GuardianDatabase,
+    $LocalIncidentEventsTable,
+    LocalIncidentEvent,
+    $$LocalIncidentEventsTableFilterComposer,
+    $$LocalIncidentEventsTableOrderingComposer,
+    $$LocalIncidentEventsTableAnnotationComposer,
+    $$LocalIncidentEventsTableCreateCompanionBuilder,
+    $$LocalIncidentEventsTableUpdateCompanionBuilder,
+    (
+      LocalIncidentEvent,
+      BaseReferences<_$GuardianDatabase, $LocalIncidentEventsTable,
+          LocalIncidentEvent>
+    ),
+    LocalIncidentEvent,
+    PrefetchHooks Function()>;
+typedef $$LocalOutboxOperationsTableCreateCompanionBuilder
+    = LocalOutboxOperationsCompanion Function({
+  required String operationId,
+  required String aggregateType,
+  required String aggregateId,
+  required String operationType,
+  required String payloadJson,
+  Value<String?> dependencyId,
+  Value<String> status,
+  Value<int> attemptCount,
+  Value<DateTime> nextAttemptAt,
+  Value<String?> lastError,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+  Value<int> rowid,
+});
+typedef $$LocalOutboxOperationsTableUpdateCompanionBuilder
+    = LocalOutboxOperationsCompanion Function({
+  Value<String> operationId,
+  Value<String> aggregateType,
+  Value<String> aggregateId,
+  Value<String> operationType,
+  Value<String> payloadJson,
+  Value<String?> dependencyId,
+  Value<String> status,
+  Value<int> attemptCount,
+  Value<DateTime> nextAttemptAt,
+  Value<String?> lastError,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+  Value<int> rowid,
+});
+
+class $$LocalOutboxOperationsTableFilterComposer
+    extends Composer<_$GuardianDatabase, $LocalOutboxOperationsTable> {
+  $$LocalOutboxOperationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get operationId => $composableBuilder(
+      column: $table.operationId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get aggregateType => $composableBuilder(
+      column: $table.aggregateType, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get aggregateId => $composableBuilder(
+      column: $table.aggregateId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get operationType => $composableBuilder(
+      column: $table.operationType, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+      column: $table.payloadJson, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get dependencyId => $composableBuilder(
+      column: $table.dependencyId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get attemptCount => $composableBuilder(
+      column: $table.attemptCount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get nextAttemptAt => $composableBuilder(
+      column: $table.nextAttemptAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get lastError => $composableBuilder(
+      column: $table.lastError, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$LocalOutboxOperationsTableOrderingComposer
+    extends Composer<_$GuardianDatabase, $LocalOutboxOperationsTable> {
+  $$LocalOutboxOperationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get operationId => $composableBuilder(
+      column: $table.operationId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get aggregateType => $composableBuilder(
+      column: $table.aggregateType,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get aggregateId => $composableBuilder(
+      column: $table.aggregateId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get operationType => $composableBuilder(
+      column: $table.operationType,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+      column: $table.payloadJson, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get dependencyId => $composableBuilder(
+      column: $table.dependencyId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get attemptCount => $composableBuilder(
+      column: $table.attemptCount,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get nextAttemptAt => $composableBuilder(
+      column: $table.nextAttemptAt,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get lastError => $composableBuilder(
+      column: $table.lastError, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$LocalOutboxOperationsTableAnnotationComposer
+    extends Composer<_$GuardianDatabase, $LocalOutboxOperationsTable> {
+  $$LocalOutboxOperationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get operationId => $composableBuilder(
+      column: $table.operationId, builder: (column) => column);
+
+  GeneratedColumn<String> get aggregateType => $composableBuilder(
+      column: $table.aggregateType, builder: (column) => column);
+
+  GeneratedColumn<String> get aggregateId => $composableBuilder(
+      column: $table.aggregateId, builder: (column) => column);
+
+  GeneratedColumn<String> get operationType => $composableBuilder(
+      column: $table.operationType, builder: (column) => column);
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+      column: $table.payloadJson, builder: (column) => column);
+
+  GeneratedColumn<String> get dependencyId => $composableBuilder(
+      column: $table.dependencyId, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<int> get attemptCount => $composableBuilder(
+      column: $table.attemptCount, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get nextAttemptAt => $composableBuilder(
+      column: $table.nextAttemptAt, builder: (column) => column);
+
+  GeneratedColumn<String> get lastError =>
+      $composableBuilder(column: $table.lastError, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$LocalOutboxOperationsTableTableManager extends RootTableManager<
+    _$GuardianDatabase,
+    $LocalOutboxOperationsTable,
+    LocalOutboxOperation,
+    $$LocalOutboxOperationsTableFilterComposer,
+    $$LocalOutboxOperationsTableOrderingComposer,
+    $$LocalOutboxOperationsTableAnnotationComposer,
+    $$LocalOutboxOperationsTableCreateCompanionBuilder,
+    $$LocalOutboxOperationsTableUpdateCompanionBuilder,
+    (
+      LocalOutboxOperation,
+      BaseReferences<_$GuardianDatabase, $LocalOutboxOperationsTable,
+          LocalOutboxOperation>
+    ),
+    LocalOutboxOperation,
+    PrefetchHooks Function()> {
+  $$LocalOutboxOperationsTableTableManager(
+      _$GuardianDatabase db, $LocalOutboxOperationsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalOutboxOperationsTableFilterComposer(
+                  $db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalOutboxOperationsTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalOutboxOperationsTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> operationId = const Value.absent(),
+            Value<String> aggregateType = const Value.absent(),
+            Value<String> aggregateId = const Value.absent(),
+            Value<String> operationType = const Value.absent(),
+            Value<String> payloadJson = const Value.absent(),
+            Value<String?> dependencyId = const Value.absent(),
+            Value<String> status = const Value.absent(),
+            Value<int> attemptCount = const Value.absent(),
+            Value<DateTime> nextAttemptAt = const Value.absent(),
+            Value<String?> lastError = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LocalOutboxOperationsCompanion(
+            operationId: operationId,
+            aggregateType: aggregateType,
+            aggregateId: aggregateId,
+            operationType: operationType,
+            payloadJson: payloadJson,
+            dependencyId: dependencyId,
+            status: status,
+            attemptCount: attemptCount,
+            nextAttemptAt: nextAttemptAt,
+            lastError: lastError,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String operationId,
+            required String aggregateType,
+            required String aggregateId,
+            required String operationType,
+            required String payloadJson,
+            Value<String?> dependencyId = const Value.absent(),
+            Value<String> status = const Value.absent(),
+            Value<int> attemptCount = const Value.absent(),
+            Value<DateTime> nextAttemptAt = const Value.absent(),
+            Value<String?> lastError = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LocalOutboxOperationsCompanion.insert(
+            operationId: operationId,
+            aggregateType: aggregateType,
+            aggregateId: aggregateId,
+            operationType: operationType,
+            payloadJson: payloadJson,
+            dependencyId: dependencyId,
+            status: status,
+            attemptCount: attemptCount,
+            nextAttemptAt: nextAttemptAt,
+            lastError: lastError,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable<$LocalOutboxOperationsTable,
+                        LocalOutboxOperation>(table),
+                    BaseReferences<
+                        _$GuardianDatabase,
+                        $LocalOutboxOperationsTable,
+                        LocalOutboxOperation>(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$LocalOutboxOperationsTableProcessedTableManager
+    = ProcessedTableManager<
+        _$GuardianDatabase,
+        $LocalOutboxOperationsTable,
+        LocalOutboxOperation,
+        $$LocalOutboxOperationsTableFilterComposer,
+        $$LocalOutboxOperationsTableOrderingComposer,
+        $$LocalOutboxOperationsTableAnnotationComposer,
+        $$LocalOutboxOperationsTableCreateCompanionBuilder,
+        $$LocalOutboxOperationsTableUpdateCompanionBuilder,
+        (
+          LocalOutboxOperation,
+          BaseReferences<_$GuardianDatabase, $LocalOutboxOperationsTable,
+              LocalOutboxOperation>
+        ),
+        LocalOutboxOperation,
+        PrefetchHooks Function()>;
+typedef $$LocalDeliveryAttemptsTableCreateCompanionBuilder
+    = LocalDeliveryAttemptsCompanion Function({
+  required String attemptId,
+  required String incidentId,
+  required String channel,
+  required String recipientRef,
+  required String status,
+  Value<String?> providerMessageId,
+  Value<String?> failureCode,
+  required DateTime queuedAt,
+  required DateTime updatedAt,
+  Value<DateTime?> acknowledgedAt,
+  Value<int> rowid,
+});
+typedef $$LocalDeliveryAttemptsTableUpdateCompanionBuilder
+    = LocalDeliveryAttemptsCompanion Function({
+  Value<String> attemptId,
+  Value<String> incidentId,
+  Value<String> channel,
+  Value<String> recipientRef,
+  Value<String> status,
+  Value<String?> providerMessageId,
+  Value<String?> failureCode,
+  Value<DateTime> queuedAt,
+  Value<DateTime> updatedAt,
+  Value<DateTime?> acknowledgedAt,
+  Value<int> rowid,
+});
+
+class $$LocalDeliveryAttemptsTableFilterComposer
+    extends Composer<_$GuardianDatabase, $LocalDeliveryAttemptsTable> {
+  $$LocalDeliveryAttemptsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get attemptId => $composableBuilder(
+      column: $table.attemptId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get incidentId => $composableBuilder(
+      column: $table.incidentId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get channel => $composableBuilder(
+      column: $table.channel, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get recipientRef => $composableBuilder(
+      column: $table.recipientRef, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get providerMessageId => $composableBuilder(
+      column: $table.providerMessageId,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get failureCode => $composableBuilder(
+      column: $table.failureCode, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get queuedAt => $composableBuilder(
+      column: $table.queuedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get acknowledgedAt => $composableBuilder(
+      column: $table.acknowledgedAt,
+      builder: (column) => ColumnFilters(column));
+}
+
+class $$LocalDeliveryAttemptsTableOrderingComposer
+    extends Composer<_$GuardianDatabase, $LocalDeliveryAttemptsTable> {
+  $$LocalDeliveryAttemptsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get attemptId => $composableBuilder(
+      column: $table.attemptId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get incidentId => $composableBuilder(
+      column: $table.incidentId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get channel => $composableBuilder(
+      column: $table.channel, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get recipientRef => $composableBuilder(
+      column: $table.recipientRef,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get providerMessageId => $composableBuilder(
+      column: $table.providerMessageId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get failureCode => $composableBuilder(
+      column: $table.failureCode, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get queuedAt => $composableBuilder(
+      column: $table.queuedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get acknowledgedAt => $composableBuilder(
+      column: $table.acknowledgedAt,
+      builder: (column) => ColumnOrderings(column));
+}
+
+class $$LocalDeliveryAttemptsTableAnnotationComposer
+    extends Composer<_$GuardianDatabase, $LocalDeliveryAttemptsTable> {
+  $$LocalDeliveryAttemptsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get attemptId =>
+      $composableBuilder(column: $table.attemptId, builder: (column) => column);
+
+  GeneratedColumn<String> get incidentId => $composableBuilder(
+      column: $table.incidentId, builder: (column) => column);
+
+  GeneratedColumn<String> get channel =>
+      $composableBuilder(column: $table.channel, builder: (column) => column);
+
+  GeneratedColumn<String> get recipientRef => $composableBuilder(
+      column: $table.recipientRef, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get providerMessageId => $composableBuilder(
+      column: $table.providerMessageId, builder: (column) => column);
+
+  GeneratedColumn<String> get failureCode => $composableBuilder(
+      column: $table.failureCode, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get queuedAt =>
+      $composableBuilder(column: $table.queuedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get acknowledgedAt => $composableBuilder(
+      column: $table.acknowledgedAt, builder: (column) => column);
+}
+
+class $$LocalDeliveryAttemptsTableTableManager extends RootTableManager<
+    _$GuardianDatabase,
+    $LocalDeliveryAttemptsTable,
+    LocalDeliveryAttempt,
+    $$LocalDeliveryAttemptsTableFilterComposer,
+    $$LocalDeliveryAttemptsTableOrderingComposer,
+    $$LocalDeliveryAttemptsTableAnnotationComposer,
+    $$LocalDeliveryAttemptsTableCreateCompanionBuilder,
+    $$LocalDeliveryAttemptsTableUpdateCompanionBuilder,
+    (
+      LocalDeliveryAttempt,
+      BaseReferences<_$GuardianDatabase, $LocalDeliveryAttemptsTable,
+          LocalDeliveryAttempt>
+    ),
+    LocalDeliveryAttempt,
+    PrefetchHooks Function()> {
+  $$LocalDeliveryAttemptsTableTableManager(
+      _$GuardianDatabase db, $LocalDeliveryAttemptsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalDeliveryAttemptsTableFilterComposer(
+                  $db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalDeliveryAttemptsTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalDeliveryAttemptsTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> attemptId = const Value.absent(),
+            Value<String> incidentId = const Value.absent(),
+            Value<String> channel = const Value.absent(),
+            Value<String> recipientRef = const Value.absent(),
+            Value<String> status = const Value.absent(),
+            Value<String?> providerMessageId = const Value.absent(),
+            Value<String?> failureCode = const Value.absent(),
+            Value<DateTime> queuedAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<DateTime?> acknowledgedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LocalDeliveryAttemptsCompanion(
+            attemptId: attemptId,
+            incidentId: incidentId,
+            channel: channel,
+            recipientRef: recipientRef,
+            status: status,
+            providerMessageId: providerMessageId,
+            failureCode: failureCode,
+            queuedAt: queuedAt,
+            updatedAt: updatedAt,
+            acknowledgedAt: acknowledgedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String attemptId,
+            required String incidentId,
+            required String channel,
+            required String recipientRef,
+            required String status,
+            Value<String?> providerMessageId = const Value.absent(),
+            Value<String?> failureCode = const Value.absent(),
+            required DateTime queuedAt,
+            required DateTime updatedAt,
+            Value<DateTime?> acknowledgedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LocalDeliveryAttemptsCompanion.insert(
+            attemptId: attemptId,
+            incidentId: incidentId,
+            channel: channel,
+            recipientRef: recipientRef,
+            status: status,
+            providerMessageId: providerMessageId,
+            failureCode: failureCode,
+            queuedAt: queuedAt,
+            updatedAt: updatedAt,
+            acknowledgedAt: acknowledgedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable<$LocalDeliveryAttemptsTable,
+                        LocalDeliveryAttempt>(table),
+                    BaseReferences<
+                        _$GuardianDatabase,
+                        $LocalDeliveryAttemptsTable,
+                        LocalDeliveryAttempt>(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$LocalDeliveryAttemptsTableProcessedTableManager
+    = ProcessedTableManager<
+        _$GuardianDatabase,
+        $LocalDeliveryAttemptsTable,
+        LocalDeliveryAttempt,
+        $$LocalDeliveryAttemptsTableFilterComposer,
+        $$LocalDeliveryAttemptsTableOrderingComposer,
+        $$LocalDeliveryAttemptsTableAnnotationComposer,
+        $$LocalDeliveryAttemptsTableCreateCompanionBuilder,
+        $$LocalDeliveryAttemptsTableUpdateCompanionBuilder,
+        (
+          LocalDeliveryAttempt,
+          BaseReferences<_$GuardianDatabase, $LocalDeliveryAttemptsTable,
+              LocalDeliveryAttempt>
+        ),
+        LocalDeliveryAttempt,
+        PrefetchHooks Function()>;
 
 class $GuardianDatabaseManager {
   final _$GuardianDatabase _db;
@@ -5223,4 +7719,10 @@ class $GuardianDatabaseManager {
       $$LocalMeshBeaconsTableTableManager(_db, _db.localMeshBeacons);
   $$LocalIncidentsTableTableManager get localIncidents =>
       $$LocalIncidentsTableTableManager(_db, _db.localIncidents);
+  $$LocalIncidentEventsTableTableManager get localIncidentEvents =>
+      $$LocalIncidentEventsTableTableManager(_db, _db.localIncidentEvents);
+  $$LocalOutboxOperationsTableTableManager get localOutboxOperations =>
+      $$LocalOutboxOperationsTableTableManager(_db, _db.localOutboxOperations);
+  $$LocalDeliveryAttemptsTableTableManager get localDeliveryAttempts =>
+      $$LocalDeliveryAttemptsTableTableManager(_db, _db.localDeliveryAttempts);
 }

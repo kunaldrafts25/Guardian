@@ -10,7 +10,8 @@ import 'package:guardian/core/widgets/custom_text_field.dart';
 
 void main() {
   group('CustomTextField', () {
-    testWidgets('renders correctly with label and hint', (WidgetTester tester) async {
+    testWidgets('renders correctly with label and hint',
+        (WidgetTester tester) async {
       final controller = TextEditingController();
 
       await tester.pumpWidget(
@@ -142,7 +143,8 @@ void main() {
       );
 
       // Verify field is disabled
-      final textFormField = tester.widget<TextFormField>(find.byType(TextFormField));
+      final textFormField =
+          tester.widget<TextFormField>(find.byType(TextFormField));
       expect(textFormField.enabled, false);
     });
 

@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:geolocator/geolocator.dart';
 import 'package:guardian/core/database/guardian_database.dart';
+import 'package:guardian/core/models/emergency_domain.dart';
 import 'package:guardian/core/models/emergency_model.dart';
 import 'package:guardian/core/providers/contacts_provider.dart';
 import 'package:guardian/core/providers/sos_settings_provider.dart';
@@ -121,24 +122,58 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
   }) async {
     final location = alert.currentLocation ?? alert.initialLocation;
     final database = _ref.read(databaseProvider);
+    final cloudPayload = <String, dynamic>{
+      'event_type': eventType,
+      if (location != null)
+        'location': {
+          'latitude': location.latitude,
+          'longitude': location.longitude,
+          'accuracy': location.accuracy,
+        },
+      'motion_data': motionData,
+    };
     try {
-      await database.upsertAlert(LocalAlertsCompanion.insert(
+      await database.queueAlertForCloud(
         alertId: alert.id,
-        userId: userId,
-        source: eventType,
-        status: 'active',
-        latitude: Value(location?.latitude),
-        longitude: Value(location?.longitude),
-        accuracy: Value(location?.accuracy),
-        customMessage: Value(alert.customMessage),
-        startedAt: alert.startedAt,
-        smsSent: Value(alert.contactStatuses.any((item) => item.smsSent)),
-        smsCount:
-            Value(alert.contactStatuses.where((item) => item.smsSent).length),
-        syncedToCloud: const Value(false),
-      ));
+        eventType: eventType,
+        occurredAt: alert.startedAt,
+        cloudPayload: cloudPayload,
+        deliveryAttempts: alert.contactStatuses.map((contactStatus) {
+          final accepted = contactStatus.smsSent;
+          return LocalDeliveryAttemptsCompanion.insert(
+            attemptId: '${alert.id}:sms:${contactStatus.contact.id}',
+            incidentId: alert.id,
+            channel: 'sms',
+            recipientRef: contactStatus.contact.id,
+            status: accepted
+                ? DeliveryState.accepted.name
+                : DeliveryState.failed.name,
+            failureCode: Value(accepted
+                ? null
+                : (contactStatus.error ?? 'sms_dispatch_failed')),
+            queuedAt: alert.startedAt,
+            updatedAt: DateTime.now(),
+          );
+        }).toList(),
+        alert: LocalAlertsCompanion.insert(
+          alertId: alert.id,
+          userId: userId,
+          source: eventType,
+          status: 'active',
+          latitude: Value(location?.latitude),
+          longitude: Value(location?.longitude),
+          accuracy: Value(location?.accuracy),
+          customMessage: Value(alert.customMessage),
+          startedAt: alert.startedAt,
+          smsSent: Value(alert.contactStatuses.any((item) => item.smsSent)),
+          smsCount:
+              Value(alert.contactStatuses.where((item) => item.smsSent).length),
+          syncedToCloud: const Value(false),
+        ),
+      );
     } catch (error) {
-      Logger.error('Could not persist the SOS retry record', error);
+      Logger.error('Could not durably queue the SOS', error);
+      rethrow;
     }
 
     try {
@@ -156,8 +191,14 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
         motionData: motionData,
       );
       await database.markAlertSynced(alert.id);
+      await database.markOutboxSucceeded('${alert.id}:createIncident');
       return incident['incident_id'] as String?;
     } catch (error) {
+      await database.markOutboxRetry(
+        operationId: '${alert.id}:createIncident',
+        previousAttemptCount: 0,
+        error: error.toString(),
+      );
       Logger.warning(
           'AWS incident ingestion failed; alert remains queued: $error');
       return null;

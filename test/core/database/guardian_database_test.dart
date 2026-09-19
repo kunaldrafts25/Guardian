@@ -1,0 +1,133 @@
+import 'dart:convert';
+
+import 'package:drift/drift.dart' hide isNotNull;
+import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:guardian/core/database/guardian_database.dart';
+
+void main() {
+  late GuardianDatabase database;
+
+  setUp(() {
+    database = GuardianDatabase.forTesting(NativeDatabase.memory());
+  });
+
+  tearDown(() => database.close());
+
+  test('queues alert, first event, and cloud operation atomically', () async {
+    final startedAt = DateTime.utc(2026, 9, 19, 10);
+    final alert = LocalAlertsCompanion.insert(
+      alertId: 'alert-1',
+      userId: 'user-1',
+      source: 'hardware_power_panic',
+      status: 'active',
+      startedAt: startedAt,
+    );
+    final payload = <String, dynamic>{
+      'event_type': 'hardware_power_panic',
+      'motion_data': {'tap_count': 3},
+    };
+
+    await database.queueAlertForCloud(
+      alert: alert,
+      alertId: 'alert-1',
+      eventType: 'hardware_power_panic',
+      occurredAt: startedAt,
+      cloudPayload: payload,
+      deliveryAttempts: [
+        LocalDeliveryAttemptsCompanion.insert(
+          attemptId: 'alert-1:sms:contact-1',
+          incidentId: 'alert-1',
+          channel: 'sms',
+          recipientRef: 'contact-1',
+          status: 'accepted',
+          queuedAt: startedAt,
+          updatedAt: startedAt,
+        ),
+      ],
+    );
+
+    expect(await database.getUnsyncedAlerts(), hasLength(1));
+    final events = await database.getIncidentEvents('alert-1');
+    expect(events, hasLength(1));
+    expect(events.single.incidentState, 'triggered');
+    expect(events.single.actorType, 'device');
+
+    final operation =
+        await database.getOutboxOperation('alert-1:createIncident');
+    expect(operation, isNotNull);
+    expect(operation!.status, 'pending');
+    expect(jsonDecode(operation.payloadJson), payload);
+    final attempts = await database.getDeliveryAttempts('alert-1');
+    expect(attempts, hasLength(1));
+    expect(attempts.single.status, 'accepted');
+    expect(attempts.single.recipientRef, 'contact-1');
+  });
+
+  test('replaying the same queue command does not duplicate work', () async {
+    final startedAt = DateTime.utc(2026, 9, 19, 10);
+    final alert = LocalAlertsCompanion.insert(
+      alertId: 'alert-2',
+      userId: 'user-1',
+      source: 'sos_button',
+      status: 'active',
+      startedAt: startedAt,
+    );
+
+    for (var attempt = 0; attempt < 2; attempt++) {
+      await database.queueAlertForCloud(
+        alert: alert,
+        alertId: 'alert-2',
+        eventType: 'sos_button',
+        occurredAt: startedAt,
+        cloudPayload: const {'event_type': 'sos_button'},
+      );
+    }
+
+    expect(await database.getUnsyncedAlerts(), hasLength(1));
+    expect(await database.getIncidentEvents('alert-2'), hasLength(1));
+    expect(await database.select(database.localOutboxOperations).get(),
+        hasLength(1));
+  });
+
+  test('failed operation is delayed and preserves failure evidence', () async {
+    final now = DateTime.utc(2026, 9, 19, 10);
+    await database.into(database.localOutboxOperations).insert(
+          LocalOutboxOperationsCompanion.insert(
+            operationId: 'operation-1',
+            aggregateType: 'incident',
+            aggregateId: 'alert-1',
+            operationType: 'createIncident',
+            payloadJson: '{}',
+            nextAttemptAt: Value(now),
+          ),
+        );
+
+    await database.markOutboxRetry(
+      operationId: 'operation-1',
+      previousAttemptCount: 0,
+      error: 'network unavailable',
+      now: now,
+    );
+
+    final operation = await database.getOutboxOperation('operation-1');
+    expect(operation!.attemptCount, 1);
+    expect(operation.lastError, 'network unavailable');
+    expect(
+      operation.nextAttemptAt.toUtc(),
+      now.add(const Duration(seconds: 5)),
+    );
+    expect(
+      await database.getDueOutboxOperations(
+        now: now.add(const Duration(seconds: 4)),
+      ),
+      isEmpty,
+    );
+    expect(
+      await database.getDueOutboxOperations(
+        now: now.add(const Duration(seconds: 5)),
+      ),
+      hasLength(1),
+    );
+  });
+}
