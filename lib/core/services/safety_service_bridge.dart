@@ -43,6 +43,16 @@ class ServiceLocation {
       'https://maps.google.com/?q=$latitude,$longitude';
 }
 
+class NativeCheckInScheduleResult {
+  final bool scheduled;
+  final bool exact;
+
+  const NativeCheckInScheduleResult({
+    required this.scheduled,
+    required this.exact,
+  });
+}
+
 // ═══════════════════════════════════════════════════════
 // BRIDGE
 // ═══════════════════════════════════════════════════════
@@ -132,6 +142,63 @@ class SafetyServiceBridge {
       return false;
     } catch (error) {
       Logger.error('Failed to update native emergency snapshot', error);
+      return false;
+    }
+  }
+
+  static Future<NativeCheckInScheduleResult> scheduleCheckIn({
+    required String operationId,
+    required DateTime deadline,
+    required DateTime graceDeadline,
+  }) async {
+    try {
+      final result = await _serviceChannel.invokeMapMethod<String, dynamic>(
+        'scheduleCheckIn',
+        {
+          'operationId': operationId,
+          'deadlineMs': deadline.millisecondsSinceEpoch,
+          'graceDeadlineMs': graceDeadline.millisecondsSinceEpoch,
+        },
+      );
+      return NativeCheckInScheduleResult(
+        scheduled: result?['scheduled'] == true,
+        exact: result?['exact'] == true,
+      );
+    } on MissingPluginException {
+      return const NativeCheckInScheduleResult(scheduled: false, exact: false);
+    }
+  }
+
+  static Future<void> cancelScheduledCheckIn() async {
+    try {
+      await _serviceChannel.invokeMethod<void>('cancelCheckIn');
+    } on MissingPluginException {
+      // Native scheduling is Android-only.
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getPendingCheckInActions() async {
+    try {
+      final actions = await _serviceChannel
+              .invokeListMethod<dynamic>('getPendingCheckInActions') ??
+          const [];
+      return actions
+          .whereType<Map>()
+          .map((action) => Map<String, dynamic>.from(action))
+          .toList();
+    } on MissingPluginException {
+      return const [];
+    }
+  }
+
+  static Future<bool> acknowledgeCheckInAction(String actionId) async {
+    try {
+      return await _serviceChannel.invokeMethod<bool>(
+            'acknowledgeCheckInAction',
+            {'actionId': actionId},
+          ) ??
+          false;
+    } on MissingPluginException {
       return false;
     }
   }

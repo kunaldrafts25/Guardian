@@ -66,6 +66,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <!-- ═══════════════════════════════════════════════
          PHONE — Emergency call (112)
@@ -121,6 +122,10 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name="com.company.guardian.CheckInAlarmReceiver"
+            android:exported="false" />
 
         <!-- Flutter plugin embedding metadata -->
         <meta-data

@@ -13,6 +13,8 @@ object NativeEmergencyStore {
     private const val SNAPSHOT_KEY = "snapshot"
     private const val EVENTS_KEY = "events"
     private const val LAST_TRIGGER_AT_KEY = "last_trigger_at"
+    private const val CHECK_IN_SCHEDULE_KEY = "check_in_schedule"
+    private const val CHECK_IN_ACTIONS_KEY = "check_in_actions"
     private const val MAX_EVENTS = 32
 
     private fun preferences(context: Context): SharedPreferences {
@@ -79,6 +81,50 @@ object NativeEmergencyStore {
             }
         }
         if (found) preferences(context).edit().putString(EVENTS_KEY, all.toString()).commit()
+        return found
+    }
+
+    @Synchronized
+    fun saveCheckInSchedule(context: Context, schedule: JSONObject) {
+        preferences(context).edit()
+            .putString(CHECK_IN_SCHEDULE_KEY, schedule.toString()).commit()
+    }
+
+    @Synchronized
+    fun checkInSchedule(context: Context): JSONObject? {
+        val raw = preferences(context).getString(CHECK_IN_SCHEDULE_KEY, null) ?: return null
+        return runCatching { JSONObject(raw) }.getOrNull()
+    }
+
+    @Synchronized
+    fun clearCheckInSchedule(context: Context) {
+        preferences(context).edit().remove(CHECK_IN_SCHEDULE_KEY).commit()
+    }
+
+    @Synchronized
+    fun appendCheckInAction(context: Context, action: JSONObject) {
+        val actions = checkInActions(context)
+        actions.put(action)
+        preferences(context).edit().putString(CHECK_IN_ACTIONS_KEY, actions.toString()).commit()
+    }
+
+    @Synchronized
+    fun checkInActions(context: Context): JSONArray {
+        val raw = preferences(context).getString(CHECK_IN_ACTIONS_KEY, null) ?: return JSONArray()
+        return runCatching { JSONArray(raw) }.getOrDefault(JSONArray())
+    }
+
+    @Synchronized
+    fun acknowledgeCheckInAction(context: Context, actionId: String): Boolean {
+        val actions = checkInActions(context)
+        val remaining = JSONArray()
+        var found = false
+        for (index in 0 until actions.length()) {
+            val action = actions.getJSONObject(index)
+            if (action.optString("action_id") == actionId) found = true
+            else remaining.put(action)
+        }
+        if (found) preferences(context).edit().putString(CHECK_IN_ACTIONS_KEY, remaining.toString()).commit()
         return found
     }
 

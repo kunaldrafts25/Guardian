@@ -22,6 +22,7 @@ class BootReceiver : BroadcastReceiver() {
             Intent.ACTION_MY_PACKAGE_REPLACED -> {
                 Log.i("Guardian.BootReceiver", "Device booted — restarting SafetyForegroundService")
                 SafetyForegroundService.start(context)
+                CheckInScheduler.restore(context)
             }
         }
     }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:drift/drift.dart' show Value;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:guardian/core/database/guardian_database.dart';
@@ -9,6 +10,7 @@ import 'package:guardian/core/providers/contacts_provider.dart';
 import 'package:guardian/core/providers/emergency_provider.dart';
 import 'package:guardian/core/services/aws_auth_service.dart';
 import 'package:guardian/core/services/notification_service.dart';
+import 'package:guardian/core/services/safety_service_bridge.dart';
 import 'package:guardian/core/services/sos_service.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:uuid/uuid.dart';
@@ -25,6 +27,8 @@ class CheckInState {
   final String? destination;
   final int escalationMinutes;
   final String? errorMessage;
+  final bool nativeScheduled;
+  final bool exactAlarm;
 
   const CheckInState({
     this.status = CheckInStatus.idle,
@@ -36,9 +40,13 @@ class CheckInState {
     this.destination,
     this.escalationMinutes = 5,
     this.errorMessage,
+    this.nativeScheduled = false,
+    this.exactAlarm = false,
   });
 
-  bool get isActive => status != CheckInStatus.idle;
+  bool get isActive =>
+      status == CheckInStatus.active ||
+      status == CheckInStatus.awaitingConfirmation;
   bool get isOverdue =>
       status == CheckInStatus.awaitingConfirmation ||
       status == CheckInStatus.escalated;
@@ -66,6 +74,8 @@ class CheckInState {
     int? escalationMinutes,
     String? errorMessage,
     bool clearError = false,
+    bool? nativeScheduled,
+    bool? exactAlarm,
   }) =>
       CheckInState(
         status: status ?? this.status,
@@ -77,6 +87,8 @@ class CheckInState {
         destination: destination ?? this.destination,
         escalationMinutes: escalationMinutes ?? this.escalationMinutes,
         errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
+        nativeScheduled: nativeScheduled ?? this.nativeScheduled,
+        exactAlarm: exactAlarm ?? this.exactAlarm,
       );
 }
 
@@ -93,6 +105,8 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
   Timer? _graceTimer;
   Timer? _countdownTimer;
   Future<void>? _escalationInFlight;
+  Future<void>? _nativeActionPoll;
+  DateTime? _lastNativeActionPoll;
   late final Future<void> ready;
 
   CheckInNotifier(
@@ -122,6 +136,7 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
       final launch = await _notifications.getNotificationAppLaunchDetails();
       final row = await _database.getActiveCheckIn(_ownerUserId);
       if (!mounted || row == null) return;
+      if (await _applyPendingNativeActions(row)) return;
       _restore(row);
       final response = launch?.notificationResponse;
       if (launch?.didNotificationLaunchApp == true && response != null) {
@@ -133,6 +148,32 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
         state = state.copyWith(errorMessage: 'Check-in could not be restored.');
       }
     }
+  }
+
+  Future<bool> _applyPendingNativeActions(LocalCheckIn row) async {
+    final actions = await SafetyServiceBridge.getPendingCheckInActions();
+    for (final action in actions) {
+      if (action['operation_id'] != row.operationId ||
+          action['action'] != 'safe') {
+        continue;
+      }
+      final changed = await _database.transitionCheckIn(
+        id: row.id,
+        fromStatuses: const ['active', 'awaiting_confirmation'],
+        status: 'arrived',
+        confirmedAt: DateTime.fromMillisecondsSinceEpoch(
+          (action['occurred_at_ms'] as num?)?.toInt() ??
+              DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+      if (changed) {
+        await SafetyServiceBridge.acknowledgeCheckInAction(
+          action['action_id'] as String,
+        );
+        return true;
+      }
+    }
+    return false;
   }
 
   void _restore(LocalCheckIn row) {
@@ -150,7 +191,26 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
       destination: row.location,
       escalationMinutes: row.escalationMinutes,
     );
+    unawaited(_scheduleNative(row.operationId, row.scheduledAt, graceDeadline));
     _evaluateAndSchedule();
+  }
+
+  Future<void> _scheduleNative(
+    String operationId,
+    DateTime deadline,
+    DateTime graceDeadline,
+  ) async {
+    final result = await SafetyServiceBridge.scheduleCheckIn(
+      operationId: operationId,
+      deadline: deadline,
+      graceDeadline: graceDeadline,
+    );
+    if (mounted && state.operationId == operationId) {
+      state = state.copyWith(
+        nativeScheduled: result.scheduled,
+        exactAlarm: result.exact,
+      );
+    }
   }
 
   Future<void> startTimer({
@@ -192,6 +252,7 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
       destination: destination,
       escalationMinutes: escalationMinutes,
     );
+    await _scheduleNative(operationId, deadline, graceDeadline);
     _evaluateAndSchedule();
   }
 
@@ -229,6 +290,31 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
     state = state.copyWith(
       remainingTime: remaining.isNegative ? Duration.zero : remaining,
     );
+    final now = DateTime.now();
+    if (_lastNativeActionPoll == null ||
+        now.difference(_lastNativeActionPoll!) >= const Duration(seconds: 5)) {
+      _lastNativeActionPoll = now;
+      _nativeActionPoll ??= _pollNativeSafeAction().whenComplete(() {
+        _nativeActionPoll = null;
+      });
+    }
+  }
+
+  Future<void> _pollNativeSafeAction() async {
+    final operationId = state.operationId;
+    if (operationId == null) return;
+    final actions = await SafetyServiceBridge.getPendingCheckInActions();
+    for (final action in actions) {
+      if (action['operation_id'] == operationId && action['action'] == 'safe') {
+        final changed = await checkIn();
+        if (changed) {
+          await SafetyServiceBridge.acknowledgeCheckInAction(
+            action['action_id'] as String,
+          );
+        }
+        return;
+      }
+    }
   }
 
   Future<void> _enterGracePeriod() async {
@@ -247,7 +333,11 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
       status: CheckInStatus.awaitingConfirmation,
       remainingTime: Duration.zero,
     );
-    await _showReminder();
+    if (!state.nativeScheduled ||
+        kIsWeb ||
+        defaultTargetPlatform != TargetPlatform.android) {
+      await _showReminder();
+    }
     final delay = graceDeadline.difference(DateTime.now());
     if (delay <= Duration.zero) {
       await _escalate();
@@ -294,7 +384,7 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
 
   void _onNotificationResponse(NotificationResponse response) {
     if (response.actionId == 'confirm_safe') {
-      unawaited(checkIn());
+      unawaited(checkIn().then((_) {}));
     } else if (response.actionId == 'trigger_sos') {
       unawaited(_escalate());
     }
@@ -334,23 +424,25 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
     );
     if (changed && mounted) {
       _cancelTimers();
+      await SafetyServiceBridge.cancelScheduledCheckIn();
       await _notifications.cancel(_reminderNotificationId);
       state = state.copyWith(status: CheckInStatus.escalated, clearError: true);
     }
   }
 
-  Future<void> checkIn() async {
+  Future<bool> checkIn() async {
     await ready;
     final id = state.localId;
-    if (id == null || state.status == CheckInStatus.escalated) return;
+    if (id == null || state.status == CheckInStatus.escalated) return false;
     final changed = await _database.transitionCheckIn(
       id: id,
       fromStatuses: const ['active', 'awaiting_confirmation'],
       status: 'arrived',
       confirmedAt: DateTime.now(),
     );
-    if (!changed) return;
+    if (!changed) return false;
     _cancelTimers();
+    await SafetyServiceBridge.cancelScheduledCheckIn();
     await _notifications.cancel(_reminderNotificationId);
     state = const CheckInState();
 
@@ -365,6 +457,7 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
             'Safe-arrival notification was not accepted: ${result.error}');
       }
     }
+    return true;
   }
 
   Future<void> cancelTimer() async {
@@ -378,6 +471,7 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
       );
     }
     _cancelTimers();
+    await SafetyServiceBridge.cancelScheduledCheckIn();
     await _notifications.cancel(_reminderNotificationId);
     if (mounted) state = const CheckInState();
   }
@@ -386,8 +480,9 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
     await ready;
     final id = state.localId;
     final currentDeadline = state.targetTime;
-    if (id == null || currentDeadline == null || extension <= Duration.zero)
+    if (id == null || currentDeadline == null || extension <= Duration.zero) {
       return;
+    }
     final newDeadline = currentDeadline.add(extension);
     final newGrace =
         newDeadline.add(Duration(minutes: state.escalationMinutes));
@@ -405,6 +500,7 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
       remainingTime: newDeadline.difference(DateTime.now()),
       clearError: true,
     );
+    await _scheduleNative(state.operationId!, newDeadline, newGrace);
     _evaluateAndSchedule();
   }
 

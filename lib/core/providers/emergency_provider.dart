@@ -547,6 +547,11 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     );
     final latitude = (event['latitude'] as num?)?.toDouble();
     final longitude = (event['longitude'] as num?)?.toDouble();
+    final nativeSource = event['source'] as String? ?? 'hardware_power_panic';
+    final isCheckIn = nativeSource.startsWith('check_in_');
+    final triggerSource =
+        isCheckIn ? SosTriggerSource.scheduled : SosTriggerSource.hardwarePower;
+    final eventType = isCheckIn ? 'check_in_expired' : 'hardware_power_panic';
     final position = latitude != null && longitude != null
         ? Position(
             latitude: latitude,
@@ -563,7 +568,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
         : null;
     final alert = SosAlert(
       id: eventId,
-      source: SosTriggerSource.hardwarePower,
+      source: triggerSource,
       status: SosAlertStatus.active,
       startedAt: occurredAt,
       initialLocation: position,
@@ -587,9 +592,9 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     _backendIncidentId = await _persistAndIngestAlert(
       alert: alert,
       userId: userId,
-      eventType: 'hardware_power_panic',
+      eventType: eventType,
       motionData: {
-        'trigger': 'power_button',
+        'trigger': nativeSource,
         'native_dispatch': true,
         'snapshot_version': event['snapshot_version'],
       },

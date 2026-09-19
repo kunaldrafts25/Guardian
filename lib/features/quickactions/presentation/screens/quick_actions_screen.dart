@@ -115,6 +115,13 @@ class QuickActionsScreen extends ConsumerWidget {
                           : '${state.remainingTimeFormatted} remaining',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
+                    if (state.nativeScheduled && !state.exactAlarm)
+                      Text(
+                        'Android may delay this check-in because exact alarms are unavailable.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: AppColors.warning,
+                            ),
+                      ),
                   ],
                 ),
               ),

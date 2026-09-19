@@ -218,6 +218,36 @@ class MainActivity : FlutterActivity() {
                             eventId != null && NativeEmergencyStore.acknowledge(this, eventId)
                         )
                     }
+                    "scheduleCheckIn" -> {
+                        try {
+                            val operationId = call.argument<String>("operationId") ?: ""
+                            val deadlineMs = call.argument<Number>("deadlineMs")?.toLong() ?: 0L
+                            val graceDeadlineMs = call.argument<Number>("graceDeadlineMs")?.toLong() ?: 0L
+                            val exact = CheckInScheduler.schedule(
+                                this, operationId, deadlineMs, graceDeadlineMs
+                            )
+                            result.success(mapOf("scheduled" to true, "exact" to exact))
+                        } catch (error: Exception) {
+                            result.error("INVALID_CHECK_IN", error.message, null)
+                        }
+                    }
+                    "cancelCheckIn" -> {
+                        CheckInScheduler.cancel(this)
+                        result.success(true)
+                    }
+                    "getPendingCheckInActions" -> {
+                        val actions = NativeEmergencyStore.checkInActions(this)
+                        result.success((0 until actions.length()).map {
+                            jsonObjectToMap(actions.getJSONObject(it))
+                        })
+                    }
+                    "acknowledgeCheckInAction" -> {
+                        val actionId = call.argument<String>("actionId")
+                        result.success(
+                            actionId != null && NativeEmergencyStore
+                                .acknowledgeCheckInAction(this, actionId)
+                        )
+                    }
                     else -> result.notImplemented()
                 }
             }
