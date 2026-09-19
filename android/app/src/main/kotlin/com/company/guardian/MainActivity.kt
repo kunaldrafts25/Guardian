@@ -15,6 +15,8 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import org.json.JSONArray
+import org.json.JSONObject
 
 class MainActivity : FlutterActivity() {
 
@@ -65,8 +67,14 @@ class MainActivity : FlutterActivity() {
         SafetyForegroundService.onSosTrigger = { source ->
             Handler(Looper.getMainLooper()).post {
                 val methodName = if (source == "hardware_power_panic") "onHardwarePanic" else "onServiceSosTrigger"
+                val pending = NativeEmergencyStore.pendingEvents(this)
+                val latest = if (pending.length() > 0) {
+                    jsonObjectToMap(pending.getJSONObject(pending.length() - 1))
+                } else {
+                    mapOf("source" to source)
+                }
                 MethodChannel(flutterEngine.dartExecutor.binaryMessenger, EMERGENCY_CHANNEL)
-                    .invokeMethod(methodName, mapOf("source" to source))
+                    .invokeMethod(methodName, latest)
             }
         }
 
@@ -185,9 +193,44 @@ class MainActivity : FlutterActivity() {
                             mapOf("latitude" to it.latitude, "longitude" to it.longitude, "accuracy" to it.accuracy)
                         })
                     }
+                    "updateEmergencySnapshot" -> {
+                        val arguments = call.arguments as? Map<*, *>
+                        if (arguments == null) {
+                            result.error("INVALID_SNAPSHOT", "Snapshot payload is required", null)
+                        } else {
+                            try {
+                                NativeEmergencyStore.saveSnapshot(this, JSONObject(arguments))
+                                result.success(true)
+                            } catch (error: Exception) {
+                                result.error("INVALID_SNAPSHOT", error.message, null)
+                            }
+                        }
+                    }
+                    "getPendingNativeEmergencyEvents" -> {
+                        val pending = NativeEmergencyStore.pendingEvents(this)
+                        result.success((0 until pending.length()).map {
+                            jsonObjectToMap(pending.getJSONObject(it))
+                        })
+                    }
+                    "acknowledgeNativeEmergencyEvent" -> {
+                        val eventId = call.argument<String>("eventId")
+                        result.success(
+                            eventId != null && NativeEmergencyStore.acknowledge(this, eventId)
+                        )
+                    }
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    private fun jsonObjectToMap(value: JSONObject): Map<String, Any?> =
+        value.keys().asSequence().associateWith { key -> jsonValue(value.get(key)) }
+
+    private fun jsonValue(value: Any?): Any? = when (value) {
+        JSONObject.NULL -> null
+        is JSONObject -> jsonObjectToMap(value)
+        is JSONArray -> (0 until value.length()).map { jsonValue(value.get(it)) }
+        else -> value
     }
 
     // ─────────────────────────────────────────────────────

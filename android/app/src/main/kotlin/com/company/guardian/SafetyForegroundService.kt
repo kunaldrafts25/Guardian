@@ -92,8 +92,8 @@ class SafetyForegroundService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_TRIGGER_SOS -> {
-                // Flutter can trigger SOS even when app is killed
-                onSosTrigger?.invoke("service_trigger")
+                val event = NativeEmergencyDispatcher.trigger(this, "service_trigger")
+                if (event != null) onSosTrigger?.invoke("service_trigger")
             }
         }
 
@@ -134,7 +134,11 @@ class SafetyForegroundService : Service() {
                     if (screenToggleTimestamps.size >= 3) {
                         Log.w(TAG, "🚨 HARDWARE POWER BUTTON PANIC DETECTED (3+ taps in 3s)!")
                         screenToggleTimestamps.clear()
-                        onSosTrigger?.invoke("hardware_power_panic")
+                        val event = NativeEmergencyDispatcher.trigger(
+                            this@SafetyForegroundService,
+                            "hardware_power_panic",
+                        )
+                        if (event != null) onSosTrigger?.invoke("hardware_power_panic")
                     }
                 }
             }

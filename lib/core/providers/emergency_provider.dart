@@ -520,6 +520,111 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     }
   }
 
+  /// Imports an emergency already dispatched by Android while Flutter was not
+  /// running. This path journals/cloud-syncs the native event and deliberately
+  /// does not send SMS again.
+  Future<bool> ingestNativeEmergencyEvent(Map<String, dynamic> event) async {
+    await ready;
+    final eventId = event['event_id'] as String?;
+    if (eventId == null || eventId.isEmpty) return false;
+    final database = _ref.read(databaseProvider);
+    if (await database.getAlert(eventId) != null) return true;
+    if (state.isActive) return false;
+
+    final userId = AwsAuthService.instance.currentUserId;
+    if (userId == null) return false;
+    await _ref.read(contactsProvider.notifier).ready;
+    final contacts = _ref.read(contactsProvider).contacts;
+    final accepted = (event['accepted_phones'] as List? ?? const [])
+        .map((value) => _normalizedPhone(value.toString()))
+        .toSet();
+    final failed = (event['failed_phones'] as List? ?? const [])
+        .map((value) => _normalizedPhone(value.toString()))
+        .toSet();
+    final occurredAt = DateTime.fromMillisecondsSinceEpoch(
+      (event['occurred_at_ms'] as num?)?.toInt() ??
+          DateTime.now().millisecondsSinceEpoch,
+    );
+    final latitude = (event['latitude'] as num?)?.toDouble();
+    final longitude = (event['longitude'] as num?)?.toDouble();
+    final position = latitude != null && longitude != null
+        ? Position(
+            latitude: latitude,
+            longitude: longitude,
+            accuracy: (event['accuracy'] as num?)?.toDouble() ?? 0,
+            altitude: 0,
+            heading: 0,
+            speed: 0,
+            speedAccuracy: 0,
+            altitudeAccuracy: 0,
+            headingAccuracy: 0,
+            timestamp: occurredAt,
+          )
+        : null;
+    final alert = SosAlert(
+      id: eventId,
+      source: SosTriggerSource.hardwarePower,
+      status: SosAlertStatus.active,
+      startedAt: occurredAt,
+      initialLocation: position,
+      currentLocation: position,
+      contactStatuses: contacts.map((contact) {
+        final phone = _normalizedPhone(contact.phone);
+        final wasAccepted = accepted.contains(phone);
+        return ContactAlertStatus(
+          contact: contact,
+          smsSent: wasAccepted,
+          sentAt: wasAccepted ? occurredAt : null,
+          error: wasAccepted
+              ? null
+              : (failed.contains(phone)
+                  ? 'native_sms_dispatch_failed'
+                  : 'not_in_native_snapshot'),
+        );
+      }).toList(),
+    );
+    _sosService.restoreActiveAlert(alert);
+    _backendIncidentId = await _persistAndIngestAlert(
+      alert: alert,
+      userId: userId,
+      eventType: 'hardware_power_panic',
+      motionData: {
+        'trigger': 'power_button',
+        'native_dispatch': true,
+        'snapshot_version': event['snapshot_version'],
+      },
+    );
+    state = EmergencyState(
+      state: SosState.active,
+      activeEmergency: Emergency(
+        id: _backendIncidentId ?? eventId,
+        userId: userId,
+        status: EmergencyStatus.active,
+        latitude: latitude,
+        longitude: longitude,
+        startedAt: occurredAt,
+        notifiedContacts: contacts
+            .where(
+                (contact) => accepted.contains(_normalizedPhone(contact.phone)))
+            .map((contact) => contact.phone)
+            .toList(),
+      ),
+      sosAlert: alert,
+      currentLocation: position,
+      notifiedContacts: alert.contactStatuses
+          .where((status) => status.smsSent)
+          .map((status) => status.contact.name)
+          .toList(),
+    );
+    return true;
+  }
+
+  String _normalizedPhone(String phone) {
+    final trimmed = phone.trim();
+    final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
+    return trimmed.startsWith('+') ? '+$digits' : digits;
+  }
+
   /// Add a responder
   String _eventTypeForSource(SosTriggerSource source) => switch (source) {
         SosTriggerSource.hardwarePower => 'hardware_power_panic',

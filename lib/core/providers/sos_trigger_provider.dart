@@ -10,6 +10,8 @@
  * - Voice command triggers
  */
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:guardian/core/providers/emergency_provider.dart';
@@ -80,15 +82,46 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
   void _wireHardwarePanic() {
     if (kIsWeb) return;
     _bridge = SafetyServiceBridge();
-    _bridge!.onHardwarePanic = () {
+    _bridge!.onHardwarePanic = (event) {
       Logger.info(
           '🚨 Hardware panic received — triggering immediate CRITICAL SOS');
-      _ref.read(emergencyProvider.notifier).triggerFromHardwarePanic();
+      if (event['event_id'] != null) {
+        unawaited(_ingestNativeEvent(event));
+      } else {
+        unawaited(
+            _ref.read(emergencyProvider.notifier).triggerFromHardwarePanic());
+      }
     };
-    _bridge!.onSosTrigger = (source) {
+    _bridge!.onSosTrigger = (event) {
+      final source = event['source'] as String? ?? 'unknown';
       Logger.info('🚨 Native service SOS trigger: $source');
-      _triggerSosIfNotActive(SosTriggerSource.button);
+      if (event['event_id'] != null) {
+        unawaited(_ingestNativeEvent(event));
+      } else {
+        _triggerSosIfNotActive(SosTriggerSource.button);
+      }
     };
+    unawaited(_replayNativeEvents());
+  }
+
+  Future<void> _replayNativeEvents() async {
+    final events = await _bridge!.getPendingNativeEmergencyEvents();
+    for (final event in events) {
+      final imported = await _ingestNativeEvent(event);
+      if (!imported) break;
+    }
+  }
+
+  Future<bool> _ingestNativeEvent(Map<String, dynamic> event) async {
+    final eventId = event['event_id'] as String?;
+    if (eventId == null || eventId.isEmpty) return false;
+    final imported = await _ref
+        .read(emergencyProvider.notifier)
+        .ingestNativeEmergencyEvent(event);
+    if (imported) {
+      await _bridge!.acknowledgeNativeEmergencyEvent(eventId);
+    }
+    return imported;
   }
 
   /// Initialize all trigger sources based on settings

@@ -7,6 +7,7 @@ import 'package:guardian/core/database/guardian_database.dart';
 import 'package:guardian/core/models/user_model.dart';
 import 'package:guardian/core/providers/auth_provider.dart';
 import 'package:guardian/core/services/aws_auth_service.dart';
+import 'package:guardian/core/services/safety_service_bridge.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -79,12 +80,14 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
       }
       await _migrateLegacyContacts();
       final contacts = await _database.getAllContacts(_ownerUserId);
+      await _publishNativeSnapshot(contacts);
       if (!mounted) return;
       state = ContactsState(contacts: contacts.map(_toModel).toList());
       _subscription = _database.watchContacts(_ownerUserId).listen(
         (rows) {
           if (mounted) {
             state = ContactsState(contacts: rows.map(_toModel).toList());
+            unawaited(_publishNativeSnapshot(rows));
           }
         },
         onError: (Object error, StackTrace stackTrace) {
@@ -195,9 +198,25 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
 
   Future<void> _reloadFromDatabase() async {
     final rows = await _database.getAllContacts(_ownerUserId);
+    await _publishNativeSnapshot(rows);
     if (mounted) {
       state = ContactsState(contacts: rows.map(_toModel).toList());
     }
+  }
+
+  Future<void> _publishNativeSnapshot(List<LocalContact> rows) async {
+    final latestUpdate = rows
+        .map((row) => row.updatedAt.millisecondsSinceEpoch)
+        .fold<int>(1, (latest, value) => value > latest ? value : latest);
+    await SafetyServiceBridge.updateEmergencySnapshot(
+      version: latestUpdate,
+      userName: _authService.currentUser?.displayName ??
+          _authService.currentPhone ??
+          'Guardian user',
+      contacts: rows
+          .map((row) => {'id': row.contactKey ?? '', 'phone': row.phone})
+          .toList(),
+    );
   }
 
   LocalContactsCompanion _toCompanion(

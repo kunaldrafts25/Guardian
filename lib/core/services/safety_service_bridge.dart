@@ -58,10 +58,10 @@ class SafetyServiceBridge {
   void Function(ServiceLocation)? onLocationUpdate;
 
   /// Callback fired when service triggers an SOS (e.g. notification SOS button)
-  void Function(String source)? onSosTrigger;
+  void Function(Map<String, dynamic> event)? onSosTrigger;
 
   /// Callback fired when hardware 3-tap power button panic is detected
-  void Function()? onHardwarePanic;
+  void Function(Map<String, dynamic> event)? onHardwarePanic;
 
   SafetyServiceBridge() {
     _serviceChannel.setMethodCallHandler(_handleNativeCall);
@@ -111,6 +111,57 @@ class SafetyServiceBridge {
     }
   }
 
+  static Future<bool> updateEmergencySnapshot({
+    required int version,
+    required String userName,
+    required List<Map<String, String>> contacts,
+    String? message,
+  }) async {
+    try {
+      return await _serviceChannel.invokeMethod<bool>(
+            'updateEmergencySnapshot',
+            {
+              'version': version,
+              'user_name': userName,
+              'contacts': contacts,
+              if (message != null && message.isNotEmpty) 'message': message,
+            },
+          ) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } catch (error) {
+      Logger.error('Failed to update native emergency snapshot', error);
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getPendingNativeEmergencyEvents() async {
+    try {
+      final events = await _serviceChannel
+              .invokeListMethod<dynamic>('getPendingNativeEmergencyEvents') ??
+          const [];
+      return events
+          .whereType<Map>()
+          .map((event) => Map<String, dynamic>.from(event))
+          .toList();
+    } on MissingPluginException {
+      return const [];
+    }
+  }
+
+  Future<bool> acknowledgeNativeEmergencyEvent(String eventId) async {
+    try {
+      return await _serviceChannel.invokeMethod<bool>(
+            'acknowledgeNativeEmergencyEvent',
+            {'eventId': eventId},
+          ) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   // ─────────────────────────────────────────────────
   // Location
   // ─────────────────────────────────────────────────
@@ -156,10 +207,10 @@ class SafetyServiceBridge {
         break;
 
       case 'onServiceSosTrigger':
-        final source =
-            (call.arguments as Map?)?['source'] as String? ?? 'unknown';
+        final event = Map<String, dynamic>.from(call.arguments as Map? ?? {});
+        final source = event['source'] as String? ?? 'unknown';
         Logger.info('🚨 SOS triggered from native service: $source');
-        onSosTrigger?.call(source);
+        onSosTrigger?.call(event);
         break;
 
       default:
@@ -172,13 +223,15 @@ class SafetyServiceBridge {
       case 'onHardwarePanic':
         Logger.info(
             '🚨 Hardware power button 3-tap panic received from native!');
-        onHardwarePanic?.call();
+        onHardwarePanic?.call(
+          Map<String, dynamic>.from(call.arguments as Map? ?? {}),
+        );
         break;
 
       case 'onTripleTap':
         // Legacy triple-tap from PowerButtonReceiver
         Logger.info('🚨 Triple tap SOS from PowerButtonReceiver');
-        onSosTrigger?.call('triple_tap');
+        onSosTrigger?.call(const {'source': 'triple_tap'});
         break;
 
       default:
