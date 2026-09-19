@@ -43,12 +43,6 @@ final bleMeshProvider = Provider<BleEmergencyMesh>((ref) {
   return mesh;
 });
 
-final databaseProvider = Provider<GuardianDatabase>((ref) {
-  final db = GuardianDatabase();
-  ref.onDispose(db.close);
-  return db;
-});
-
 // ═══════════════════════════════════════════════════════
 // MESH BEACON
 // ═══════════════════════════════════════════════════════

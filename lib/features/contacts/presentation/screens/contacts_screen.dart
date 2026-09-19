@@ -74,16 +74,21 @@ class ContactsScreen extends ConsumerWidget {
 
           // Contacts List
           Expanded(
-            child: contacts.isEmpty
-                ? _buildEmptyState(context)
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: contacts.length,
-                    itemBuilder: (context, index) {
-                      final contact = contacts[index];
-                      return _buildContactCard(context, ref, contact, index);
-                    },
-                  ),
+            child: contactsState.isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : contactsState.errorMessage != null && contacts.isEmpty
+                    ? _buildErrorState(context, contactsState.errorMessage!)
+                    : contacts.isEmpty
+                        ? _buildEmptyState(context)
+                        : ListView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            itemCount: contacts.length,
+                            itemBuilder: (context, index) {
+                              final contact = contacts[index];
+                              return _buildContactCard(
+                                  context, ref, contact, index);
+                            },
+                          ),
           ),
         ],
       ),
@@ -94,6 +99,22 @@ class ContactsScreen extends ConsumerWidget {
               label: const Text('Add Contact'),
             )
           : null,
+    );
+  }
+
+  Widget _buildErrorState(BuildContext context, String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: AppColors.error),
+            const SizedBox(height: 16),
+            Text(message, textAlign: TextAlign.center),
+          ],
+        ),
+      ),
     );
   }
 
@@ -165,10 +186,16 @@ class ContactsScreen extends ConsumerWidget {
         ),
         subtitle: Text(contact.phone),
         trailing: PopupMenuButton<String>(
-          onSelected: (value) {
+          onSelected: (value) async {
             switch (value) {
               case 'primary':
-                ref.read(contactsProvider.notifier).setPrimaryContact(index);
+                try {
+                  await ref
+                      .read(contactsProvider.notifier)
+                      .setPrimaryContact(index);
+                } catch (error) {
+                  if (context.mounted) _showMutationError(context, error);
+                }
                 break;
               case 'edit':
                 _showEditContactDialog(context, ref, contact, index);
@@ -270,24 +297,28 @@ class ContactsScreen extends ConsumerWidget {
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 if (nameController.text.isNotEmpty &&
                     phoneController.text.isNotEmpty) {
-                  ref.read(contactsProvider.notifier).addContact(
-                        EmergencyContact(
-                          id: DateTime.now().millisecondsSinceEpoch.toString(),
-                          name: nameController.text,
-                          phone: phoneController.text,
-                          relation: relation,
-                          isPrimary: false,
-                        ),
-                      );
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content: Text(
-                            '${nameController.text} added to Guardian Circle')),
-                  );
+                  try {
+                    await ref.read(contactsProvider.notifier).addContact(
+                          EmergencyContact(
+                            id: '',
+                            name: nameController.text,
+                            phone: phoneController.text,
+                            relation: relation,
+                          ),
+                        );
+                    if (!context.mounted) return;
+                    final messenger = ScaffoldMessenger.of(context);
+                    Navigator.pop(context);
+                    messenger.showSnackBar(SnackBar(
+                      content: Text(
+                          '${nameController.text} added to Guardian Circle'),
+                    ));
+                  } catch (error) {
+                    if (context.mounted) _showMutationError(context, error);
+                  }
                 }
               },
               child: const Text('Add'),
@@ -350,23 +381,29 @@ class ContactsScreen extends ConsumerWidget {
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 if (nameController.text.isNotEmpty &&
                     phoneController.text.isNotEmpty) {
-                  ref.read(contactsProvider.notifier).updateContact(
-                        index,
-                        EmergencyContact(
-                          id: contact.id,
-                          name: nameController.text,
-                          phone: phoneController.text,
-                          relation: relation,
-                          isPrimary: contact.isPrimary,
-                        ),
-                      );
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Contact updated')),
-                  );
+                  try {
+                    await ref.read(contactsProvider.notifier).updateContact(
+                          index,
+                          EmergencyContact(
+                            id: contact.id,
+                            name: nameController.text,
+                            phone: phoneController.text,
+                            relation: relation,
+                            isPrimary: contact.isPrimary,
+                          ),
+                        );
+                    if (!context.mounted) return;
+                    final messenger = ScaffoldMessenger.of(context);
+                    Navigator.pop(context);
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('Contact updated')),
+                    );
+                  } catch (error) {
+                    if (context.mounted) _showMutationError(context, error);
+                  }
                 }
               },
               child: const Text('Save'),
@@ -391,16 +428,31 @@ class ContactsScreen extends ConsumerWidget {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-            onPressed: () {
-              ref.read(contactsProvider.notifier).removeContact(index);
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('${contact.name} removed')),
-              );
+            onPressed: () async {
+              try {
+                await ref.read(contactsProvider.notifier).removeContact(index);
+                if (!context.mounted) return;
+                final messenger = ScaffoldMessenger.of(context);
+                Navigator.pop(context);
+                messenger.showSnackBar(
+                  SnackBar(content: Text('${contact.name} removed')),
+                );
+              } catch (error) {
+                if (context.mounted) _showMutationError(context, error);
+              }
             },
             child: const Text('Remove'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showMutationError(BuildContext context, Object error) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Contact change failed: $error'),
+        backgroundColor: AppColors.error,
       ),
     );
   }

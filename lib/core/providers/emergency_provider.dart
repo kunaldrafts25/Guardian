@@ -15,8 +15,6 @@ import 'package:guardian/core/providers/contacts_provider.dart';
 import 'package:guardian/core/providers/sos_settings_provider.dart';
 import 'package:guardian/core/services/aws_auth_service.dart';
 import 'package:guardian/core/services/aws_incident_service.dart';
-import 'package:guardian/core/services/ble_emergency_mesh.dart'
-    show databaseProvider;
 import 'package:guardian/core/services/sos_service.dart';
 import 'package:guardian/core/utils/location_utils.dart';
 import 'package:guardian/core/utils/logger.dart';
@@ -234,7 +232,8 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     state = state.copyWith(state: SosState.triggering);
 
     try {
-      // Get emergency contacts from contacts provider
+      // Never race an SOS against one-time contact restoration.
+      await _ref.read(contactsProvider.notifier).ready;
       final contactsState = _ref.read(contactsProvider);
       final contacts = contactsState.contacts;
 
@@ -324,6 +323,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     state = state.copyWith(state: SosState.triggering);
 
     try {
+      await _ref.read(contactsProvider.notifier).ready;
       final contactsState = _ref.read(contactsProvider);
       final contacts = contactsState.contacts;
       final awsAuth = AwsAuthService.instance;

@@ -4,8 +4,6 @@ import 'package:drift/drift.dart' show Value;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:guardian/core/database/guardian_database.dart';
 import 'package:guardian/core/models/safe_zone_model.dart';
-import 'package:guardian/core/services/ble_emergency_mesh.dart'
-    show databaseProvider;
 
 class SafeZoneState {
   final List<SafeZone> zones;

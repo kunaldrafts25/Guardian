@@ -7,7 +7,7 @@
  *   - safetyServiceProvider     → core/services/safety_service_bridge.dart
  *   - connectivityProvider      → core/services/connectivity_orchestrator.dart
  *   - bleMeshProvider           → core/services/ble_emergency_mesh.dart
- *   - databaseProvider          → core/services/ble_emergency_mesh.dart
+ *   - databaseProvider          → core/database/guardian_database.dart
  *   - offlineSyncProvider       → core/services/offline_sync_service.dart
  *   - aiCompanionProvider       → core/services/ai_safety_companion.dart
  *   - emergencyProvider         → core/providers/emergency_provider.dart

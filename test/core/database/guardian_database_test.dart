@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:drift/drift.dart' hide isNotNull;
+import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:guardian/core/database/guardian_database.dart';
@@ -129,5 +129,35 @@ void main() {
       ),
       hasLength(1),
     );
+  });
+
+  test('v3 contact migration preserves rows and assigns stable keys', () async {
+    await database.customStatement('DROP TABLE local_contacts');
+    await database.customStatement('''
+      CREATE TABLE local_contacts (
+        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        contact_uid TEXT NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        relationship TEXT NOT NULL DEFAULT '',
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+        synced_at INTEGER NULL,
+        pending_sync INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await database.customStatement('''
+      INSERT INTO local_contacts
+        (contact_uid, name, phone, relationship, is_primary, created_at)
+      VALUES ('', 'Existing contact', '+919000000000', 'Friend', 1, 1000)
+    ''');
+
+    await database.migration.onUpgrade(Migrator(database), 3, 4);
+
+    final contacts = await database.getAllContacts('');
+    expect(contacts, hasLength(1));
+    expect(contacts.single.contactKey, contacts.single.id.toString());
+    expect(contacts.single.updatedAt, contacts.single.createdAt);
+    expect(contacts.single.deletedAt, isNull);
   });
 }

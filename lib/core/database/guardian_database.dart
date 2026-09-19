@@ -17,6 +17,7 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:guardian/core/models/emergency_domain.dart';
 import 'connection/connection.dart' as impl;
 
@@ -29,12 +30,16 @@ part 'guardian_database.g.dart';
 /// Emergency contacts — stored locally, encrypted at rest
 class LocalContacts extends Table {
   IntColumn get id => integer().autoIncrement()();
+  TextColumn get ownerUserId => text()();
+  TextColumn get contactKey => text().nullable()();
   TextColumn get contactUid => text()(); // Guardian user ID, when registered
   TextColumn get name => text()();
   TextColumn get phone => text()();
   TextColumn get relationship => text().withDefault(const Constant(''))();
   BoolColumn get isPrimary => boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
   DateTimeColumn get syncedAt => dateTime().nullable()();
   BoolColumn get pendingSync => boolean().withDefault(const Constant(false))();
 }
@@ -209,7 +214,7 @@ class GuardianDatabase extends _$GuardianDatabase {
   GuardianDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -222,6 +227,26 @@ class GuardianDatabase extends _$GuardianDatabase {
           if (from < 3) {
             await migrator.createTable(localDeliveryAttempts);
           }
+          if (from < 4) {
+            await migrator.alterTable(
+              TableMigration(
+                localContacts,
+                newColumns: [
+                  localContacts.ownerUserId,
+                  localContacts.contactKey,
+                  localContacts.updatedAt,
+                  localContacts.deletedAt,
+                ],
+                columnTransformer: {
+                  localContacts.ownerUserId:
+                      const CustomExpression<String>("''"),
+                  localContacts.contactKey:
+                      const CustomExpression<String>('CAST(id AS TEXT)'),
+                  localContacts.updatedAt: localContacts.createdAt,
+                },
+              ),
+            );
+          }
         },
       );
 
@@ -229,18 +254,74 @@ class GuardianDatabase extends _$GuardianDatabase {
   // Contacts
   // ─────────────────────────────────────────────────
 
-  Future<List<LocalContact>> getAllContacts() => select(localContacts).get();
+  Future<List<LocalContact>> getAllContacts(String ownerUserId) =>
+      (select(localContacts)
+            ..where((contact) =>
+                contact.ownerUserId.equals(ownerUserId) &
+                contact.deletedAt.isNull())
+            ..orderBy([(contact) => OrderingTerm.asc(contact.createdAt)]))
+          .get();
 
-  Stream<List<LocalContact>> watchContacts() => select(localContacts).watch();
+  Stream<List<LocalContact>> watchContacts(String ownerUserId) =>
+      (select(localContacts)
+            ..where((contact) =>
+                contact.ownerUserId.equals(ownerUserId) &
+                contact.deletedAt.isNull())
+            ..orderBy([(contact) => OrderingTerm.asc(contact.createdAt)]))
+          .watch();
 
-  Future<int> upsertContact(LocalContactsCompanion contact) =>
-      into(localContacts).insertOnConflictUpdate(contact);
+  Future<bool> hasContactRecords(String ownerUserId) async =>
+      await (selectOnly(localContacts)
+            ..addColumns([localContacts.id])
+            ..where(localContacts.ownerUserId.equals(ownerUserId))
+            ..limit(1))
+          .getSingleOrNull() !=
+      null;
 
-  Future<int> deleteContact(int id) =>
-      (delete(localContacts)..where((t) => t.id.equals(id))).go();
+  Future<List<LocalContact>> getPendingSyncContacts(String ownerUserId) =>
+      (select(localContacts)
+            ..where((contact) =>
+                contact.ownerUserId.equals(ownerUserId) &
+                contact.pendingSync.equals(true)))
+          .get();
 
-  Future<List<LocalContact>> getPendingSyncContacts() =>
-      (select(localContacts)..where((t) => t.pendingSync.equals(true))).get();
+  Future<void> markContactSynced(int id, DateTime syncedAt) =>
+      (update(localContacts)..where((contact) => contact.id.equals(id))).write(
+        LocalContactsCompanion(
+          syncedAt: Value(syncedAt),
+          pendingSync: const Value(false),
+        ),
+      );
+
+  Future<void> upsertContactByKey(LocalContactsCompanion contact) async {
+    final key = contact.contactKey.value;
+    if (key == null || key.isEmpty) {
+      throw ArgumentError.value(key, 'contactKey', 'A stable key is required');
+    }
+    final ownerUserId = contact.ownerUserId.value;
+    final existing = await (select(localContacts)
+          ..where((row) =>
+              row.ownerUserId.equals(ownerUserId) & row.contactKey.equals(key)))
+        .getSingleOrNull();
+    if (existing == null) {
+      await into(localContacts).insert(contact);
+    } else {
+      await (update(localContacts)..where((row) => row.id.equals(existing.id)))
+          .write(contact);
+    }
+  }
+
+  Future<void> softDeleteContact(
+          String ownerUserId, String contactKey, DateTime deletedAt) =>
+      (update(localContacts)
+            ..where((contact) =>
+                contact.ownerUserId.equals(ownerUserId) &
+                contact.contactKey.equals(contactKey)))
+          .write(LocalContactsCompanion(
+        deletedAt: Value(deletedAt),
+        updatedAt: Value(deletedAt),
+        pendingSync: const Value(true),
+      ));
 
   // ─────────────────────────────────────────────────
   // Alerts
@@ -480,3 +561,9 @@ class GuardianDatabase extends _$GuardianDatabase {
 LazyDatabase _openConnection() {
   return impl.openConnection();
 }
+
+final databaseProvider = Provider<GuardianDatabase>((ref) {
+  final database = GuardianDatabase();
+  ref.onDispose(database.close);
+  return database;
+});

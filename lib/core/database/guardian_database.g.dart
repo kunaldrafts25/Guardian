@@ -18,6 +18,18 @@ class $LocalContactsTable extends LocalContacts
       requiredDuringInsert: false,
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _ownerUserIdMeta =
+      const VerificationMeta('ownerUserId');
+  @override
+  late final GeneratedColumn<String> ownerUserId = GeneratedColumn<String>(
+      'owner_user_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _contactKeyMeta =
+      const VerificationMeta('contactKey');
+  @override
+  late final GeneratedColumn<String> contactKey = GeneratedColumn<String>(
+      'contact_key', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _contactUidMeta =
       const VerificationMeta('contactUid');
   @override
@@ -60,6 +72,20 @@ class $LocalContactsTable extends LocalContacts
       type: DriftSqlType.dateTime,
       requiredDuringInsert: false,
       defaultValue: currentDateAndTime);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  static const VerificationMeta _deletedAtMeta =
+      const VerificationMeta('deletedAt');
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+      'deleted_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
   static const VerificationMeta _syncedAtMeta =
       const VerificationMeta('syncedAt');
   @override
@@ -79,12 +105,16 @@ class $LocalContactsTable extends LocalContacts
   @override
   List<GeneratedColumn> get $columns => [
         id,
+        ownerUserId,
+        contactKey,
         contactUid,
         name,
         phone,
         relationship,
         isPrimary,
         createdAt,
+        updatedAt,
+        deletedAt,
         syncedAt,
         pendingSync
       ];
@@ -100,6 +130,20 @@ class $LocalContactsTable extends LocalContacts
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('owner_user_id')) {
+      context.handle(
+          _ownerUserIdMeta,
+          ownerUserId.isAcceptableOrUnknown(
+              data['owner_user_id']!, _ownerUserIdMeta));
+    } else if (isInserting) {
+      context.missing(_ownerUserIdMeta);
+    }
+    if (data.containsKey('contact_key')) {
+      context.handle(
+          _contactKeyMeta,
+          contactKey.isAcceptableOrUnknown(
+              data['contact_key']!, _contactKeyMeta));
     }
     if (data.containsKey('contact_uid')) {
       context.handle(
@@ -135,6 +179,14 @@ class $LocalContactsTable extends LocalContacts
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
     }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(_deletedAtMeta,
+          deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta));
+    }
     if (data.containsKey('synced_at')) {
       context.handle(_syncedAtMeta,
           syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta));
@@ -156,6 +208,10 @@ class $LocalContactsTable extends LocalContacts
     return LocalContact(
       id: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      ownerUserId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}owner_user_id'])!,
+      contactKey: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}contact_key']),
       contactUid: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}contact_uid'])!,
       name: attachedDatabase.typeMapping
@@ -168,6 +224,10 @@ class $LocalContactsTable extends LocalContacts
           .read(DriftSqlType.bool, data['${effectivePrefix}is_primary'])!,
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+      deletedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at']),
       syncedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}synced_at']),
       pendingSync: attachedDatabase.typeMapping
@@ -183,34 +243,50 @@ class $LocalContactsTable extends LocalContacts
 
 class LocalContact extends DataClass implements Insertable<LocalContact> {
   final int id;
+  final String ownerUserId;
+  final String? contactKey;
   final String contactUid;
   final String name;
   final String phone;
   final String relationship;
   final bool isPrimary;
   final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
   final DateTime? syncedAt;
   final bool pendingSync;
   const LocalContact(
       {required this.id,
+      required this.ownerUserId,
+      this.contactKey,
       required this.contactUid,
       required this.name,
       required this.phone,
       required this.relationship,
       required this.isPrimary,
       required this.createdAt,
+      required this.updatedAt,
+      this.deletedAt,
       this.syncedAt,
       required this.pendingSync});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
+    map['owner_user_id'] = Variable<String>(ownerUserId);
+    if (!nullToAbsent || contactKey != null) {
+      map['contact_key'] = Variable<String>(contactKey);
+    }
     map['contact_uid'] = Variable<String>(contactUid);
     map['name'] = Variable<String>(name);
     map['phone'] = Variable<String>(phone);
     map['relationship'] = Variable<String>(relationship);
     map['is_primary'] = Variable<bool>(isPrimary);
     map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
     if (!nullToAbsent || syncedAt != null) {
       map['synced_at'] = Variable<DateTime>(syncedAt);
     }
@@ -221,12 +297,20 @@ class LocalContact extends DataClass implements Insertable<LocalContact> {
   LocalContactsCompanion toCompanion(bool nullToAbsent) {
     return LocalContactsCompanion(
       id: Value(id),
+      ownerUserId: Value(ownerUserId),
+      contactKey: contactKey == null && nullToAbsent
+          ? const Value.absent()
+          : Value(contactKey),
       contactUid: Value(contactUid),
       name: Value(name),
       phone: Value(phone),
       relationship: Value(relationship),
       isPrimary: Value(isPrimary),
       createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
       syncedAt: syncedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(syncedAt),
@@ -239,12 +323,16 @@ class LocalContact extends DataClass implements Insertable<LocalContact> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return LocalContact(
       id: serializer.fromJson<int>(json['id']),
+      ownerUserId: serializer.fromJson<String>(json['ownerUserId']),
+      contactKey: serializer.fromJson<String?>(json['contactKey']),
       contactUid: serializer.fromJson<String>(json['contactUid']),
       name: serializer.fromJson<String>(json['name']),
       phone: serializer.fromJson<String>(json['phone']),
       relationship: serializer.fromJson<String>(json['relationship']),
       isPrimary: serializer.fromJson<bool>(json['isPrimary']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       syncedAt: serializer.fromJson<DateTime?>(json['syncedAt']),
       pendingSync: serializer.fromJson<bool>(json['pendingSync']),
     );
@@ -254,12 +342,16 @@ class LocalContact extends DataClass implements Insertable<LocalContact> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
+      'ownerUserId': serializer.toJson<String>(ownerUserId),
+      'contactKey': serializer.toJson<String?>(contactKey),
       'contactUid': serializer.toJson<String>(contactUid),
       'name': serializer.toJson<String>(name),
       'phone': serializer.toJson<String>(phone),
       'relationship': serializer.toJson<String>(relationship),
       'isPrimary': serializer.toJson<bool>(isPrimary),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'syncedAt': serializer.toJson<DateTime?>(syncedAt),
       'pendingSync': serializer.toJson<bool>(pendingSync),
     };
@@ -267,28 +359,40 @@ class LocalContact extends DataClass implements Insertable<LocalContact> {
 
   LocalContact copyWith(
           {int? id,
+          String? ownerUserId,
+          Value<String?> contactKey = const Value.absent(),
           String? contactUid,
           String? name,
           String? phone,
           String? relationship,
           bool? isPrimary,
           DateTime? createdAt,
+          DateTime? updatedAt,
+          Value<DateTime?> deletedAt = const Value.absent(),
           Value<DateTime?> syncedAt = const Value.absent(),
           bool? pendingSync}) =>
       LocalContact(
         id: id ?? this.id,
+        ownerUserId: ownerUserId ?? this.ownerUserId,
+        contactKey: contactKey.present ? contactKey.value : this.contactKey,
         contactUid: contactUid ?? this.contactUid,
         name: name ?? this.name,
         phone: phone ?? this.phone,
         relationship: relationship ?? this.relationship,
         isPrimary: isPrimary ?? this.isPrimary,
         createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+        deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
         syncedAt: syncedAt.present ? syncedAt.value : this.syncedAt,
         pendingSync: pendingSync ?? this.pendingSync,
       );
   LocalContact copyWithCompanion(LocalContactsCompanion data) {
     return LocalContact(
       id: data.id.present ? data.id.value : this.id,
+      ownerUserId:
+          data.ownerUserId.present ? data.ownerUserId.value : this.ownerUserId,
+      contactKey:
+          data.contactKey.present ? data.contactKey.value : this.contactKey,
       contactUid:
           data.contactUid.present ? data.contactUid.value : this.contactUid,
       name: data.name.present ? data.name.value : this.name,
@@ -298,6 +402,8 @@ class LocalContact extends DataClass implements Insertable<LocalContact> {
           : this.relationship,
       isPrimary: data.isPrimary.present ? data.isPrimary.value : this.isPrimary,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
       syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
       pendingSync:
           data.pendingSync.present ? data.pendingSync.value : this.pendingSync,
@@ -308,12 +414,16 @@ class LocalContact extends DataClass implements Insertable<LocalContact> {
   String toString() {
     return (StringBuffer('LocalContact(')
           ..write('id: $id, ')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('contactKey: $contactKey, ')
           ..write('contactUid: $contactUid, ')
           ..write('name: $name, ')
           ..write('phone: $phone, ')
           ..write('relationship: $relationship, ')
           ..write('isPrimary: $isPrimary, ')
           ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
           ..write('syncedAt: $syncedAt, ')
           ..write('pendingSync: $pendingSync')
           ..write(')'))
@@ -321,76 +431,113 @@ class LocalContact extends DataClass implements Insertable<LocalContact> {
   }
 
   @override
-  int get hashCode => Object.hash(id, contactUid, name, phone, relationship,
-      isPrimary, createdAt, syncedAt, pendingSync);
+  int get hashCode => Object.hash(
+      id,
+      ownerUserId,
+      contactKey,
+      contactUid,
+      name,
+      phone,
+      relationship,
+      isPrimary,
+      createdAt,
+      updatedAt,
+      deletedAt,
+      syncedAt,
+      pendingSync);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is LocalContact &&
           other.id == this.id &&
+          other.ownerUserId == this.ownerUserId &&
+          other.contactKey == this.contactKey &&
           other.contactUid == this.contactUid &&
           other.name == this.name &&
           other.phone == this.phone &&
           other.relationship == this.relationship &&
           other.isPrimary == this.isPrimary &&
           other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt &&
           other.syncedAt == this.syncedAt &&
           other.pendingSync == this.pendingSync);
 }
 
 class LocalContactsCompanion extends UpdateCompanion<LocalContact> {
   final Value<int> id;
+  final Value<String> ownerUserId;
+  final Value<String?> contactKey;
   final Value<String> contactUid;
   final Value<String> name;
   final Value<String> phone;
   final Value<String> relationship;
   final Value<bool> isPrimary;
   final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
   final Value<DateTime?> syncedAt;
   final Value<bool> pendingSync;
   const LocalContactsCompanion({
     this.id = const Value.absent(),
+    this.ownerUserId = const Value.absent(),
+    this.contactKey = const Value.absent(),
     this.contactUid = const Value.absent(),
     this.name = const Value.absent(),
     this.phone = const Value.absent(),
     this.relationship = const Value.absent(),
     this.isPrimary = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     this.syncedAt = const Value.absent(),
     this.pendingSync = const Value.absent(),
   });
   LocalContactsCompanion.insert({
     this.id = const Value.absent(),
+    required String ownerUserId,
+    this.contactKey = const Value.absent(),
     required String contactUid,
     required String name,
     required String phone,
     this.relationship = const Value.absent(),
     this.isPrimary = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     this.syncedAt = const Value.absent(),
     this.pendingSync = const Value.absent(),
-  })  : contactUid = Value(contactUid),
+  })  : ownerUserId = Value(ownerUserId),
+        contactUid = Value(contactUid),
         name = Value(name),
         phone = Value(phone);
   static Insertable<LocalContact> custom({
     Expression<int>? id,
+    Expression<String>? ownerUserId,
+    Expression<String>? contactKey,
     Expression<String>? contactUid,
     Expression<String>? name,
     Expression<String>? phone,
     Expression<String>? relationship,
     Expression<bool>? isPrimary,
     Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
     Expression<DateTime>? syncedAt,
     Expression<bool>? pendingSync,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (ownerUserId != null) 'owner_user_id': ownerUserId,
+      if (contactKey != null) 'contact_key': contactKey,
       if (contactUid != null) 'contact_uid': contactUid,
       if (name != null) 'name': name,
       if (phone != null) 'phone': phone,
       if (relationship != null) 'relationship': relationship,
       if (isPrimary != null) 'is_primary': isPrimary,
       if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
       if (syncedAt != null) 'synced_at': syncedAt,
       if (pendingSync != null) 'pending_sync': pendingSync,
     });
@@ -398,22 +545,30 @@ class LocalContactsCompanion extends UpdateCompanion<LocalContact> {
 
   LocalContactsCompanion copyWith(
       {Value<int>? id,
+      Value<String>? ownerUserId,
+      Value<String?>? contactKey,
       Value<String>? contactUid,
       Value<String>? name,
       Value<String>? phone,
       Value<String>? relationship,
       Value<bool>? isPrimary,
       Value<DateTime>? createdAt,
+      Value<DateTime>? updatedAt,
+      Value<DateTime?>? deletedAt,
       Value<DateTime?>? syncedAt,
       Value<bool>? pendingSync}) {
     return LocalContactsCompanion(
       id: id ?? this.id,
+      ownerUserId: ownerUserId ?? this.ownerUserId,
+      contactKey: contactKey ?? this.contactKey,
       contactUid: contactUid ?? this.contactUid,
       name: name ?? this.name,
       phone: phone ?? this.phone,
       relationship: relationship ?? this.relationship,
       isPrimary: isPrimary ?? this.isPrimary,
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
       syncedAt: syncedAt ?? this.syncedAt,
       pendingSync: pendingSync ?? this.pendingSync,
     );
@@ -424,6 +579,12 @@ class LocalContactsCompanion extends UpdateCompanion<LocalContact> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<int>(id.value);
+    }
+    if (ownerUserId.present) {
+      map['owner_user_id'] = Variable<String>(ownerUserId.value);
+    }
+    if (contactKey.present) {
+      map['contact_key'] = Variable<String>(contactKey.value);
     }
     if (contactUid.present) {
       map['contact_uid'] = Variable<String>(contactUid.value);
@@ -443,6 +604,12 @@ class LocalContactsCompanion extends UpdateCompanion<LocalContact> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
     if (syncedAt.present) {
       map['synced_at'] = Variable<DateTime>(syncedAt.value);
     }
@@ -456,12 +623,16 @@ class LocalContactsCompanion extends UpdateCompanion<LocalContact> {
   String toString() {
     return (StringBuffer('LocalContactsCompanion(')
           ..write('id: $id, ')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('contactKey: $contactKey, ')
           ..write('contactUid: $contactUid, ')
           ..write('name: $name, ')
           ..write('phone: $phone, ')
           ..write('relationship: $relationship, ')
           ..write('isPrimary: $isPrimary, ')
           ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
           ..write('syncedAt: $syncedAt, ')
           ..write('pendingSync: $pendingSync')
           ..write(')'))
@@ -5170,24 +5341,32 @@ abstract class _$GuardianDatabase extends GeneratedDatabase {
 typedef $$LocalContactsTableCreateCompanionBuilder = LocalContactsCompanion
     Function({
   Value<int> id,
+  required String ownerUserId,
+  Value<String?> contactKey,
   required String contactUid,
   required String name,
   required String phone,
   Value<String> relationship,
   Value<bool> isPrimary,
   Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+  Value<DateTime?> deletedAt,
   Value<DateTime?> syncedAt,
   Value<bool> pendingSync,
 });
 typedef $$LocalContactsTableUpdateCompanionBuilder = LocalContactsCompanion
     Function({
   Value<int> id,
+  Value<String> ownerUserId,
+  Value<String?> contactKey,
   Value<String> contactUid,
   Value<String> name,
   Value<String> phone,
   Value<String> relationship,
   Value<bool> isPrimary,
   Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+  Value<DateTime?> deletedAt,
   Value<DateTime?> syncedAt,
   Value<bool> pendingSync,
 });
@@ -5203,6 +5382,12 @@ class $$LocalContactsTableFilterComposer
   });
   ColumnFilters<int> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get ownerUserId => $composableBuilder(
+      column: $table.ownerUserId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get contactKey => $composableBuilder(
+      column: $table.contactKey, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get contactUid => $composableBuilder(
       column: $table.contactUid, builder: (column) => ColumnFilters(column));
@@ -5221,6 +5406,12 @@ class $$LocalContactsTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get syncedAt => $composableBuilder(
       column: $table.syncedAt, builder: (column) => ColumnFilters(column));
@@ -5241,6 +5432,12 @@ class $$LocalContactsTableOrderingComposer
   ColumnOrderings<int> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get ownerUserId => $composableBuilder(
+      column: $table.ownerUserId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get contactKey => $composableBuilder(
+      column: $table.contactKey, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get contactUid => $composableBuilder(
       column: $table.contactUid, builder: (column) => ColumnOrderings(column));
 
@@ -5259,6 +5456,12 @@ class $$LocalContactsTableOrderingComposer
 
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
       column: $table.syncedAt, builder: (column) => ColumnOrderings(column));
@@ -5279,6 +5482,12 @@ class $$LocalContactsTableAnnotationComposer
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
+  GeneratedColumn<String> get ownerUserId => $composableBuilder(
+      column: $table.ownerUserId, builder: (column) => column);
+
+  GeneratedColumn<String> get contactKey => $composableBuilder(
+      column: $table.contactKey, builder: (column) => column);
+
   GeneratedColumn<String> get contactUid => $composableBuilder(
       column: $table.contactUid, builder: (column) => column);
 
@@ -5296,6 +5505,12 @@ class $$LocalContactsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
 
   GeneratedColumn<DateTime> get syncedAt =>
       $composableBuilder(column: $table.syncedAt, builder: (column) => column);
@@ -5332,45 +5547,61 @@ class $$LocalContactsTableTableManager extends RootTableManager<
               $$LocalContactsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback: ({
             Value<int> id = const Value.absent(),
+            Value<String> ownerUserId = const Value.absent(),
+            Value<String?> contactKey = const Value.absent(),
             Value<String> contactUid = const Value.absent(),
             Value<String> name = const Value.absent(),
             Value<String> phone = const Value.absent(),
             Value<String> relationship = const Value.absent(),
             Value<bool> isPrimary = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<DateTime?> deletedAt = const Value.absent(),
             Value<DateTime?> syncedAt = const Value.absent(),
             Value<bool> pendingSync = const Value.absent(),
           }) =>
               LocalContactsCompanion(
             id: id,
+            ownerUserId: ownerUserId,
+            contactKey: contactKey,
             contactUid: contactUid,
             name: name,
             phone: phone,
             relationship: relationship,
             isPrimary: isPrimary,
             createdAt: createdAt,
+            updatedAt: updatedAt,
+            deletedAt: deletedAt,
             syncedAt: syncedAt,
             pendingSync: pendingSync,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
+            required String ownerUserId,
+            Value<String?> contactKey = const Value.absent(),
             required String contactUid,
             required String name,
             required String phone,
             Value<String> relationship = const Value.absent(),
             Value<bool> isPrimary = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<DateTime?> deletedAt = const Value.absent(),
             Value<DateTime?> syncedAt = const Value.absent(),
             Value<bool> pendingSync = const Value.absent(),
           }) =>
               LocalContactsCompanion.insert(
             id: id,
+            ownerUserId: ownerUserId,
+            contactKey: contactKey,
             contactUid: contactUid,
             name: name,
             phone: phone,
             relationship: relationship,
             isPrimary: isPrimary,
             createdAt: createdAt,
+            updatedAt: updatedAt,
+            deletedAt: deletedAt,
             syncedAt: syncedAt,
             pendingSync: pendingSync,
           ),

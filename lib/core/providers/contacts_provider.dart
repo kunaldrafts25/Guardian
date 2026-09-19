@@ -1,17 +1,16 @@
-/*
- * Guardian 2.0 - Women's Safety App
- * © 2025 All Rights Reserved - Kunal Singh
- * 
- * Contacts Provider - Emergency contacts management
- */
-
+import 'dart:async';
 import 'dart:convert';
+
+import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:guardian/core/database/guardian_database.dart';
 import 'package:guardian/core/models/user_model.dart';
+import 'package:guardian/core/providers/auth_provider.dart';
+import 'package:guardian/core/services/aws_auth_service.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
-/// Contact state with list management
 class ContactsState {
   final List<EmergencyContact> contacts;
   final bool isLoading;
@@ -27,189 +26,340 @@ class ContactsState {
     List<EmergencyContact>? contacts,
     bool? isLoading,
     String? errorMessage,
+    bool clearError = false,
   }) {
     return ContactsState(
       contacts: contacts ?? this.contacts,
       isLoading: isLoading ?? this.isLoading,
-      errorMessage: errorMessage,
+      errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
     );
   }
 
-  /// Get primary contact
   EmergencyContact? get primaryContact =>
-      contacts.where((c) => c.isPrimary).firstOrNull;
+      contacts.where((contact) => contact.isPrimary).firstOrNull;
 
-  /// Number of contacts
   int get count => contacts.length;
-
-  /// Max contacts allowed
   static const int maxContacts = 5;
-
-  /// Can add more contacts
   bool get canAddMore => contacts.length < maxContacts;
 }
 
-/// Contacts state notifier with persistent storage
+/// Drift is the sole runtime source of truth for emergency contacts.
+/// SharedPreferences is read only once to migrate older installations.
 class ContactsNotifier extends StateNotifier<ContactsState> {
-  static const String _storageKey = 'guardian_emergency_contacts';
+  static const _legacyStorageKey = 'guardian_emergency_contacts';
+  static const _migrationMarkerKey = 'guardian_contacts_drift_migrated_v1';
 
-  ContactsNotifier() : super(const ContactsState()) {
-    _loadContacts();
+  final GuardianDatabase _database;
+  final AwsAuthService _authService;
+  final String _ownerUserId;
+  final Uuid _uuid;
+  StreamSubscription<List<LocalContact>>? _subscription;
+  late final Future<void> ready;
+
+  ContactsNotifier({
+    required GuardianDatabase database,
+    required String ownerUserId,
+    AwsAuthService? authService,
+    Uuid uuid = const Uuid(),
+  })  : _database = database,
+        _authService = authService ?? AwsAuthService.instance,
+        _ownerUserId = ownerUserId,
+        _uuid = uuid,
+        super(const ContactsState(isLoading: true)) {
+    ready = _initialize();
   }
 
-  Future<void> _loadContacts() async {
+  Future<void> _initialize() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final storedJson = prefs.getString(_storageKey);
-      if (storedJson != null && storedJson.isNotEmpty) {
-        final List<dynamic> list = jsonDecode(storedJson) as List<dynamic>;
-        final contacts = list
-            .map((item) =>
-                EmergencyContact.fromJson(item as Map<String, dynamic>))
-            .toList();
-        state = state.copyWith(contacts: contacts);
+      if (_ownerUserId.isEmpty) {
+        state = const ContactsState(
+          errorMessage: 'Sign in to access emergency contacts.',
+        );
         return;
       }
-    } catch (e) {
-      Logger.error('Failed to load contacts from storage, using defaults', e);
-    }
-  }
-
-  Future<void> _persistContacts() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final list = state.contacts.map((c) => c.toJson()).toList();
-      await prefs.setString(_storageKey, jsonEncode(list));
-    } catch (e) {
-      Logger.error('Failed to persist contacts to storage', e);
-    }
-  }
-
-  /// Add a new contact
-  void addContact(EmergencyContact contact) {
-    if (!state.canAddMore) {
-      Logger.warning(
-          'Cannot add more than ${ContactsState.maxContacts} contacts');
-      return;
-    }
-
-    final isPrimary = state.contacts.isEmpty || contact.isPrimary;
-
-    List<EmergencyContact> updatedContacts = state.contacts;
-    if (isPrimary) {
-      updatedContacts = state.contacts
-          .map((c) => EmergencyContact(
-                id: c.id,
-                name: c.name,
-                phone: c.phone,
-                relation: c.relation,
-                isPrimary: false,
-              ))
-          .toList();
-    }
-
-    final newContact = EmergencyContact(
-      id: contact.id.isEmpty
-          ? DateTime.now().millisecondsSinceEpoch.toString()
-          : contact.id,
-      name: contact.name,
-      phone: contact.phone,
-      relation: contact.relation,
-      isPrimary: isPrimary,
-    );
-
-    state = state.copyWith(contacts: [...updatedContacts, newContact]);
-    _persistContacts();
-    Logger.info('📱 Contact added: ${contact.name}');
-  }
-
-  /// Update a contact
-  void updateContact(int index, EmergencyContact contact) {
-    if (index < 0 || index >= state.contacts.length) return;
-
-    final updatedContacts = [...state.contacts];
-
-    if (contact.isPrimary) {
-      for (int i = 0; i < updatedContacts.length; i++) {
-        if (i != index) {
-          updatedContacts[i] = EmergencyContact(
-            id: updatedContacts[i].id,
-            name: updatedContacts[i].name,
-            phone: updatedContacts[i].phone,
-            relation: updatedContacts[i].relation,
-            isPrimary: false,
-          );
-        }
+      await _migrateLegacyContacts();
+      final contacts = await _database.getAllContacts(_ownerUserId);
+      if (!mounted) return;
+      state = ContactsState(contacts: contacts.map(_toModel).toList());
+      _subscription = _database.watchContacts(_ownerUserId).listen(
+        (rows) {
+          if (mounted) {
+            state = ContactsState(contacts: rows.map(_toModel).toList());
+          }
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          Logger.error(
+              'Failed to observe emergency contacts', error, stackTrace);
+          if (mounted) {
+            state = state.copyWith(
+              isLoading: false,
+              errorMessage: 'Emergency contacts could not be loaded.',
+            );
+          }
+        },
+      );
+      unawaited(_bootstrapFromCloudIfEmpty());
+    } catch (error, stackTrace) {
+      Logger.error(
+          'Failed to initialize emergency contacts', error, stackTrace);
+      if (mounted) {
+        state = const ContactsState(
+          errorMessage: 'Emergency contacts could not be loaded.',
+        );
       }
     }
-
-    updatedContacts[index] = contact;
-    state = state.copyWith(contacts: updatedContacts);
-    _persistContacts();
-    Logger.info('📱 Contact updated: ${contact.name}');
   }
 
-  /// Remove a contact
-  void removeContact(int index) {
-    if (index < 0 || index >= state.contacts.length) return;
+  Future<void> _migrateLegacyContacts() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (preferences.getBool(_migrationMarkerKey) == true) return;
 
-    final removedName = state.contacts[index].name;
-    final updatedContacts = [...state.contacts]..removeAt(index);
+    final existing = await _database.getAllContacts(_ownerUserId);
+    final encoded = preferences.getString(_legacyStorageKey);
+    if (existing.isEmpty && encoded != null && encoded.isNotEmpty) {
+      final decoded = jsonDecode(encoded);
+      if (decoded is! List) {
+        throw const FormatException('Legacy emergency contacts are not a list');
+      }
+      final contacts = decoded
+          .whereType<Map>()
+          .map((item) => EmergencyContact.fromJson(
+                Map<String, dynamic>.from(item),
+              ))
+          .where((contact) =>
+              contact.name.trim().isNotEmpty && contact.phone.trim().isNotEmpty)
+          .take(ContactsState.maxContacts)
+          .toList();
 
-    if (state.contacts[index].isPrimary && updatedContacts.isNotEmpty) {
-      updatedContacts[0] = EmergencyContact(
-        id: updatedContacts[0].id,
-        name: updatedContacts[0].name,
-        phone: updatedContacts[0].phone,
-        relation: updatedContacts[0].relation,
-        isPrimary: true,
-      );
+      await _database.transaction(() async {
+        final primaryIndex = contacts.indexWhere((item) => item.isPrimary);
+        for (var index = 0; index < contacts.length; index++) {
+          final contact = contacts[index];
+          await _database.upsertContactByKey(_toCompanion(
+            contact.copyWith(
+              id: contact.id.isEmpty ? _uuid.v4() : contact.id,
+              isPrimary: primaryIndex < 0 ? index == 0 : index == primaryIndex,
+            ),
+          ));
+        }
+      });
     }
 
-    state = state.copyWith(contacts: updatedContacts);
-    _persistContacts();
-    Logger.info('📱 Contact removed: $removedName');
+    await preferences.setBool(_migrationMarkerKey, true);
+    await preferences.remove(_legacyStorageKey);
   }
 
-  /// Set primary contact
-  void setPrimaryContact(int index) {
-    if (index < 0 || index >= state.contacts.length) return;
+  Future<void> _bootstrapFromCloudIfEmpty() async {
+    try {
+      if (await _database.hasContactRecords(_ownerUserId)) return;
+      final profile = await _authService.getUserProfile();
+      final rawContacts = profile?['emergency_contacts'];
+      if (rawContacts is! List || rawContacts.isEmpty) return;
 
-    final updatedContacts = state.contacts.asMap().entries.map((entry) {
-      return EmergencyContact(
-        id: entry.value.id,
-        name: entry.value.name,
-        phone: entry.value.phone,
-        relation: entry.value.relation,
-        isPrimary: entry.key == index,
+      final contacts = rawContacts
+          .whereType<Map>()
+          .map((item) => EmergencyContact.fromJson(
+                Map<String, dynamic>.from(item),
+              ))
+          .where((contact) =>
+              contact.name.trim().isNotEmpty && contact.phone.trim().isNotEmpty)
+          .take(ContactsState.maxContacts)
+          .toList();
+      await _database.transaction(() async {
+        if (await _database.hasContactRecords(_ownerUserId)) return;
+        final primaryIndex = contacts.indexWhere((item) => item.isPrimary);
+        for (var index = 0; index < contacts.length; index++) {
+          final contact = contacts[index];
+          await _database.upsertContactByKey(_toCompanion(
+            contact.copyWith(
+              id: contact.id.isEmpty ? _uuid.v4() : contact.id,
+              isPrimary: primaryIndex < 0 ? index == 0 : index == primaryIndex,
+            ),
+            pendingSync: false,
+          ));
+        }
+      });
+    } catch (error, stackTrace) {
+      Logger.warning('Cloud contact bootstrap deferred: $error');
+      Logger.debug(stackTrace.toString());
+    }
+  }
+
+  EmergencyContact _toModel(LocalContact row) => EmergencyContact(
+        id: row.contactKey ?? row.id.toString(),
+        name: row.name,
+        phone: row.phone,
+        relation: row.relationship,
+        isPrimary: row.isPrimary,
       );
-    }).toList();
 
-    state = state.copyWith(contacts: updatedContacts);
-    _persistContacts();
-    Logger.info('📱 Primary contact set: ${state.contacts[index].name}');
+  Future<void> _reloadFromDatabase() async {
+    final rows = await _database.getAllContacts(_ownerUserId);
+    if (mounted) {
+      state = ContactsState(contacts: rows.map(_toModel).toList());
+    }
   }
 
-  /// Clear all contacts
-  void clearContacts() {
-    state = state.copyWith(contacts: []);
-    _persistContacts();
-    Logger.info('📱 All contacts cleared');
+  LocalContactsCompanion _toCompanion(
+    EmergencyContact contact, {
+    bool pendingSync = true,
+  }) {
+    return LocalContactsCompanion.insert(
+      ownerUserId: _ownerUserId,
+      contactKey: Value(contact.id),
+      contactUid: '',
+      name: contact.name.trim(),
+      phone: contact.phone.trim(),
+      relationship: Value(contact.relation.trim()),
+      isPrimary: Value(contact.isPrimary),
+      updatedAt: Value(DateTime.now()),
+      pendingSync: Value(pendingSync),
+    );
+  }
+
+  Future<void> addContact(EmergencyContact contact) async {
+    await ready;
+    _validateContact(contact);
+    final key = contact.id.isEmpty ? _uuid.v4() : contact.id;
+    final shouldBePrimary = state.contacts.isEmpty || contact.isPrimary;
+    await _database.transaction(() async {
+      if ((await _database.getAllContacts(_ownerUserId)).length >=
+          ContactsState.maxContacts) {
+        throw StateError(
+          'No more than ${ContactsState.maxContacts} emergency contacts are allowed.',
+        );
+      }
+      if (shouldBePrimary) await _clearPrimaryContacts();
+      await _database.upsertContactByKey(_toCompanion(contact.copyWith(
+        id: key,
+        isPrimary: shouldBePrimary,
+      )));
+    });
+    await _reloadFromDatabase();
+    Logger.info('Emergency contact added: ${contact.name}');
+  }
+
+  Future<void> updateContact(int index, EmergencyContact contact) async {
+    await ready;
+    if (index < 0 || index >= state.contacts.length) return;
+    _validateContact(contact);
+    final existing = state.contacts[index];
+    await _database.transaction(() async {
+      if (contact.isPrimary) await _clearPrimaryContacts();
+      await _database.upsertContactByKey(_toCompanion(contact.copyWith(
+        id: existing.id,
+      )));
+    });
+    await _reloadFromDatabase();
+    Logger.info('Emergency contact updated: ${contact.name}');
+  }
+
+  Future<void> removeContact(int index) async {
+    await ready;
+    if (index < 0 || index >= state.contacts.length) return;
+    final contact = state.contacts[index];
+    await _database.transaction(() async {
+      await _database.softDeleteContact(
+        _ownerUserId,
+        contact.id,
+        DateTime.now(),
+      );
+      if (contact.isPrimary) {
+        final remaining = await _database.getAllContacts(_ownerUserId);
+        if (remaining.isNotEmpty) {
+          await (_database.update(_database.localContacts)
+                ..where((row) => row.id.equals(remaining.first.id)))
+              .write(LocalContactsCompanion(
+            isPrimary: const Value(true),
+            updatedAt: Value(DateTime.now()),
+            pendingSync: const Value(true),
+          ));
+        }
+      }
+    });
+    await _reloadFromDatabase();
+    Logger.info('Emergency contact removed: ${contact.name}');
+  }
+
+  Future<void> setPrimaryContact(int index) async {
+    await ready;
+    if (index < 0 || index >= state.contacts.length) return;
+    final contact = state.contacts[index];
+    await _database.transaction(() async {
+      await _clearPrimaryContacts();
+      final row = await (_database.select(_database.localContacts)
+            ..where((candidate) =>
+                candidate.ownerUserId.equals(_ownerUserId) &
+                candidate.contactKey.equals(contact.id)))
+          .getSingle();
+      await (_database.update(_database.localContacts)
+            ..where((candidate) => candidate.id.equals(row.id)))
+          .write(LocalContactsCompanion(
+        isPrimary: const Value(true),
+        updatedAt: Value(DateTime.now()),
+        pendingSync: const Value(true),
+      ));
+    });
+    await _reloadFromDatabase();
+    Logger.info('Primary emergency contact set: ${contact.name}');
+  }
+
+  Future<void> clearContacts() async {
+    await ready;
+    final contacts = List<EmergencyContact>.of(state.contacts);
+    await _database.transaction(() async {
+      final now = DateTime.now();
+      for (final contact in contacts) {
+        await _database.softDeleteContact(_ownerUserId, contact.id, now);
+      }
+    });
+    await _reloadFromDatabase();
+    Logger.info('All emergency contacts removed');
+  }
+
+  Future<void> _clearPrimaryContacts() async {
+    await (_database.update(_database.localContacts)
+          ..where((contact) =>
+              contact.ownerUserId.equals(_ownerUserId) &
+              contact.isPrimary.equals(true) &
+              contact.deletedAt.isNull()))
+        .write(LocalContactsCompanion(
+      isPrimary: const Value(false),
+      updatedAt: Value(DateTime.now()),
+      pendingSync: const Value(true),
+    ));
+  }
+
+  void _validateContact(EmergencyContact contact) {
+    if (contact.name.trim().isEmpty) {
+      throw const FormatException('Contact name is required.');
+    }
+    final digits = contact.phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length < 7 || digits.length > 15) {
+      throw const FormatException('Enter a valid phone number.');
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
   }
 }
 
-/// Contacts provider
 final contactsProvider =
     StateNotifierProvider<ContactsNotifier, ContactsState>((ref) {
-  return ContactsNotifier();
+  final userId = ref.watch(currentUserProvider)?.uid ?? '';
+  return ContactsNotifier(
+    database: ref.watch(databaseProvider),
+    ownerUserId: userId,
+  );
 });
 
-/// Primary contact provider
 final primaryContactProvider = Provider<EmergencyContact?>((ref) {
   return ref.watch(contactsProvider).primaryContact;
 });
 
-/// Contacts count provider
 final contactsCountProvider = Provider<int>((ref) {
   return ref.watch(contactsProvider).count;
 });
