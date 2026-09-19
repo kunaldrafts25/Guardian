@@ -59,37 +59,66 @@ class OfflineSyncService {
 
     final operations = await _db.getDueOutboxOperations();
     for (final operation in operations) {
-      if (operation.operationType != 'createIncident') {
-        await _db.markOutboxRetry(
-          operationId: operation.operationId,
-          previousAttemptCount: operation.attemptCount,
-          error: 'Unsupported outbox operation: ${operation.operationType}',
-        );
-        continue;
-      }
-
       try {
         final payload = jsonDecode(operation.payloadJson);
         if (payload is! Map<String, dynamic>) {
           throw const FormatException('Outbox payload must be a JSON object');
         }
-        final locationValue = payload['location'];
-        final motionValue = payload['motion_data'];
-        final incident = await AwsIncidentService.instance.createIncident(
-          eventId: operation.aggregateId,
-          userId: userId,
-          eventType: payload['event_type'] as String,
-          location: locationValue is Map
-              ? Map<String, dynamic>.from(locationValue)
-              : null,
-          motionData: motionValue is Map
-              ? Map<String, dynamic>.from(motionValue)
-              : const <String, dynamic>{'offline_sync': true},
-        );
-        if (incident['incident_id'] == null) {
-          throw const FormatException('Incident response has no incident_id');
+        switch (operation.operationType) {
+          case 'createIncident':
+            final localAlert = await _db.getAlert(operation.aggregateId);
+            if (localAlert == null ||
+                const {'resolved', 'cancelled', 'expired'}
+                    .contains(localAlert.status)) {
+              await _db.markOutboxSuperseded(
+                operation.operationId,
+                'Create skipped because the local incident is absent or terminal',
+              );
+              continue;
+            }
+            final locationValue = payload['location'];
+            final motionValue = payload['motion_data'];
+            final incident = await AwsIncidentService.instance.createIncident(
+              eventId: operation.aggregateId,
+              userId: userId,
+              eventType: payload['event_type'] as String,
+              location: locationValue is Map
+                  ? Map<String, dynamic>.from(locationValue)
+                  : null,
+              motionData: motionValue is Map
+                  ? Map<String, dynamic>.from(motionValue)
+                  : const <String, dynamic>{'offline_sync': true},
+            );
+            final cloudIncidentId = incident['incident_id'] as String?;
+            if (cloudIncidentId == null || cloudIncidentId.isEmpty) {
+              throw const FormatException(
+                  'Incident response has no incident_id');
+            }
+            await _db.recordCloudIncidentCreated(
+              alertId: operation.aggregateId,
+              cloudIncidentId: cloudIncidentId,
+            );
+            break;
+          case 'updateIncidentStatus':
+            final cloudIncidentId = payload['cloud_incident_id'] as String?;
+            final targetState = payload['state'] as String?;
+            if (cloudIncidentId == null || targetState == null) {
+              throw const FormatException(
+                'Status operation is missing cloud incident ID or state',
+              );
+            }
+            await AwsIncidentService.instance.updateIncidentStatus(
+              cloudIncidentId,
+              targetState,
+              actor: payload['actor'] as String? ?? 'user',
+              note: 'Replayed durable local terminal transition',
+            );
+            break;
+          default:
+            throw UnsupportedError(
+              'Unsupported outbox operation: ${operation.operationType}',
+            );
         }
-        await _db.markAlertSynced(operation.aggregateId);
         await _db.markOutboxSucceeded(operation.operationId);
       } catch (error) {
         await _db.markOutboxRetry(
@@ -111,11 +140,15 @@ class OfflineSyncService {
     if (userId == null) return;
     final alerts = await _db.getUnsyncedAlerts();
     for (final alert in alerts) {
+      if (const {'resolved', 'cancelled', 'expired'}.contains(alert.status)) {
+        await _db.markAlertSynced(alert.alertId);
+        continue;
+      }
       final operation =
           await _db.getOutboxOperation('${alert.alertId}:createIncident');
       if (operation != null) continue;
       try {
-        await AwsIncidentService.instance.createIncident(
+        final incident = await AwsIncidentService.instance.createIncident(
           eventId: alert.alertId,
           userId: userId,
           eventType: alert.source,
@@ -132,7 +165,14 @@ class OfflineSyncService {
             'sms_count': alert.smsCount,
           },
         );
-        await _db.markAlertSynced(alert.alertId);
+        final cloudIncidentId = incident['incident_id'] as String?;
+        if (cloudIncidentId == null || cloudIncidentId.isEmpty) {
+          throw const FormatException('Incident response has no incident_id');
+        }
+        await _db.recordCloudIncidentCreated(
+          alertId: alert.alertId,
+          cloudIncidentId: cloudIncidentId,
+        );
       } catch (error) {
         Logger.warning('Alert ${alert.alertId} remains queued: $error');
       }

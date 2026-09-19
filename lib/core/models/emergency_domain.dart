@@ -54,7 +54,7 @@ enum DeliveryState {
       };
 }
 
-enum OutboxOperationState { pending, processing, succeeded, failed }
+enum OutboxOperationState { pending, processing, succeeded, superseded, failed }
 
 /// Rejects lifecycle regressions while permitting independent delivery events
 /// to be appended without changing the current incident state.
@@ -68,6 +68,7 @@ class EmergencyStateMachine {
       EmergencyIncidentState.cloudPending,
       EmergencyIncidentState.cloudAccepted,
       EmergencyIncidentState.degraded,
+      EmergencyIncidentState.resolved,
       EmergencyIncidentState.cancelled,
     },
     EmergencyIncidentState.localDispatching: {
@@ -76,12 +77,14 @@ class EmergencyStateMachine {
       EmergencyIncidentState.contactsNotified,
       EmergencyIncidentState.degraded,
       EmergencyIncidentState.escalatedToEmergencyServices,
+      EmergencyIncidentState.resolved,
       EmergencyIncidentState.cancelled,
     },
     EmergencyIncidentState.cloudPending: {
       EmergencyIncidentState.cloudAccepted,
       EmergencyIncidentState.contactsNotified,
       EmergencyIncidentState.degraded,
+      EmergencyIncidentState.resolved,
       EmergencyIncidentState.cancelled,
     },
     EmergencyIncidentState.cloudAccepted: {
@@ -95,7 +98,6 @@ class EmergencyStateMachine {
       EmergencyIncidentState.expired,
     },
     EmergencyIncidentState.contactsNotified: {
-      EmergencyIncidentState.cloudAccepted,
       EmergencyIncidentState.communityOffered,
       EmergencyIncidentState.respondersAccepted,
       EmergencyIncidentState.degraded,

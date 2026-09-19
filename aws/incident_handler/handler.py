@@ -11,6 +11,7 @@ import json
 import os
 import uuid
 import hashlib
+import threading
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
@@ -34,6 +35,7 @@ AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 _LOCAL_INCIDENTS: Dict[str, Dict[str, Any]] = {}
 _LOCAL_EVENTS: Dict[str, list] = {}
 _LOCAL_IDEMPOTENCY: Dict[str, str] = {}
+_LOCAL_STORE_LOCK = threading.RLock()
 
 
 def get_dynamo_resource():
@@ -81,9 +83,7 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         motion_data=motion_data,
     )
 
-    initial_state = IncidentState.SUSPECTED.value
-    if event_type in ("sos_button", "direct_sos") or risk["level"] == "CRITICAL":
-        initial_state = IncidentState.RESPONDING.value
+    initial_state = IncidentState.CLOUD_ACCEPTED.value
 
     incident_record = {
         "incident_id": incident_id,
@@ -156,59 +156,91 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def update_incident_status(incident_id: str, new_state: str, actor: str = "USER", note: str = "") -> Dict[str, Any]:
-    """Execute state transition with validation."""
+    """Execute an idempotent, compare-and-set lifecycle transition."""
     dynamo = get_dynamo_resource()
     now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        target_state = IncidentState(str(new_state).upper()).value
+    except ValueError as exc:
+        raise ValueError(f"Unknown incident state: {new_state}") from exc
+    actor = str(actor).upper()[:40]
 
-    incident = None
     if dynamo:
         table = dynamo.Table(DYNAMODB_INCIDENTS_TABLE)
-        resp = table.get_item(Key={"incident_id": incident_id})
-        incident = resp.get("Item")
+        incident = table.get_item(
+            Key={"incident_id": incident_id}, ConsistentRead=True
+        ).get("Item")
+        if not incident:
+            raise ValueError(f"Incident {incident_id} not found")
+        current_state = incident["state"]
+        if current_state == target_state:
+            return incident
+        if not can_transition(current_state, target_state):
+            raise ValueError(
+                f"Illegal transition from {current_state} to {target_state}"
+            )
+        try:
+            response = table.update_item(
+                Key={"incident_id": incident_id},
+                UpdateExpression="SET #s = :target, updated_at = :updated, agent_rationale = :note",
+                ConditionExpression="#s = :expected",
+                ExpressionAttributeNames={"#s": "state"},
+                ExpressionAttributeValues={
+                    ":target": target_state,
+                    ":expected": current_state,
+                    ":updated": now_iso,
+                    ":note": note or incident.get("agent_rationale", ""),
+                },
+                ReturnValues="ALL_NEW",
+            )
+            incident = response["Attributes"]
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+                raise
+            latest = table.get_item(
+                Key={"incident_id": incident_id}, ConsistentRead=True
+            ).get("Item")
+            if latest and latest.get("state") == target_state:
+                return latest
+            latest_state = latest.get("state") if latest else "missing"
+            raise ValueError(
+                f"Stale transition from {current_state}; current state is {latest_state}"
+            ) from error
     else:
-        incident = _LOCAL_INCIDENTS.get(incident_id)
-
-    if not incident:
-        raise ValueError(f"Incident {incident_id} not found")
-
-    current_state = incident["state"]
-    if current_state == new_state:
-        return incident
-
-    if not can_transition(current_state, new_state):
-        raise ValueError(f"Illegal transition from {current_state} to {new_state}")
-
-    incident["state"] = new_state
-    incident["updated_at"] = now_iso
-    if note:
-        incident["agent_rationale"] = note
+        with _LOCAL_STORE_LOCK:
+            incident = _LOCAL_INCIDENTS.get(incident_id)
+            if not incident:
+                raise ValueError(f"Incident {incident_id} not found")
+            current_state = incident["state"]
+            if current_state == target_state:
+                return incident
+            if not can_transition(current_state, target_state):
+                raise ValueError(
+                    f"Illegal transition from {current_state} to {target_state}"
+                )
+            incident = {
+                **incident,
+                "state": target_state,
+                "updated_at": now_iso,
+                "agent_rationale": note or incident.get("agent_rationale", ""),
+            }
+            _LOCAL_INCIDENTS[incident_id] = incident
 
     timeline_entry = {
         "incident_id": incident_id,
         "timestamp": now_iso,
-        "event_type": f"state_transition_to_{new_state}",
-        "state": new_state,
+        "event_type": f"state_transition_to_{target_state}",
+        "state": target_state,
         "actor": actor,
-        "details": note or f"State transitioned from {current_state} to {new_state} by {actor}",
+        "details": note or f"State transitioned from {current_state} to {target_state} by {actor}",
     }
 
     if dynamo:
-        table = dynamo.Table(DYNAMODB_INCIDENTS_TABLE)
-        table.update_item(
-            Key={"incident_id": incident_id},
-            UpdateExpression="SET #s = :s, updated_at = :u, agent_rationale = :r",
-            ExpressionAttributeNames={"#s": "state"},
-            ExpressionAttributeValues={
-                ":s": new_state,
-                ":u": now_iso,
-                ":r": incident.get("agent_rationale", ""),
-            },
-        )
         events_table = dynamo.Table(DYNAMODB_EVENTS_TABLE)
         events_table.put_item(Item=timeline_entry)
     else:
-        _LOCAL_INCIDENTS[incident_id] = incident
-        _LOCAL_EVENTS.setdefault(incident_id, []).append(timeline_entry)
+        with _LOCAL_STORE_LOCK:
+            _LOCAL_EVENTS.setdefault(incident_id, []).append(timeline_entry)
 
     return incident
 

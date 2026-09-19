@@ -159,6 +159,20 @@ def execute_agent_reasoning(incident_id: str) -> Dict[str, Any]:
     """
     Core agentic loop: Observe -> Gather Context -> Assess Risk -> Bedrock LLM Reasoning -> Act -> Document.
     """
+    # Agent execution is idempotent. API Gateway/background retries must never
+    # resend contact or community notifications for the same incident.
+    existing = get_incident(incident_id)
+    if existing and existing.get("agent_decision") not in (None, "", "PENDING_REASONING"):
+        return {
+            "incident_id": incident_id,
+            "decision": existing["agent_decision"],
+            "rationale": existing.get("agent_rationale", ""),
+            "provider": existing.get("agent_provider", ""),
+            "risk_level": existing.get("risk_level"),
+            "risk_score": existing.get("risk_score"),
+            "action_result": {"status": "ALREADY_EXECUTED"},
+        }
+
     # 1. Gather Context
     context = get_incident_context(incident_id)
     if "error" in context:

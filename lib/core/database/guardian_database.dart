@@ -47,6 +47,7 @@ class LocalContacts extends Table {
 /// SOS alerts — created offline, synced when online
 class LocalAlerts extends Table {
   TextColumn get alertId => text()();
+  TextColumn get cloudIncidentId => text().nullable()();
   TextColumn get userId => text()();
   TextColumn get source => text()(); // 'button', 'shake', 'voice', etc.
   TextColumn get status => text()(); // 'active', 'resolved', 'cancelled'
@@ -214,20 +215,20 @@ class GuardianDatabase extends _$GuardianDatabase {
   GuardianDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (migrator) => migrator.createAll(),
         onUpgrade: (migrator, from, to) async {
-          if (from < 2) {
+          if (from < 2 && to >= 2) {
             await migrator.createTable(localIncidentEvents);
             await migrator.createTable(localOutboxOperations);
           }
-          if (from < 3) {
+          if (from < 3 && to >= 3) {
             await migrator.createTable(localDeliveryAttempts);
           }
-          if (from < 4) {
+          if (from < 4 && to >= 4) {
             await migrator.alterTable(
               TableMigration(
                 localContacts,
@@ -245,6 +246,12 @@ class GuardianDatabase extends _$GuardianDatabase {
                   localContacts.updatedAt: localContacts.createdAt,
                 },
               ),
+            );
+          }
+          if (from < 5 && to >= 5) {
+            await migrator.addColumn(
+              localAlerts,
+              localAlerts.cloudIncidentId,
             );
           }
         },
@@ -333,21 +340,144 @@ class GuardianDatabase extends _$GuardianDatabase {
   Future<List<LocalAlert>> getUnsyncedAlerts() =>
       (select(localAlerts)..where((t) => t.syncedToCloud.equals(false))).get();
 
+  Future<LocalAlert?> getActiveAlert(String userId) => (select(localAlerts)
+        ..where((alert) =>
+            alert.userId.equals(userId) &
+            alert.status.isNotIn(const ['resolved', 'cancelled', 'expired']))
+        ..orderBy([(alert) => OrderingTerm.desc(alert.startedAt)])
+        ..limit(1))
+      .getSingleOrNull();
+
+  Future<LocalAlert?> getAlert(String alertId) =>
+      (select(localAlerts)..where((alert) => alert.alertId.equals(alertId)))
+          .getSingleOrNull();
+
   Future<void> markAlertSynced(String alertId) =>
       (update(localAlerts)..where((t) => t.alertId.equals(alertId)))
           .write(const LocalAlertsCompanion(syncedToCloud: Value(true)));
 
-  Future<void> markAlertResolved(String alertId, DateTime resolvedAt) =>
-      (update(localAlerts)..where((t) => t.alertId.equals(alertId))).write(
-        LocalAlertsCompanion(
-          status: const Value('resolved'),
-          resolvedAt: Value(resolvedAt),
+  Future<void> recordCloudIncidentCreated({
+    required String alertId,
+    required String cloudIncidentId,
+    DateTime? occurredAt,
+  }) async {
+    final now = occurredAt ?? DateTime.now();
+    await transaction(() async {
+      final alert = await getAlert(alertId);
+      if (alert == null) return;
+      final currentState = _incidentStateFromStoredStatus(alert.status);
+      await (update(localAlerts)..where((row) => row.alertId.equals(alertId)))
+          .write(LocalAlertsCompanion(
+        cloudIncidentId: Value(cloudIncidentId),
+        status: currentState.isTerminal
+            ? const Value.absent()
+            : Value(EmergencyIncidentState.cloudAccepted.name),
+        syncedToCloud: const Value(true),
+      ));
+      if (!currentState.isTerminal) {
+        await into(localIncidentEvents).insert(
+          LocalIncidentEventsCompanion.insert(
+            eventId: '$alertId:${EmergencyIncidentState.cloudAccepted.name}',
+            incidentId: alertId,
+            eventType: EmergencyIncidentState.cloudAccepted.name,
+            incidentState: EmergencyIncidentState.cloudAccepted.name,
+            actorType: EmergencyActorType.service.name,
+            occurredAt: now,
+          ),
+          mode: InsertMode.insertOrIgnore,
+        );
+      } else {
+        await _queueTerminalCloudUpdate(
+          alertId: alertId,
+          cloudIncidentId: cloudIncidentId,
+          terminalState: currentState,
+          occurredAt: alert.resolvedAt ?? now,
+        );
+      }
+    });
+  }
+
+  Future<void> transitionAlertToTerminal({
+    required String alertId,
+    required EmergencyIncidentState terminalState,
+    required DateTime occurredAt,
+    EmergencyActorType actorType = EmergencyActorType.user,
+  }) async {
+    if (!terminalState.isTerminal) {
+      throw ArgumentError.value(
+        terminalState,
+        'terminalState',
+        'Only a terminal incident state is accepted',
+      );
+    }
+    await transaction(() async {
+      final alert = await getAlert(alertId);
+      if (alert == null) return;
+      final currentState = _incidentStateFromStoredStatus(alert.status);
+      if (currentState.isTerminal) return;
+      EmergencyStateMachine.validateTransition(currentState, terminalState);
+      await (update(localAlerts)..where((row) => row.alertId.equals(alertId)))
+          .write(LocalAlertsCompanion(
+        status: Value(terminalState.name),
+        resolvedAt: Value(occurredAt),
+      ));
+      await into(localIncidentEvents).insert(
+        LocalIncidentEventsCompanion.insert(
+          eventId: '$alertId:${terminalState.name}',
+          incidentId: alertId,
+          eventType: terminalState.name,
+          incidentState: terminalState.name,
+          actorType: actorType.name,
+          occurredAt: occurredAt,
         ),
+        mode: InsertMode.insertOrIgnore,
+      );
+      await (update(localOutboxOperations)
+            ..where((operation) =>
+                operation.aggregateId.equals(alertId) &
+                operation.operationType.equals('createIncident') &
+                operation.status.equals(OutboxOperationState.pending.name)))
+          .write(LocalOutboxOperationsCompanion(
+        status: Value(OutboxOperationState.superseded.name),
+        lastError: Value('Incident became ${terminalState.name} before upload'),
+        updatedAt: Value(occurredAt),
+      ));
+      if (alert.cloudIncidentId != null) {
+        await _queueTerminalCloudUpdate(
+          alertId: alertId,
+          cloudIncidentId: alert.cloudIncidentId!,
+          terminalState: terminalState,
+          occurredAt: occurredAt,
+        );
+      }
+    });
+  }
+
+  Future<void> _queueTerminalCloudUpdate({
+    required String alertId,
+    required String cloudIncidentId,
+    required EmergencyIncidentState terminalState,
+    required DateTime occurredAt,
+  }) =>
+      into(localOutboxOperations).insert(
+        LocalOutboxOperationsCompanion.insert(
+          operationId: '$alertId:update:${terminalState.name}',
+          aggregateType: 'incident',
+          aggregateId: alertId,
+          operationType: 'updateIncidentStatus',
+          payloadJson: jsonEncode({
+            'cloud_incident_id': cloudIncidentId,
+            'state': terminalState.name.toUpperCase(),
+            'actor': EmergencyActorType.user.name.toUpperCase(),
+            'occurred_at': occurredAt.toUtc().toIso8601String(),
+          }),
+        ),
+        mode: InsertMode.insertOrIgnore,
       );
 
   /// Atomically records an alert, its first immutable lifecycle event, and the
   /// cloud operation. Replaying the same identifiers is safe.
-  Future<void> queueAlertForCloud({
+  Future<bool> queueAlertForCloud({
     required LocalAlertsCompanion alert,
     required String alertId,
     required String eventType,
@@ -356,7 +486,14 @@ class GuardianDatabase extends _$GuardianDatabase {
     List<LocalDeliveryAttemptsCompanion> deliveryAttempts = const [],
   }) =>
       transaction(() async {
-        await into(localAlerts).insertOnConflictUpdate(alert);
+        final existing = await getAlert(alertId);
+        if (existing != null &&
+            _incidentStateFromStoredStatus(existing.status).isTerminal) {
+          return false;
+        }
+        if (existing == null) {
+          await into(localAlerts).insert(alert);
+        }
         await into(localIncidentEvents).insert(
           LocalIncidentEventsCompanion.insert(
             eventId: '$alertId:triggered',
@@ -388,7 +525,16 @@ class GuardianDatabase extends _$GuardianDatabase {
             mode: InsertMode.insertOrIgnore,
           );
         }
+        return true;
       });
+
+  EmergencyIncidentState _incidentStateFromStoredStatus(String status) {
+    if (status == 'active') return EmergencyIncidentState.cloudPending;
+    return EmergencyIncidentState.values.firstWhere(
+      (state) => state.name == status,
+      orElse: () => EmergencyIncidentState.triggered,
+    );
+  }
 
   Future<List<LocalIncidentEvent>> getIncidentEvents(String incidentId) =>
       (select(localIncidentEvents)
@@ -426,6 +572,16 @@ class GuardianDatabase extends _$GuardianDatabase {
           .write(LocalOutboxOperationsCompanion(
         status: Value(OutboxOperationState.succeeded.name),
         lastError: const Value(null),
+        updatedAt: Value(DateTime.now()),
+      ));
+
+  Future<void> markOutboxSuperseded(String operationId, String reason) =>
+      (update(localOutboxOperations)
+            ..where((operation) => operation.operationId.equals(operationId)))
+          .write(LocalOutboxOperationsCompanion(
+        status: Value(OutboxOperationState.superseded.name),
+        lastError:
+            Value(reason.length > 500 ? reason.substring(0, 500) : reason),
         updatedAt: Value(DateTime.now()),
       ));
 

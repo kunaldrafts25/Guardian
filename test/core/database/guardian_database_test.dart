@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:guardian/core/database/guardian_database.dart';
+import 'package:guardian/core/models/emergency_domain.dart';
 
 void main() {
   late GuardianDatabase database;
@@ -159,5 +160,115 @@ void main() {
     expect(contacts.single.contactKey, contacts.single.id.toString());
     expect(contacts.single.updatedAt, contacts.single.createdAt);
     expect(contacts.single.deletedAt, isNull);
+  });
+
+  test('terminal transition supersedes create and replay cannot reopen alert',
+      () async {
+    final startedAt = DateTime.utc(2026, 9, 19, 10);
+    final companion = LocalAlertsCompanion.insert(
+      alertId: 'terminal-alert',
+      userId: 'user-1',
+      source: 'sos_button',
+      status: 'active',
+      startedAt: startedAt,
+    );
+    expect(
+      await database.queueAlertForCloud(
+        alert: companion,
+        alertId: 'terminal-alert',
+        eventType: 'sos_button',
+        occurredAt: startedAt,
+        cloudPayload: const {'event_type': 'sos_button'},
+      ),
+      isTrue,
+    );
+
+    await database.transitionAlertToTerminal(
+      alertId: 'terminal-alert',
+      terminalState: EmergencyIncidentState.resolved,
+      occurredAt: startedAt.add(const Duration(minutes: 1)),
+    );
+    final replayed = await database.queueAlertForCloud(
+      alert: companion,
+      alertId: 'terminal-alert',
+      eventType: 'sos_button',
+      occurredAt: startedAt,
+      cloudPayload: const {'event_type': 'sos_button'},
+    );
+
+    expect(replayed, isFalse);
+    expect((await database.getAlert('terminal-alert'))!.status, 'resolved');
+    expect(
+      (await database.getOutboxOperation('terminal-alert:createIncident'))!
+          .status,
+      'superseded',
+    );
+    expect(await database.getIncidentEvents('terminal-alert'), hasLength(2));
+  });
+
+  test('late cloud creation queues terminal state instead of reopening',
+      () async {
+    final startedAt = DateTime.utc(2026, 9, 19, 10);
+    await database.queueAlertForCloud(
+      alert: LocalAlertsCompanion.insert(
+        alertId: 'late-create',
+        userId: 'user-1',
+        source: 'hardware_power_panic',
+        status: 'active',
+        startedAt: startedAt,
+      ),
+      alertId: 'late-create',
+      eventType: 'hardware_power_panic',
+      occurredAt: startedAt,
+      cloudPayload: const {'event_type': 'hardware_power_panic'},
+    );
+    await database.transitionAlertToTerminal(
+      alertId: 'late-create',
+      terminalState: EmergencyIncidentState.resolved,
+      occurredAt: startedAt.add(const Duration(seconds: 10)),
+    );
+
+    await database.recordCloudIncidentCreated(
+      alertId: 'late-create',
+      cloudIncidentId: 'inc-cloud-1',
+    );
+
+    final alert = await database.getAlert('late-create');
+    expect(alert!.status, 'resolved');
+    expect(alert.cloudIncidentId, 'inc-cloud-1');
+    final operation =
+        await database.getOutboxOperation('late-create:update:resolved');
+    expect(operation, isNotNull);
+    expect(operation!.status, 'pending');
+    expect(
+      (jsonDecode(operation.payloadJson) as Map<String, dynamic>)['state'],
+      'RESOLVED',
+    );
+  });
+
+  test('active alert restoration is scoped to its authenticated user',
+      () async {
+    final now = DateTime.utc(2026, 9, 19, 10);
+    await database.into(database.localAlerts).insert(
+          LocalAlertsCompanion.insert(
+            alertId: 'user-a-alert',
+            userId: 'user-a',
+            source: 'sos_button',
+            status: 'cloudAccepted',
+            startedAt: now,
+          ),
+        );
+    await database.into(database.localAlerts).insert(
+          LocalAlertsCompanion.insert(
+            alertId: 'resolved-user-b-alert',
+            userId: 'user-b',
+            source: 'sos_button',
+            status: 'resolved',
+            startedAt: now,
+          ),
+        );
+
+    expect((await database.getActiveAlert('user-a'))?.alertId, 'user-a-alert');
+    expect(await database.getActiveAlert('user-b'), isNull);
   });
 }

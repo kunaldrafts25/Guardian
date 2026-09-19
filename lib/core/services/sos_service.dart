@@ -28,6 +28,7 @@ const MethodChannel _serviceChannel = MethodChannel('com.guardian/service');
 /// SOS trigger source
 enum SosTriggerSource {
   button, // Manual button press
+  hardwarePower, // Covert hardware-button panic gesture
   shake, // Shake detection
   widget, // Home screen widget
   voiceCommand, // Voice command
@@ -145,6 +146,7 @@ class SosService {
 
   // Current active alert
   SosAlert? _activeAlert;
+  Future<SosAlert?>? _triggerInFlight;
   SosAlert? get activeAlert => _activeAlert;
   bool get hasActiveAlert =>
       _activeAlert != null &&
@@ -187,12 +189,6 @@ class SosService {
     }
   }
 
-  /// Trigger SOS alert
-  ///
-  /// [contacts] - List of emergency contacts to notify
-  /// [source] - What triggered the SOS
-  /// [customMessage] - Optional custom message
-  /// [userName] - Display name for SMS message
   Future<SosAlert?> triggerSos({
     required List<EmergencyContact> contacts,
     required SosTriggerSource source,
@@ -203,7 +199,31 @@ class SosService {
       Logger.warning('SOS already active, ignoring trigger');
       return _activeAlert;
     }
+    final inFlight = _triggerInFlight;
+    if (inFlight != null) {
+      Logger.warning('SOS trigger already in progress; joining it');
+      return inFlight;
+    }
+    final operation = _triggerSosInternal(
+      contacts: contacts,
+      source: source,
+      customMessage: customMessage,
+      userName: userName,
+    );
+    _triggerInFlight = operation;
+    try {
+      return await operation;
+    } finally {
+      if (identical(_triggerInFlight, operation)) _triggerInFlight = null;
+    }
+  }
 
+  Future<SosAlert?> _triggerSosInternal({
+    required List<EmergencyContact> contacts,
+    required SosTriggerSource source,
+    String? customMessage,
+    String? userName,
+  }) async {
     Logger.info('🚨 SOS TRIGGERED via ${source.name}');
 
     // Get current location — try Geolocator first, fall back to native service cache
@@ -280,9 +300,25 @@ class SosService {
     _startLocationTracking();
 
     Logger.info(
-        '✅ SOS Alert active. ${_activeAlert!.notifiedCount}/${contacts.length} contacts notified');
+        'SOS active. ${_activeAlert!.notifiedCount}/${contacts.length} SMS dispatches accepted by the device');
 
     return _activeAlert;
+  }
+
+  /// Restores durable incident state after process recreation without
+  /// dispatching messages a second time.
+  void restoreActiveAlert(SosAlert alert) {
+    if (alert.status != SosAlertStatus.active &&
+        alert.status != SosAlertStatus.sending) {
+      throw ArgumentError.value(alert.status, 'alert', 'Alert is not active');
+    }
+    if (hasActiveAlert && _activeAlert!.id != alert.id) {
+      Logger.warning('An active SOS is already loaded; restore ignored');
+      return;
+    }
+    _activeAlert = alert;
+    _notifyAlertListeners();
+    _startLocationTracking();
   }
 
   /// Send alert to a single contact

@@ -81,26 +81,21 @@ def assess_risk(incident_id: str, context: Optional[Dict[str, Any]] = None) -> D
 
 def ask_user_confirmation(incident_id: str, timeout_seconds: int = 15) -> Dict[str, Any]:
     """
-    Tool 3: Transition state to VERIFYING and trigger user confirmation countdown ("Are You OK?").
+    Tool 3: Request confirmation without inventing a separate incident state.
     """
-    res = update_incident_status(
-        incident_id=incident_id,
-        new_state=IncidentState.VERIFYING.value,
-        actor="AGENT",
-        note=f"Prompting user confirmation with {timeout_seconds}s timeout.",
-    )
+    incident = get_incident_context(incident_id)
     return {
         "incident_id": incident_id,
-        "status": "VERIFYING_INITIATED",
+        "status": "CONFIRMATION_REQUESTED",
         "timeout_seconds": timeout_seconds,
-        "current_state": res.get("state"),
+        "current_state": incident.get("state"),
     }
 
 
 def notify_trusted_contact(incident_id: str, contact_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Tool 4: Enforce authorization policy and publish escalation alert via AWS SNS.
-    Transitions state to RESPONDING.
+    Transitions state to CONTACTS_NOTIFIED only after dispatch acceptance.
     """
     ctx = get_incident_context(incident_id)
     contacts = ctx.get("contacts", [])
@@ -149,10 +144,10 @@ def notify_trusted_contact(incident_id: str, contact_id: Optional[str] = None) -
         except Exception as exc:
             raise RuntimeError("AWS SNS publish failed; emergency alert was not sent") from exc
 
-    # Transition to RESPONDING
+    # Record the distinct contact-delivery lifecycle state.
     res = update_incident_status(
         incident_id=incident_id,
-        new_state=IncidentState.RESPONDING.value,
+        new_state=IncidentState.CONTACTS_NOTIFIED.value,
         actor="AGENT",
         note=f"Escalated to trusted contact {target_contact.get('name')} ({target_contact.get('email', target_contact.get('phone'))}) via SNS.",
     )
@@ -338,7 +333,7 @@ def dispatch_community_alert(incident_id: str) -> Dict[str, Any]:
     # Append to incident audit timeline
     update_incident_status(
         incident_id=incident_id,
-        new_state=IncidentState.RESPONDING.value,
+        new_state=IncidentState.COMMUNITY_OFFERED.value,
         actor="AGENT",
         note=f"Community Rescue dispatched to {len(responders)} verified nearby responders. Anti-Solo Quorum satisfied.",
     )
@@ -374,7 +369,7 @@ def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]
     # Record on timeline
     update_incident_status(
         incident_id=incident_id,
-        new_state=IncidentState.RESPONDING.value,
+        new_state=IncidentState.RESPONDERS_ACCEPTED.value,
         actor="COMMUNITY_RESPONDER",
         note=f"Verified helper {resp.get('name')} accepted mission and is en-route.",
     )

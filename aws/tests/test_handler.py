@@ -27,7 +27,7 @@ def test_create_incident_and_idempotency():
     assert resp["statusCode"] == 201
     data = json.loads(resp["body"])
     incident_id = data["incident_id"]
-    assert data["state"] == IncidentState.SUSPECTED.value
+    assert data["state"] == IncidentState.CLOUD_ACCEPTED.value
     assert data["risk_assessment"]["level"] in ("HIGH", "CRITICAL")
 
     # Idempotent second POST with identical event_id
@@ -51,21 +51,21 @@ def test_state_transitions_and_timeline():
     resp = lambda_handler(req, None)
     incident_id = json.loads(resp["body"])["incident_id"]
 
-    # 2. Transition SUSPECTED -> VERIFYING
+    # 2. Transition CLOUD_ACCEPTED -> CONTACTS_NOTIFIED
     req_verify = {
         "httpMethod": "PUT",
         "path": f"/incidents/{incident_id}/status",
         "body": json.dumps({
-            "state": IncidentState.VERIFYING.value,
+            "state": IncidentState.CONTACTS_NOTIFIED.value,
             "actor": "AGENT",
             "note": "Agent prompted user for 15s confirmation.",
         }),
     }
     resp_v = lambda_handler(req_verify, None)
     assert resp_v["statusCode"] == 200
-    assert json.loads(resp_v["body"])["state"] == "VERIFYING"
+    assert json.loads(resp_v["body"])["state"] == "CONTACTS_NOTIFIED"
 
-    # 3. User responds: VERIFYING -> RESOLVED
+    # 3. User responds: CONTACTS_NOTIFIED -> RESOLVED
     req_resolve = {
         "httpMethod": "PUT",
         "path": f"/incidents/{incident_id}/status",
@@ -78,6 +78,18 @@ def test_state_transitions_and_timeline():
     resp_r = lambda_handler(req_resolve, None)
     assert resp_r["statusCode"] == 200
     assert json.loads(resp_r["body"])["state"] == "RESOLVED"
+
+    # Replays are idempotent, but a terminal incident can never reopen.
+    assert lambda_handler(req_resolve, None)["statusCode"] == 200
+    stale = lambda_handler(
+        {
+            "httpMethod": "PUT",
+            "path": f"/incidents/{incident_id}/status",
+            "body": json.dumps({"state": IncidentState.CONTACTS_NOTIFIED.value}),
+        },
+        None,
+    )
+    assert stale["statusCode"] == 400
 
     # 4. Check timeline
     req_timeline = {

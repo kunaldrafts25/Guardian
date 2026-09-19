@@ -11,24 +11,25 @@ from aws.incident_handler.state_machine import (
 
 
 def test_valid_transitions():
-    assert can_transition(IncidentState.SUSPECTED, IncidentState.VERIFYING)
-    assert can_transition(IncidentState.SUSPECTED, IncidentState.RESPONDING)
-    assert can_transition(IncidentState.SUSPECTED, IncidentState.RESOLVED)
-    assert can_transition(IncidentState.VERIFYING, IncidentState.RESPONDING)
-    assert can_transition(IncidentState.VERIFYING, IncidentState.RESOLVED)
-    assert can_transition(IncidentState.RESPONDING, IncidentState.RESOLVED)
+    assert can_transition(IncidentState.TRIGGERED, IncidentState.CLOUD_PENDING)
+    assert can_transition(IncidentState.CLOUD_PENDING, IncidentState.CLOUD_ACCEPTED)
+    assert can_transition(IncidentState.CLOUD_ACCEPTED, IncidentState.CONTACTS_NOTIFIED)
+    assert can_transition(IncidentState.CONTACTS_NOTIFIED, IncidentState.COMMUNITY_OFFERED)
+    assert can_transition(IncidentState.COMMUNITY_OFFERED, IncidentState.RESPONDERS_ACCEPTED)
+    assert can_transition(IncidentState.RESPONDERS_ACCEPTED, IncidentState.RESPONDERS_EN_ROUTE)
+    assert can_transition(IncidentState.RESPONDERS_EN_ROUTE, IncidentState.HELP_ARRIVED)
+    assert can_transition(IncidentState.HELP_ARRIVED, IncidentState.RESOLVED)
 
 
 def test_invalid_transitions():
     # Cannot go backward
-    assert not can_transition(IncidentState.RESPONDING, IncidentState.VERIFYING)
-    assert not can_transition(IncidentState.VERIFYING, IncidentState.SUSPECTED)
-    assert not can_transition(IncidentState.RESOLVED, IncidentState.SUSPECTED)
-    assert not can_transition(IncidentState.RESOLVED, IncidentState.RESPONDING)
+    assert not can_transition(IncidentState.CONTACTS_NOTIFIED, IncidentState.CLOUD_PENDING)
+    assert not can_transition(IncidentState.RESOLVED, IncidentState.CLOUD_ACCEPTED)
+    assert not can_transition(IncidentState.CANCELLED, IncidentState.RESPONDERS_ACCEPTED)
 
     # Invalid values
-    assert not can_transition("UNKNOWN", IncidentState.VERIFYING)
-    assert not can_transition(IncidentState.SUSPECTED, "UNKNOWN")
+    assert not can_transition("UNKNOWN", IncidentState.CLOUD_ACCEPTED)
+    assert not can_transition(IncidentState.TRIGGERED, "UNKNOWN")
 
 
 if __name__ == "__main__":

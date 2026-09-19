@@ -11,6 +11,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:guardian/core/database/guardian_database.dart';
 import 'package:guardian/core/models/emergency_domain.dart';
 import 'package:guardian/core/models/emergency_model.dart';
+import 'package:guardian/core/providers/auth_provider.dart';
 import 'package:guardian/core/providers/contacts_provider.dart';
 import 'package:guardian/core/providers/sos_settings_provider.dart';
 import 'package:guardian/core/services/aws_auth_service.dart';
@@ -81,12 +82,98 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
   final Ref _ref;
   final SosService _sosService = SosService.instance;
   String? _backendIncidentId;
+  Future<void>? _activationInFlight;
+  late final Future<void> ready;
 
   EmergencyNotifier(this._ref) : super(const EmergencyState()) {
     // Listen to SOS service updates
     _sosService.addAlertListener(_onAlertUpdate);
     _sosService.addLocationListener(_onLocationUpdate);
+    ready = _restoreActiveIncident();
   }
+
+  Future<void> _restoreActiveIncident() async {
+    final userId = AwsAuthService.instance.currentUserId;
+    if (userId == null) return;
+    await _ref.read(contactsProvider.notifier).ready;
+    final database = _ref.read(databaseProvider);
+    final alert = await database.getActiveAlert(userId);
+    if (alert == null || !mounted) return;
+
+    final contacts = _ref.read(contactsProvider).contacts;
+    final attempts = await database.getDeliveryAttempts(alert.alertId);
+    final attemptsByRecipient = {
+      for (final attempt in attempts) attempt.recipientRef: attempt,
+    };
+    final position = alert.latitude != null && alert.longitude != null
+        ? Position(
+            latitude: alert.latitude!,
+            longitude: alert.longitude!,
+            accuracy: alert.accuracy ?? 0,
+            altitude: 0,
+            heading: 0,
+            speed: 0,
+            speedAccuracy: 0,
+            altitudeAccuracy: 0,
+            headingAccuracy: 0,
+            timestamp: alert.startedAt,
+          )
+        : null;
+    final restoredAlert = SosAlert(
+      id: alert.alertId,
+      source: _sourceFromStoredValue(alert.source),
+      status: SosAlertStatus.active,
+      startedAt: alert.startedAt,
+      initialLocation: position,
+      currentLocation: position,
+      customMessage: alert.customMessage,
+      contactStatuses: contacts.map((contact) {
+        final attempt = attemptsByRecipient[contact.id];
+        final accepted = attempt != null &&
+            const {'accepted', 'delivered', 'acknowledged'}
+                .contains(attempt.status);
+        return ContactAlertStatus(
+          contact: contact,
+          smsSent: accepted,
+          sentAt: accepted ? attempt.updatedAt : null,
+          error: attempt?.failureCode,
+        );
+      }).toList(),
+    );
+    _backendIncidentId = alert.cloudIncidentId;
+    _sosService.restoreActiveAlert(restoredAlert);
+    state = EmergencyState(
+      state: SosState.active,
+      activeEmergency: Emergency(
+        id: alert.cloudIncidentId ?? alert.alertId,
+        userId: userId,
+        status: EmergencyStatus.active,
+        latitude: alert.latitude,
+        longitude: alert.longitude,
+        startedAt: alert.startedAt,
+        notifiedContacts: restoredAlert.contactStatuses
+            .where((status) => status.smsSent)
+            .map((status) => status.contact.phone)
+            .toList(),
+      ),
+      sosAlert: restoredAlert,
+      currentLocation: position,
+      notifiedContacts: restoredAlert.contactStatuses
+          .where((status) => status.smsSent)
+          .map((status) => status.contact.name)
+          .toList(),
+    );
+    Logger.info(
+        'Restored active emergency ${alert.alertId} from local storage');
+  }
+
+  SosTriggerSource _sourceFromStoredValue(String value) => switch (value) {
+        'hardware_power_panic' => SosTriggerSource.hardwarePower,
+        'shake_sos' => SosTriggerSource.shake,
+        'voice_sos' => SosTriggerSource.voiceCommand,
+        'check_in_expired' => SosTriggerSource.scheduled,
+        _ => SosTriggerSource.button,
+      };
 
   @override
   void dispose() {
@@ -131,7 +218,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       'motion_data': motionData,
     };
     try {
-      await database.queueAlertForCloud(
+      final queued = await database.queueAlertForCloud(
         alertId: alert.id,
         eventType: eventType,
         occurredAt: alert.startedAt,
@@ -169,6 +256,9 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
           syncedToCloud: const Value(false),
         ),
       );
+      if (!queued) {
+        throw StateError('The incident is already in a terminal state');
+      }
     } catch (error) {
       Logger.error('Could not durably queue the SOS', error);
       rethrow;
@@ -188,9 +278,16 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
             : null,
         motionData: motionData,
       );
-      await database.markAlertSynced(alert.id);
+      final cloudIncidentId = incident['incident_id'] as String?;
+      if (cloudIncidentId == null || cloudIncidentId.isEmpty) {
+        throw const FormatException('Incident response has no incident_id');
+      }
+      await database.recordCloudIncidentCreated(
+        alertId: alert.id,
+        cloudIncidentId: cloudIncidentId,
+      );
       await database.markOutboxSucceeded('${alert.id}:createIncident');
-      return incident['incident_id'] as String?;
+      return cloudIncidentId;
     } catch (error) {
       await database.markOutboxRetry(
         operationId: '${alert.id}:createIncident',
@@ -228,7 +325,28 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
 
   /// Trigger the emergency with real location and SMS
   Future<void> triggerEmergency(
-      {SosTriggerSource source = SosTriggerSource.button}) async {
+      {SosTriggerSource source = SosTriggerSource.button}) {
+    final inFlight = _activationInFlight;
+    if (inFlight != null) {
+      Logger.warning('Emergency activation already in progress; joining it');
+      return inFlight;
+    }
+    if (state.isActive) {
+      Logger.warning('Emergency already active; duplicate trigger ignored');
+      return Future.value();
+    }
+    final operation = _triggerEmergency(source);
+    _activationInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_activationInFlight, operation)) {
+        _activationInFlight = null;
+      }
+    });
+  }
+
+  Future<void> _triggerEmergency(SosTriggerSource source) async {
+    await ready;
+    if (state.isActive) return;
     state = state.copyWith(state: SosState.triggering);
 
     try {
@@ -268,8 +386,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       _backendIncidentId = await _persistAndIngestAlert(
         alert: alert,
         userId: realUid,
-        eventType:
-            source == SosTriggerSource.shake ? 'shake_sos' : 'sos_button',
+        eventType: _eventTypeForSource(source),
         motionData: {'trigger_source': source.name},
       );
 
@@ -293,7 +410,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       );
 
       Logger.info(
-          '✅ Emergency activated. ${alert.notifiedCount}/${contacts.length} contacts notified.');
+          'Emergency active. ${alert.notifiedCount}/${contacts.length} SMS dispatches accepted by the device.');
 
       // Auto-call emergency services if enabled
       if (settings.autoCallEmergency) {
@@ -317,7 +434,25 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
   /// Trigger SOS from hardware power button 3-tap (covert panic)
   /// NO countdown — fires immediately with CRITICAL risk classification.
   /// Bypasses all verification delays to protect against active assault.
-  Future<void> triggerFromHardwarePanic() async {
+  Future<void> triggerFromHardwarePanic() {
+    final inFlight = _activationInFlight;
+    if (inFlight != null) {
+      Logger.warning('Emergency activation already in progress; joining it');
+      return inFlight;
+    }
+    if (state.isActive) return Future.value();
+    final operation = _triggerFromHardwarePanic();
+    _activationInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_activationInFlight, operation)) {
+        _activationInFlight = null;
+      }
+    });
+  }
+
+  Future<void> _triggerFromHardwarePanic() async {
+    await ready;
+    if (state.isActive) return;
     Logger.info(
         '🚨 HARDWARE POWER BUTTON PANIC — Immediate CRITICAL escalation');
     state = state.copyWith(state: SosState.triggering);
@@ -338,7 +473,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       // Trigger local SOS (SMS to contacts) — no waiting
       final alert = await _sosService.triggerSos(
         contacts: contacts,
-        source: SosTriggerSource.button,
+        source: SosTriggerSource.hardwarePower,
         customMessage:
             '🚨 EMERGENCY — I need immediate help. This is a real danger alert.',
         userName: realName,
@@ -375,7 +510,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       );
 
       Logger.info(
-          '✅ Hardware panic escalated. ${alert.notifiedCount} contacts notified.');
+          'Hardware panic active. ${alert.notifiedCount} SMS dispatches accepted by the device.');
     } catch (e) {
       Logger.error('Error triggering hardware panic', e);
       state = state.copyWith(
@@ -384,6 +519,16 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       );
     }
   }
+
+  /// Add a responder
+  String _eventTypeForSource(SosTriggerSource source) => switch (source) {
+        SosTriggerSource.hardwarePower => 'hardware_power_panic',
+        SosTriggerSource.shake => 'shake_sos',
+        SosTriggerSource.voiceCommand => 'voice_sos',
+        SosTriggerSource.scheduled => 'check_in_expired',
+        SosTriggerSource.widget => 'widget_sos',
+        SosTriggerSource.button => 'sos_button',
+      };
 
   /// Add a responder
   void addResponder(String responderId) {
@@ -398,21 +543,29 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     try {
       Logger.info('🚫 Emergency cancelled by user');
 
-      if (_backendIncidentId != null) {
-        await AwsIncidentService.instance.updateIncidentStatus(
-          _backendIncidentId!,
-          'RESOLVED',
-          note: 'User marked the emergency as safe',
-        );
+      final localAlertId = state.sosAlert?.id;
+      if (localAlertId != null) {
+        await _ref.read(databaseProvider).transitionAlertToTerminal(
+              alertId: localAlertId,
+              terminalState: EmergencyIncidentState.resolved,
+              occurredAt: DateTime.now(),
+            );
       }
 
       await _sosService.markAsSafe();
-      final localAlertId = state.sosAlert?.id;
-      if (localAlertId != null) {
-        await _ref.read(databaseProvider).markAlertResolved(
-              localAlertId,
-              DateTime.now(),
-            );
+      if (_backendIncidentId != null && localAlertId != null) {
+        try {
+          await AwsIncidentService.instance.updateIncidentStatus(
+            _backendIncidentId!,
+            'RESOLVED',
+            note: 'User marked the emergency as safe',
+          );
+          await _ref
+              .read(databaseProvider)
+              .markOutboxSucceeded('$localAlertId:update:resolved');
+        } catch (error) {
+          Logger.warning('Cloud resolution remains queued for retry: $error');
+        }
       }
       _backendIncidentId = null;
 
@@ -456,6 +609,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
 /// Emergency provider
 final emergencyProvider =
     StateNotifierProvider<EmergencyNotifier, EmergencyState>((ref) {
+  ref.watch(currentUserProvider);
   return EmergencyNotifier(ref);
 });
 

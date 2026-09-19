@@ -146,14 +146,14 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  '${emergencyState.notifiedContacts.length} contacts notified',
+                  '${emergencyState.notifiedContacts.length} SMS dispatches accepted',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         color: Colors.white70,
                       ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Location shared • Help is on the way',
+                  'Delivery is not confirmed until a receipt or acknowledgement arrives',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Colors.white60,
                       ),
@@ -169,31 +169,42 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Alerts sent to:',
+                          'SMS dispatch status:',
                           style:
                               Theme.of(context).textTheme.titleSmall?.copyWith(
                                     color: Colors.white70,
                                   ),
                         ),
                         const SizedBox(height: 8),
-                        if (emergencyState.notifiedContacts.isEmpty)
+                        if (emergencyState.sosAlert?.contactStatuses.isEmpty ??
+                            true)
                           const Text(
                             'No contacts configured',
                             style: TextStyle(color: Colors.white60),
                           )
                         else
-                          ...emergencyState.notifiedContacts
-                              .map((name) => Padding(
+                          ...emergencyState.sosAlert!.contactStatuses
+                              .map((status) => Padding(
                                     padding:
                                         const EdgeInsets.symmetric(vertical: 4),
                                     child: Row(
                                       children: [
-                                        const Icon(Icons.check_circle,
-                                            color: Colors.white, size: 16),
+                                        Icon(
+                                          status.smsSent
+                                              ? Icons.outbox
+                                              : Icons.error_outline,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
                                         const SizedBox(width: 8),
-                                        Text(name,
+                                        Expanded(
+                                          child: Text(
+                                            '${status.contact.name} — ${status.smsSent ? 'accepted by device' : 'dispatch failed'}',
                                             style: const TextStyle(
-                                                color: Colors.white)),
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   )),
@@ -515,12 +526,14 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
                                   ),
                         ),
                         const SizedBox(height: 12),
-                        _buildInfoRow(Icons.location_on,
-                            'Your location is shared with trusted contacts'),
                         _buildInfoRow(
-                            Icons.people, 'Nearby Guardians are alerted'),
+                          Icons.location_on,
+                          'Available location is included in emergency messages',
+                        ),
                         _buildInfoRow(
-                            Icons.sms, 'SMS sent to emergency contacts'),
+                          Icons.sms,
+                          'Guardian attempts SMS dispatch to each configured contact',
+                        ),
                       ],
                     ),
                   ),

@@ -36,12 +36,12 @@ def test_agent_tools_execution():
 
     # 4. Tool 3: Ask User
     u_res = ask_user_confirmation(incident_id, timeout_seconds=15)
-    assert u_res["status"] == "VERIFYING_INITIATED"
-    assert u_res["current_state"] == "VERIFYING"
+    assert u_res["status"] == "CONFIRMATION_REQUESTED"
+    assert u_res["current_state"] == "CLOUD_ACCEPTED"
 
     # 5. Tool 4: Notify Contact (Policy check + SNS)
     n_res = notify_trusted_contact(incident_id)
-    assert n_res["state"] == "RESPONDING"
+    assert n_res["state"] == "CONTACTS_NOTIFIED"
     assert n_res["contact_notified"] is not None
 
 
@@ -73,7 +73,7 @@ def test_agent_critical_immediate_escalation():
 
     res = execute_agent_reasoning(iid)
     assert "ESCALATE_IMMEDIATELY" in res["decision"]
-    assert res["action_result"]["contact_alert"]["state"] == "RESPONDING"
+    assert res["action_result"]["contact_alert"]["state"] == "CONTACTS_NOTIFIED"
 
 
 def test_hardware_panic_immediate_critical_and_community_dispatch():

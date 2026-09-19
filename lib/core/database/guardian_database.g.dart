@@ -652,6 +652,12 @@ class $LocalAlertsTable extends LocalAlerts
   late final GeneratedColumn<String> alertId = GeneratedColumn<String>(
       'alert_id', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _cloudIncidentIdMeta =
+      const VerificationMeta('cloudIncidentId');
+  @override
+  late final GeneratedColumn<String> cloudIncidentId = GeneratedColumn<String>(
+      'cloud_incident_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
   @override
   late final GeneratedColumn<String> userId = GeneratedColumn<String>(
@@ -742,6 +748,7 @@ class $LocalAlertsTable extends LocalAlerts
   @override
   List<GeneratedColumn> get $columns => [
         alertId,
+        cloudIncidentId,
         userId,
         source,
         status,
@@ -771,6 +778,12 @@ class $LocalAlertsTable extends LocalAlerts
           alertId.isAcceptableOrUnknown(data['alert_id']!, _alertIdMeta));
     } else if (isInserting) {
       context.missing(_alertIdMeta);
+    }
+    if (data.containsKey('cloud_incident_id')) {
+      context.handle(
+          _cloudIncidentIdMeta,
+          cloudIncidentId.isAcceptableOrUnknown(
+              data['cloud_incident_id']!, _cloudIncidentIdMeta));
     }
     if (data.containsKey('user_id')) {
       context.handle(_userIdMeta,
@@ -849,6 +862,8 @@ class $LocalAlertsTable extends LocalAlerts
     return LocalAlert(
       alertId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}alert_id'])!,
+      cloudIncidentId: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}cloud_incident_id']),
       userId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}user_id'])!,
       source: attachedDatabase.typeMapping
@@ -886,6 +901,7 @@ class $LocalAlertsTable extends LocalAlerts
 
 class LocalAlert extends DataClass implements Insertable<LocalAlert> {
   final String alertId;
+  final String? cloudIncidentId;
   final String userId;
   final String source;
   final String status;
@@ -901,6 +917,7 @@ class LocalAlert extends DataClass implements Insertable<LocalAlert> {
   final DateTime createdAt;
   const LocalAlert(
       {required this.alertId,
+      this.cloudIncidentId,
       required this.userId,
       required this.source,
       required this.status,
@@ -918,6 +935,9 @@ class LocalAlert extends DataClass implements Insertable<LocalAlert> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['alert_id'] = Variable<String>(alertId);
+    if (!nullToAbsent || cloudIncidentId != null) {
+      map['cloud_incident_id'] = Variable<String>(cloudIncidentId);
+    }
     map['user_id'] = Variable<String>(userId);
     map['source'] = Variable<String>(source);
     map['status'] = Variable<String>(status);
@@ -947,6 +967,9 @@ class LocalAlert extends DataClass implements Insertable<LocalAlert> {
   LocalAlertsCompanion toCompanion(bool nullToAbsent) {
     return LocalAlertsCompanion(
       alertId: Value(alertId),
+      cloudIncidentId: cloudIncidentId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cloudIncidentId),
       userId: Value(userId),
       source: Value(source),
       status: Value(status),
@@ -978,6 +1001,7 @@ class LocalAlert extends DataClass implements Insertable<LocalAlert> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return LocalAlert(
       alertId: serializer.fromJson<String>(json['alertId']),
+      cloudIncidentId: serializer.fromJson<String?>(json['cloudIncidentId']),
       userId: serializer.fromJson<String>(json['userId']),
       source: serializer.fromJson<String>(json['source']),
       status: serializer.fromJson<String>(json['status']),
@@ -998,6 +1022,7 @@ class LocalAlert extends DataClass implements Insertable<LocalAlert> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'alertId': serializer.toJson<String>(alertId),
+      'cloudIncidentId': serializer.toJson<String?>(cloudIncidentId),
       'userId': serializer.toJson<String>(userId),
       'source': serializer.toJson<String>(source),
       'status': serializer.toJson<String>(status),
@@ -1016,6 +1041,7 @@ class LocalAlert extends DataClass implements Insertable<LocalAlert> {
 
   LocalAlert copyWith(
           {String? alertId,
+          Value<String?> cloudIncidentId = const Value.absent(),
           String? userId,
           String? source,
           String? status,
@@ -1031,6 +1057,9 @@ class LocalAlert extends DataClass implements Insertable<LocalAlert> {
           DateTime? createdAt}) =>
       LocalAlert(
         alertId: alertId ?? this.alertId,
+        cloudIncidentId: cloudIncidentId.present
+            ? cloudIncidentId.value
+            : this.cloudIncidentId,
         userId: userId ?? this.userId,
         source: source ?? this.source,
         status: status ?? this.status,
@@ -1049,6 +1078,9 @@ class LocalAlert extends DataClass implements Insertable<LocalAlert> {
   LocalAlert copyWithCompanion(LocalAlertsCompanion data) {
     return LocalAlert(
       alertId: data.alertId.present ? data.alertId.value : this.alertId,
+      cloudIncidentId: data.cloudIncidentId.present
+          ? data.cloudIncidentId.value
+          : this.cloudIncidentId,
       userId: data.userId.present ? data.userId.value : this.userId,
       source: data.source.present ? data.source.value : this.source,
       status: data.status.present ? data.status.value : this.status,
@@ -1074,6 +1106,7 @@ class LocalAlert extends DataClass implements Insertable<LocalAlert> {
   String toString() {
     return (StringBuffer('LocalAlert(')
           ..write('alertId: $alertId, ')
+          ..write('cloudIncidentId: $cloudIncidentId, ')
           ..write('userId: $userId, ')
           ..write('source: $source, ')
           ..write('status: $status, ')
@@ -1094,6 +1127,7 @@ class LocalAlert extends DataClass implements Insertable<LocalAlert> {
   @override
   int get hashCode => Object.hash(
       alertId,
+      cloudIncidentId,
       userId,
       source,
       status,
@@ -1112,6 +1146,7 @@ class LocalAlert extends DataClass implements Insertable<LocalAlert> {
       identical(this, other) ||
       (other is LocalAlert &&
           other.alertId == this.alertId &&
+          other.cloudIncidentId == this.cloudIncidentId &&
           other.userId == this.userId &&
           other.source == this.source &&
           other.status == this.status &&
@@ -1129,6 +1164,7 @@ class LocalAlert extends DataClass implements Insertable<LocalAlert> {
 
 class LocalAlertsCompanion extends UpdateCompanion<LocalAlert> {
   final Value<String> alertId;
+  final Value<String?> cloudIncidentId;
   final Value<String> userId;
   final Value<String> source;
   final Value<String> status;
@@ -1145,6 +1181,7 @@ class LocalAlertsCompanion extends UpdateCompanion<LocalAlert> {
   final Value<int> rowid;
   const LocalAlertsCompanion({
     this.alertId = const Value.absent(),
+    this.cloudIncidentId = const Value.absent(),
     this.userId = const Value.absent(),
     this.source = const Value.absent(),
     this.status = const Value.absent(),
@@ -1162,6 +1199,7 @@ class LocalAlertsCompanion extends UpdateCompanion<LocalAlert> {
   });
   LocalAlertsCompanion.insert({
     required String alertId,
+    this.cloudIncidentId = const Value.absent(),
     required String userId,
     required String source,
     required String status,
@@ -1183,6 +1221,7 @@ class LocalAlertsCompanion extends UpdateCompanion<LocalAlert> {
         startedAt = Value(startedAt);
   static Insertable<LocalAlert> custom({
     Expression<String>? alertId,
+    Expression<String>? cloudIncidentId,
     Expression<String>? userId,
     Expression<String>? source,
     Expression<String>? status,
@@ -1200,6 +1239,7 @@ class LocalAlertsCompanion extends UpdateCompanion<LocalAlert> {
   }) {
     return RawValuesInsertable({
       if (alertId != null) 'alert_id': alertId,
+      if (cloudIncidentId != null) 'cloud_incident_id': cloudIncidentId,
       if (userId != null) 'user_id': userId,
       if (source != null) 'source': source,
       if (status != null) 'status': status,
@@ -1219,6 +1259,7 @@ class LocalAlertsCompanion extends UpdateCompanion<LocalAlert> {
 
   LocalAlertsCompanion copyWith(
       {Value<String>? alertId,
+      Value<String?>? cloudIncidentId,
       Value<String>? userId,
       Value<String>? source,
       Value<String>? status,
@@ -1235,6 +1276,7 @@ class LocalAlertsCompanion extends UpdateCompanion<LocalAlert> {
       Value<int>? rowid}) {
     return LocalAlertsCompanion(
       alertId: alertId ?? this.alertId,
+      cloudIncidentId: cloudIncidentId ?? this.cloudIncidentId,
       userId: userId ?? this.userId,
       source: source ?? this.source,
       status: status ?? this.status,
@@ -1257,6 +1299,9 @@ class LocalAlertsCompanion extends UpdateCompanion<LocalAlert> {
     final map = <String, Expression>{};
     if (alertId.present) {
       map['alert_id'] = Variable<String>(alertId.value);
+    }
+    if (cloudIncidentId.present) {
+      map['cloud_incident_id'] = Variable<String>(cloudIncidentId.value);
     }
     if (userId.present) {
       map['user_id'] = Variable<String>(userId.value);
@@ -1307,6 +1352,7 @@ class LocalAlertsCompanion extends UpdateCompanion<LocalAlert> {
   String toString() {
     return (StringBuffer('LocalAlertsCompanion(')
           ..write('alertId: $alertId, ')
+          ..write('cloudIncidentId: $cloudIncidentId, ')
           ..write('userId: $userId, ')
           ..write('source: $source, ')
           ..write('status: $status, ')
@@ -5634,6 +5680,7 @@ typedef $$LocalContactsTableProcessedTableManager = ProcessedTableManager<
 typedef $$LocalAlertsTableCreateCompanionBuilder = LocalAlertsCompanion
     Function({
   required String alertId,
+  Value<String?> cloudIncidentId,
   required String userId,
   required String source,
   required String status,
@@ -5652,6 +5699,7 @@ typedef $$LocalAlertsTableCreateCompanionBuilder = LocalAlertsCompanion
 typedef $$LocalAlertsTableUpdateCompanionBuilder = LocalAlertsCompanion
     Function({
   Value<String> alertId,
+  Value<String?> cloudIncidentId,
   Value<String> userId,
   Value<String> source,
   Value<String> status,
@@ -5679,6 +5727,10 @@ class $$LocalAlertsTableFilterComposer
   });
   ColumnFilters<String> get alertId => $composableBuilder(
       column: $table.alertId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get cloudIncidentId => $composableBuilder(
+      column: $table.cloudIncidentId,
+      builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get userId => $composableBuilder(
       column: $table.userId, builder: (column) => ColumnFilters(column));
@@ -5731,6 +5783,10 @@ class $$LocalAlertsTableOrderingComposer
   });
   ColumnOrderings<String> get alertId => $composableBuilder(
       column: $table.alertId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get cloudIncidentId => $composableBuilder(
+      column: $table.cloudIncidentId,
+      builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<String> get userId => $composableBuilder(
       column: $table.userId, builder: (column) => ColumnOrderings(column));
@@ -5785,6 +5841,9 @@ class $$LocalAlertsTableAnnotationComposer
   });
   GeneratedColumn<String> get alertId =>
       $composableBuilder(column: $table.alertId, builder: (column) => column);
+
+  GeneratedColumn<String> get cloudIncidentId => $composableBuilder(
+      column: $table.cloudIncidentId, builder: (column) => column);
 
   GeneratedColumn<String> get userId =>
       $composableBuilder(column: $table.userId, builder: (column) => column);
@@ -5853,6 +5912,7 @@ class $$LocalAlertsTableTableManager extends RootTableManager<
               $$LocalAlertsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback: ({
             Value<String> alertId = const Value.absent(),
+            Value<String?> cloudIncidentId = const Value.absent(),
             Value<String> userId = const Value.absent(),
             Value<String> source = const Value.absent(),
             Value<String> status = const Value.absent(),
@@ -5870,6 +5930,7 @@ class $$LocalAlertsTableTableManager extends RootTableManager<
           }) =>
               LocalAlertsCompanion(
             alertId: alertId,
+            cloudIncidentId: cloudIncidentId,
             userId: userId,
             source: source,
             status: status,
@@ -5887,6 +5948,7 @@ class $$LocalAlertsTableTableManager extends RootTableManager<
           ),
           createCompanionCallback: ({
             required String alertId,
+            Value<String?> cloudIncidentId = const Value.absent(),
             required String userId,
             required String source,
             required String status,
@@ -5904,6 +5966,7 @@ class $$LocalAlertsTableTableManager extends RootTableManager<
           }) =>
               LocalAlertsCompanion.insert(
             alertId: alertId,
+            cloudIncidentId: cloudIncidentId,
             userId: userId,
             source: source,
             status: status,
