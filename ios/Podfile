@@ -2,6 +2,10 @@ platform :ios, '16.0'
 
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
+# Firebase, ObjectBox, and sqlite3 include Swift pods backed by Objective-C
+# dependencies. Module maps are required when CocoaPods links them statically.
+use_modular_headers!
+
 project 'Runner', {
   'Debug' => :debug,
   'Profile' => :release,
