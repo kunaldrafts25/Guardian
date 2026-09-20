@@ -145,12 +145,10 @@ Guardian/
 │   │   └── state_machine.py         # Incident finite state machine & validation
 │   ├── tests/                       # Comprehensive Pytest test suite
 │   │   ├── test_agent.py            # Agent autonomous reasoning & tool execution tests
-│   │   ├── test_handler.py          # API Gateway & DynamoDB idempotency tests
 │   │   ├── test_risk_engine.py      # Sensor & temporal heuristic tests
 │   │   ├── test_server.py           # Local FastAPI end-to-end integration tests
 │   │   └── test_state_machine.py    # State transition & illegal transition tests
 │   ├── server.py                    # FastAPI backend server (mirrors AWS API Gateway)
-│   ├── setup_aws.py                 # Automated AWS provisioning script (DynamoDB, Cognito, SNS)
 │   └── template.yaml                # AWS SAM Infrastructure as Code deployment template
 ├── lib/                             # Flutter Cross-Platform Mobile Application
 │   ├── app/                         # App initialization, routing (go_router), and themes
@@ -158,7 +156,7 @@ Guardian/
 │   │   ├── services/                # AWS services, OSM maps, and power optimization
 │   │   └── providers/               # State notifiers for incidents, location, safe zones
 │   └── features/                    # Feature modules (Dashboard, Map, SOS, Guardian Mode, Community)
-│       ├── dashboard/               # Observability card, simulator, and main cockpit
+│       ├── dashboard/               # Protection status, active incident, and safety actions
 │       ├── map/                     # OpenStreetMap interactive map, heatmap, and routes
 │       └── community/               # Mission navigation, responder quorum, and alerts
 └── test/                            # 88 Flutter Unit & Widget tests
@@ -214,30 +212,26 @@ flutter analyze
 ### Option 1: Local Backend Server
 ```bash
 # Install backend dependencies
-pip install fastapi uvicorn boto3 python-dotenv pydantic requests
+pip install -r requirements.txt uvicorn python-dotenv
 
 # Run FastAPI server
 python aws/server.py
 # Server runs on http://127.0.0.1:8000
 ```
 
-### Option 2: Automated AWS Cloud Provisioning
-```bash
-# Configure your AWS credentials
-aws configure
-
-# Automatically provision DynamoDB tables, SNS topic, and Cognito User Pool
-python aws/setup_aws.py
-```
-
-### Option 3: Deploy to AWS SAM (Serverless)
+### Option 2: Deploy to AWS SAM (Serverless)
 ```bash
 cd aws
-sam build
+sam validate --lint --template-file template.yaml
+sam build --template-file template.yaml
 sam deploy --guided
 ```
 
-### Option 4: Build Mobile Android APK
+The SAM template is the only supported infrastructure definition. See
+`docs/AWS_DEPLOYMENT_RUNBOOK.md` for push, SMS, Bedrock, responder enrollment,
+and staging instructions.
+
+### Option 3: Build Mobile Android APK
 ```bash
 # Build production APK pointing to your backend endpoint
 flutter build apk --release --dart-define=AWS_API_ENDPOINT=https://your-api-endpoint.com

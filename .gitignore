@@ -65,6 +65,7 @@ GoogleService-Info.plist
 google-services.json
 
 # --- Build artifacts ---
+.aws-sam/
 *.apk
 *.aab
 *.ipa
