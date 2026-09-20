@@ -59,7 +59,6 @@ class AwsIncidentService {
   /// Ingest a potential incident
   Future<Map<String, dynamic>> createIncident({
     required String eventId,
-    required String userId,
     required String eventType,
     Map<String, dynamic>? location,
     Map<String, dynamic>? motionData,
@@ -67,7 +66,6 @@ class AwsIncidentService {
     final url = Uri.parse('$baseUrl/incidents');
     final body = jsonEncode({
       'event_id': eventId,
-      'user_id': userId,
       'event_type': eventType,
       'location': location,
       'motion_data': motionData,
@@ -111,13 +109,11 @@ class AwsIncidentService {
   Future<Map<String, dynamic>> updateIncidentStatus(
     String incidentId,
     String newState, {
-    String actor = 'USER',
     String note = '',
   }) async {
     final url = Uri.parse('$baseUrl/incidents/$incidentId/status');
     final body = jsonEncode({
       'state': newState,
-      'actor': actor,
       'note': note,
     });
 
@@ -178,6 +174,20 @@ class AwsIncidentService {
     }
   }
 
+  Future<Map<String, dynamic>> escalateIncident(String incidentId) async {
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/incidents/$incidentId/escalate'),
+          headers: _headers,
+        )
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Failed to escalate incident: HTTP ${response.statusCode} - ${response.body}');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   /// Ask the production Bedrock safety companion.
   Future<String> askSafetyCompanion(
     String message, {
@@ -230,15 +240,13 @@ class AwsIncidentService {
 
   /// Accept rescue mission (Good Samaritan helper)
   Future<Map<String, dynamic>> acceptMission(
-    String incidentId, {
-    String responderId = 'resp_01',
-  }) async {
+    String incidentId,
+  ) async {
     final url = Uri.parse('$baseUrl/incidents/$incidentId/accept');
-    final body = jsonEncode({'responder_id': responderId});
 
     try {
       final response = await http
-          .post(url, headers: _headers, body: body)
+          .post(url, headers: _headers)
           .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
@@ -273,19 +281,15 @@ class AwsIncidentService {
 
   /// Register active responder location heartbeat
   Future<Map<String, dynamic>> sendResponderHeartbeat({
-    required String responderId,
-    String name = 'Good Samaritan',
-    double latitude = 19.0760,
-    double longitude = 72.8777,
-    int trustScore = 85,
+    required double latitude,
+    required double longitude,
+    bool isActive = true,
   }) async {
     final url = Uri.parse('$baseUrl/responders/heartbeat');
     final body = jsonEncode({
-      'responder_id': responderId,
-      'name': name,
       'latitude': latitude,
       'longitude': longitude,
-      'trust_score': trustScore,
+      'is_active': isActive,
     });
 
     try {

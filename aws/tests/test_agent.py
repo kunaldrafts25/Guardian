@@ -3,6 +3,7 @@ Unit tests for Guardian Autonomous Agent and Tools
 """
 
 import pytest
+from unittest.mock import patch
 from aws.incident_handler.handler import create_incident, IncidentState
 from aws.agent.tools import (
     get_incident_context,
@@ -74,6 +75,25 @@ def test_agent_critical_immediate_escalation():
     res = execute_agent_reasoning(iid)
     assert "ESCALATE_IMMEDIATELY" in res["decision"]
     assert res["action_result"]["contact_alert"]["state"] == "CONTACTS_NOTIFIED"
+
+
+def test_bedrock_advice_cannot_downgrade_deterministic_panic_policy():
+    panic = create_incident({
+        "event_id": "test_agent_policy_guard",
+        "user_id": "policy_user",
+        "event_type": "hardware_power_panic",
+        "contacts": [{"id": "c1", "name": "Test", "phone": "+10000000000", "authorized": True}],
+    })
+    advisory = {
+        "threat_level": "LOW",
+        "confidence_score": 0.99,
+        "decision": "MONITOR_NORMAL",
+        "rationale": "No action recommended.",
+    }
+    with patch("aws.agent.guardian_agent._query_bedrock_llm", return_value=advisory):
+        result = execute_agent_reasoning(panic["incident_id"])
+    assert result["decision"] == "ESCALATE_IMMEDIATELY_WITH_COMMUNITY"
+    assert result["provider"] == "Deterministic policy v1 + Amazon Bedrock advisory"
 
 
 def test_hardware_panic_immediate_critical_and_community_dispatch():

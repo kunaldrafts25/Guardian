@@ -216,28 +216,4 @@ class AwsSnsService {
   }
 
   // ─── SNS Push Helpers (via backend) ───────────────────────────────────────
-
-  /// Convenience method: send a push notification to a user via the backend SNS API
-  /// Called from SosService when alerting emergency contacts
-  static Future<bool> sendPushToUser({
-    required String userId,
-    required String title,
-    required String body,
-    String notificationType = 'general',
-    Map<String, String>? data,
-  }) async {
-    try {
-      await AwsAuthService.instance.post('/push/send', {
-        'user_id': userId,
-        'title': title,
-        'body': body,
-        'notification_type': notificationType,
-        'data': data ?? {},
-      });
-      return true;
-    } catch (e) {
-      Logger.warning('SNS push failed: $e');
-      return false;
-    }
-  }
 }

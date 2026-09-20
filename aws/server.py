@@ -54,8 +54,10 @@ except ImportError:
     pass
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Dict, Any, Optional, List
 import uuid
 
@@ -83,7 +85,6 @@ from aws.sns_push_service import (
     send_push_to_user,
     send_sms_alert,
     send_community_sos_broadcast,
-    send_emergency_contact_alerts,
 )
 from aws.auth_middleware import (
     AuthenticationMiddleware,
@@ -107,6 +108,50 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+
+def _error_payload(request: Request, code: str, message: str, retryable: bool):
+    return {
+        "error": {
+            "code": code,
+            "message": message,
+            "retryable": retryable,
+            "correlation_id": getattr(request.state, "correlation_id", "unknown"),
+        }
+    }
+
+
+@app.middleware("http")
+async def correlation_middleware(request: Request, call_next):
+    supplied = request.headers.get("X-Correlation-ID", "")
+    request.state.correlation_id = (
+        supplied if 0 < len(supplied) <= 128 and supplied.isascii() else str(uuid.uuid4())
+    )
+    response = await call_next(request)
+    response.headers["X-Correlation-ID"] = request.state.correlation_id
+    return response
+
+
+@app.exception_handler(HTTPException)
+async def http_error_handler(request: Request, error: HTTPException):
+    return JSONResponse(
+        status_code=error.status_code,
+        content=_error_payload(
+            request,
+            f"HTTP_{error.status_code}",
+            str(error.detail),
+            error.status_code >= 500 or error.status_code == 429,
+        ),
+        headers=error.headers,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, error: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content=_error_payload(request, "VALIDATION_ERROR", "Request validation failed", False),
+    )
 
 
 def _require_role(request: Request, role: str) -> None:
@@ -225,7 +270,6 @@ def api_assistant_chat(req: AssistantRequest):
 class UpdateProfileRequest(BaseModel):
     display_name: Optional[str] = None
     photo_url: Optional[str] = None
-    emergency_contacts: Optional[List[Dict[str, Any]]] = None
     safe_zones: Optional[List[Dict[str, Any]]] = None
     guardian_circle: Optional[List[str]] = None
     settings: Optional[Dict[str, Any]] = None
@@ -236,8 +280,20 @@ class RegisterDeviceRequest(BaseModel):
     platform: str = "android"  # "android" | "ios"
 
 
+class EmergencyContactRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=120)
+    phone: str = Field(pattern=r"^\+[1-9][0-9]{7,14}$")
+    relation: str = Field(default="", max_length=80)
+    is_primary: bool = False
+
+
 class SaveContactsRequest(BaseModel):
-    contacts: List[Dict[str, Any]]
+    model_config = ConfigDict(extra="forbid")
+
+    contacts: List[EmergencyContactRequest] = Field(max_length=5)
 
 
 def _owned_incident(incident_id: str, request: Request) -> Dict[str, Any]:
@@ -287,7 +343,10 @@ def api_save_contacts(user_id: str, req: SaveContactsRequest, request: Request):
     """Save emergency contacts to DynamoDB user profile."""
     if user_id != authenticated_user_id(request):
         raise HTTPException(status_code=403, detail="Contact update denied")
-    result = update_user_profile(user_id, {"emergency_contacts": req.contacts})
+    result = update_user_profile(
+        user_id,
+        {"emergency_contacts": [contact.model_dump() for contact in req.contacts]},
+    )
     return result
 
 
@@ -296,7 +355,8 @@ def api_save_contacts(user_id: str, req: SaveContactsRequest, request: Request):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class PushRequest(BaseModel):
-    user_id: str
+    model_config = ConfigDict(extra="forbid")
+
     title: str
     body: str
     data: Optional[Dict[str, str]] = None
@@ -325,10 +385,9 @@ class ContactNotificationRequest(BaseModel):
 @app.post("/push/send")
 def api_send_push(req: PushRequest, request: Request):
     """Send targeted push notification to a user via SNS."""
-    if req.user_id != authenticated_user_id(request):
-        raise HTTPException(status_code=403, detail="Push notification access denied")
+    user_id = authenticated_user_id(request)
     result = send_push_to_user(
-        user_id=req.user_id,
+        user_id=user_id,
         title=req.title,
         body=req.body,
         data=req.data,
@@ -406,16 +465,18 @@ def api_sos_broadcast(req: SosBroadcastRequest, request: Request):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class IncidentCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     event_id: Optional[str] = None
-    user_id: Optional[str] = "guardian_user_1"
     event_type: str = "fall_detected"
     location: Optional[Dict[str, Any]] = None
     motion_data: Optional[Dict[str, Any]] = None
 
 
 class IncidentStatusUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     state: str
-    actor: Optional[str] = "USER"
     note: Optional[str] = ""
 
 
@@ -437,15 +498,6 @@ def api_create_incident(
 
     # Trigger autonomous AI agent evaluation in background
     background_tasks.add_task(execute_agent_reasoning, iid)
-    
-    # Auto-alert emergency contacts for critical events
-    if req.event_type in ("sos_button", "hardware_power_panic", "crash_detected"):
-        background_tasks.add_task(
-            send_emergency_contact_alerts,
-            owner_id,
-            iid,
-            req.location or {},
-        )
     
     return incident
 
@@ -496,16 +548,11 @@ def api_get_nearby_responders(
 @app.post("/incidents/{incident_id}/accept")
 def api_accept_mission(
     incident_id: str,
-    req: Dict[str, Any],
     request: Request,
 ):
     from aws.agent.tools import accept_rescue_mission
     _require_role(request, "responder")
-    responder_id = (
-        req.get("responder_id", "resp_01")
-        if is_dev_mode()
-        else authenticated_user_id(request)
-    )
+    responder_id = authenticated_user_id(request)
     try:
         result = accept_rescue_mission(incident_id, responder_id)
         
@@ -579,11 +626,10 @@ def api_dispatch_community(
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ResponderHeartbeatRequest(BaseModel):
-    responder_id: Optional[str] = None
-    name: str = "Good Samaritan"
-    latitude: float = 19.0760
-    longitude: float = 72.8777
-    trust_score: int = 80
+    model_config = ConfigDict(extra="forbid")
+
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
     is_active: bool = True
 
 
@@ -591,17 +637,11 @@ class ResponderHeartbeatRequest(BaseModel):
 def api_responder_heartbeat(req: ResponderHeartbeatRequest, request: Request):
     from aws.agent.tools import register_responder_heartbeat
     _require_role(request, "responder")
-    responder_id = (
-        req.responder_id
-        if is_dev_mode() and req.responder_id
-        else authenticated_user_id(request)
-    )
+    responder_id = authenticated_user_id(request)
     res = register_responder_heartbeat(
         responder_id=responder_id,
-        name=req.name,
         latitude=req.latitude,
         longitude=req.longitude,
-        trust_score=req.trust_score if is_dev_mode() else 0,
         is_active=req.is_active,
     )
     return res
@@ -616,11 +656,30 @@ def api_trigger_agent_step(incident_id: str, request: Request):
     return res
 
 
+@app.post("/incidents/{incident_id}/escalate")
+def api_escalate_incident(incident_id: str, request: Request):
+    """Owner-requested escalation through idempotent policy tools."""
+    _owned_incident(incident_id, request)
+    from aws.agent.tools import dispatch_community_alert, notify_trusted_contact
+
+    try:
+        contact_result = notify_trusted_contact(incident_id)
+        community_result = dispatch_community_alert(incident_id)
+        return {
+            "incident_id": incident_id,
+            "contact_alert": contact_result,
+            "community_dispatch": community_result,
+        }
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error))
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DEMO SIMULATOR
 # ─────────────────────────────────────────────────────────────────────────────
 
-@app.post("/simulate/{scenario}")
 def api_simulate_scenario(
     scenario: str,
     background_tasks: BackgroundTasks,
@@ -630,9 +689,6 @@ def api_simulate_scenario(
     Demo Simulator — triggers realistic test incidents.
     scenario: 'fall' | 'sos' | 'inactivity' | 'hardware_panic'
     """
-    if not is_dev_mode():
-        raise HTTPException(status_code=404, detail="Simulation endpoints are disabled")
-
     scenarios = {
         "fall": {
             "event_type": "fall_detected",
@@ -683,6 +739,10 @@ def api_simulate_scenario(
         "message": f"Simulated '{scenario}' incident initiated successfully.",
         "incident": incident,
     }
+
+
+if is_dev_mode():
+    app.post("/simulate/{scenario}", include_in_schema=False)(api_simulate_scenario)
 
 
 if __name__ == "__main__":

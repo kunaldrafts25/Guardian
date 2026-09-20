@@ -12,6 +12,7 @@ import 'package:guardian/core/database/guardian_database.dart';
 import 'package:guardian/core/models/emergency_domain.dart';
 import 'package:guardian/core/models/emergency_model.dart';
 import 'package:guardian/core/providers/auth_provider.dart';
+import 'package:guardian/core/providers/aws_incident_provider.dart';
 import 'package:guardian/core/providers/contacts_provider.dart';
 import 'package:guardian/core/providers/sos_settings_provider.dart';
 import 'package:guardian/core/services/aws_auth_service.dart';
@@ -146,7 +147,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       state: SosState.active,
       activeEmergency: Emergency(
         id: alert.cloudIncidentId ?? alert.alertId,
-        userId: userId,
+        userId: alert.userId,
         status: EmergencyStatus.active,
         latitude: alert.latitude,
         longitude: alert.longitude,
@@ -207,6 +208,12 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
   }) async {
     final location = alert.currentLocation ?? alert.initialLocation;
     final database = _ref.read(databaseProvider);
+    final acceptedLocalDispatches =
+        alert.contactStatuses.where((status) => status.smsSent).length;
+    final evidencedMotionData = <String, dynamic>{
+      ...motionData,
+      'local_sms_accepted_count': acceptedLocalDispatches,
+    };
     final cloudPayload = <String, dynamic>{
       'event_type': eventType,
       if (location != null)
@@ -215,7 +222,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
           'longitude': location.longitude,
           'accuracy': location.accuracy,
         },
-      'motion_data': motionData,
+      'motion_data': evidencedMotionData,
     };
     try {
       final queued = await database.queueAlertForCloud(
@@ -267,7 +274,6 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     try {
       final incident = await AwsIncidentService.instance.createIncident(
         eventId: alert.id,
-        userId: userId,
         eventType: eventType,
         location: location != null
             ? {
@@ -276,7 +282,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
                 'accuracy': location.accuracy,
               }
             : null,
-        motionData: motionData,
+        motionData: evidencedMotionData,
       );
       final cloudIncidentId = incident['incident_id'] as String?;
       if (cloudIncidentId == null || cloudIncidentId.isEmpty) {
@@ -287,6 +293,8 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
         cloudIncidentId: cloudIncidentId,
       );
       await database.markOutboxSucceeded('${alert.id}:createIncident');
+      _ref.read(awsIncidentProvider.notifier).startPolling(cloudIncidentId);
+      await _ref.read(awsIncidentProvider.notifier).pollStatus(cloudIncidentId);
       return cloudIncidentId;
     } catch (error) {
       await database.markOutboxRetry(

@@ -38,6 +38,15 @@ _LOCAL_IDEMPOTENCY: Dict[str, str] = {}
 _LOCAL_STORE_LOCK = threading.RLock()
 
 
+def _local_store_enabled() -> bool:
+    return os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+
+
+def _require_local_store() -> None:
+    if not _local_store_enabled():
+        raise RuntimeError("DynamoDB is unavailable and GUARDIAN_DEV_MODE is not enabled")
+
+
 def get_dynamo_resource():
     if BOTO3_AVAILABLE and os.environ.get("AWS_EXECUTION_ENV"):
         return boto3.resource("dynamodb", region_name=AWS_REGION)
@@ -65,6 +74,7 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         # Check if event_id already exists via GSI or scan/query
         # For atomic creation, we check our local/cache or conditional put
     else:
+        _require_local_store()
         local_idempotency_key = f"{user_id}:{event_id}"
         if local_idempotency_key in _LOCAL_IDEMPOTENCY:
             existing_id = _LOCAL_IDEMPOTENCY[local_idempotency_key]
@@ -148,6 +158,7 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
                 ]
             )
     else:
+        _require_local_store()
         _LOCAL_INCIDENTS[incident_id] = incident_record
         _LOCAL_EVENTS[incident_id] = [timeline_entry]
         _LOCAL_IDEMPOTENCY[f"{user_id}:{event_id}"] = incident_id
@@ -207,6 +218,7 @@ def update_incident_status(incident_id: str, new_state: str, actor: str = "USER"
                 f"Stale transition from {current_state}; current state is {latest_state}"
             ) from error
     else:
+        _require_local_store()
         with _LOCAL_STORE_LOCK:
             incident = _LOCAL_INCIDENTS.get(incident_id)
             if not incident:
@@ -239,6 +251,7 @@ def update_incident_status(incident_id: str, new_state: str, actor: str = "USER"
         events_table = dynamo.Table(DYNAMODB_EVENTS_TABLE)
         events_table.put_item(Item=timeline_entry)
     else:
+        _require_local_store()
         with _LOCAL_STORE_LOCK:
             _LOCAL_EVENTS.setdefault(incident_id, []).append(timeline_entry)
 
@@ -251,6 +264,7 @@ def get_incident(incident_id: str) -> Optional[Dict[str, Any]]:
         table = dynamo.Table(DYNAMODB_INCIDENTS_TABLE)
         resp = table.get_item(Key={"incident_id": incident_id})
         return resp.get("Item")
+    _require_local_store()
     return _LOCAL_INCIDENTS.get(incident_id)
 
 
@@ -264,6 +278,7 @@ def get_incident_timeline(incident_id: str) -> list:
             ScanIndexForward=True,
         )
         return resp.get("Items", [])
+    _require_local_store()
     return _LOCAL_EVENTS.get(incident_id, [])
 
 

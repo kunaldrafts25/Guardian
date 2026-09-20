@@ -56,14 +56,15 @@ def _cognito_identity(access_token: str) -> Optional[Tuple[str, FrozenSet[str]]]
         )
         result = client.get_user(AccessToken=access_token)
         user_id = result.get("Username")
-        attributes = {
-            item.get("Name"): item.get("Value")
-            for item in result.get("UserAttributes", [])
-        }
+        group_result = client.admin_list_groups_for_user(
+            Username=user_id,
+            UserPoolId=pool_id,
+            Limit=20,
+        )
         groups = frozenset(
-            value.strip()
-            for value in attributes.get("custom:roles", "").split(",")
-            if value.strip()
+            str(group.get("GroupName", "")).strip()
+            for group in group_result.get("Groups", [])
+            if str(group.get("GroupName", "")).strip()
         )
         return (user_id, groups) if user_id else None
     except Exception:

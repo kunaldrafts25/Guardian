@@ -35,7 +35,7 @@ def test_incident_is_not_readable_by_another_user():
     assert response.status_code == 403
 
 
-def test_push_cannot_target_another_user():
+def test_push_contract_rejects_client_supplied_user_identity():
     response = client.post(
         "/push/send",
         json={
@@ -44,7 +44,15 @@ def test_push_cannot_target_another_user():
             "body": "test",
         },
     )
-    assert response.status_code == 403
+    assert response.status_code == 422
+
+
+def test_incident_contract_rejects_client_supplied_user_identity():
+    response = client.post(
+        "/incidents",
+        json={"user_id": "another_user", "event_type": "sos_button"},
+    )
+    assert response.status_code == 422
 
 
 def test_health_endpoint():
@@ -80,7 +88,7 @@ def test_e2e_fall_simulation_flow():
     # 4. User confirms I'M OK
     ok_resp = client.put(
         f"/incidents/{incident_id}/status",
-        json={"state": "RESOLVED", "actor": "USER", "note": "User clicked I'M OK"},
+        json={"state": "RESOLVED", "note": "User clicked I'M OK"},
     )
     assert ok_resp.status_code == 200
     assert ok_resp.json()["state"] == "RESOLVED"

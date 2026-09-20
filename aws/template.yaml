@@ -223,6 +223,7 @@ Resources:
                 - cognito-idp:AdminSetUserPassword
                 - cognito-idp:GetUser
                 - cognito-idp:GlobalSignOut
+                - cognito-idp:AdminListGroupsForUser
               Resource: !GetAtt GuardianUserPool.Arn
             - Effect: Allow
               Action:

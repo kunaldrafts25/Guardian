@@ -40,10 +40,19 @@ class AwsIncidentState {
   String get riskLevel =>
       (currentIncident?['risk_assessment']?['level'] as String?) ?? 'LOW';
 
-  bool get isSuspected => state == 'SUSPECTED';
-  bool get isVerifying => state == 'VERIFYING';
-  bool get isResponding => state == 'RESPONDING';
-  bool get isResolved => state == 'RESOLVED';
+  bool get isSuspected => state == 'CLOUD_ACCEPTED';
+  bool get isVerifying =>
+      state == 'CLOUD_ACCEPTED' && agentDecision == 'REQUEST_USER_VERIFICATION';
+  bool get isResponding => const {
+        'CONTACTS_NOTIFIED',
+        'COMMUNITY_OFFERED',
+        'RESPONDERS_ACCEPTED',
+        'RESPONDERS_EN_ROUTE',
+        'HELP_ARRIVED',
+        'ESCALATED_TO_EMERGENCY_SERVICES',
+      }.contains(state);
+  bool get isResolved =>
+      const {'RESOLVED', 'CANCELLED', 'EXPIRED'}.contains(state);
   bool get hasActiveIncident => currentIncident != null && !isResolved;
   bool get isCommunityDispatched =>
       agentDecision.contains('COMMUNITY') ||
@@ -119,13 +128,7 @@ class AwsIncidentNotifier extends StateNotifier<AwsIncidentState> {
       Logger.warning(
           '15s Verification timed out. Escalating to trusted contacts.');
       try {
-        await _service.updateIncidentStatus(
-          iid,
-          'RESPONDING',
-          actor: 'SYSTEM',
-          note:
-              'Verification timeout (15s elapsed without response). Escalating alert.',
-        );
+        await _service.escalateIncident(iid);
         await pollStatus(iid);
       } catch (e) {
         Logger.error('Failed to escalate on timeout', e);
@@ -179,12 +182,11 @@ class AwsIncidentNotifier extends StateNotifier<AwsIncidentState> {
   }
 
   /// Accept rescue mission as a community helper
-  Future<Map<String, dynamic>?> acceptMission(
-      {String responderId = 'resp_01'}) async {
+  Future<Map<String, dynamic>?> acceptMission() async {
     final iid = state.incidentId;
     if (iid == null) return null;
     try {
-      final res = await _service.acceptMission(iid, responderId: responderId);
+      final res = await _service.acceptMission(iid);
       state = state.copyWith(activeMission: res);
       await pollStatus(iid);
       return res;
@@ -206,7 +208,6 @@ class AwsIncidentNotifier extends StateNotifier<AwsIncidentState> {
       await _service.updateIncidentStatus(
         iid,
         'RESOLVED',
-        actor: 'USER',
         note: "User tapped 'I'M OK'. Incident marked false alarm / resolved.",
       );
       await pollStatus(iid);
@@ -227,42 +228,13 @@ class AwsIncidentNotifier extends StateNotifier<AwsIncidentState> {
     _countdownTimer?.cancel();
     state = state.copyWith(isLoading: true);
     try {
-      await _service.updateIncidentStatus(
-        iid,
-        'RESPONDING',
-        actor: 'USER',
-        note:
-            "User confirmed emergency alert. Dispatching contacts immediately.",
-      );
+      await _service.escalateIncident(iid);
       await pollStatus(iid);
       state = state.copyWith(isLoading: false);
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Failed to escalate: $e',
-      );
-    }
-  }
-
-  /// Contact acknowledges alert
-  Future<void> acknowledgeAlert() async {
-    final iid = state.incidentId;
-    if (iid == null) return;
-
-    state = state.copyWith(isLoading: true);
-    try {
-      await _service.updateIncidentStatus(
-        iid,
-        'RESOLVED',
-        actor: 'CONTACT',
-        note: 'Trusted contact acknowledged emergency and arrived/called.',
-      );
-      await pollStatus(iid);
-      state = state.copyWith(isLoading: false);
-    } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: 'Failed to acknowledge: $e',
       );
     }
   }

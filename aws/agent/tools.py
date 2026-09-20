@@ -25,6 +25,7 @@ from aws.incident_handler.handler import (
 )
 from aws.cognito_service import get_user_profile
 from aws.agent.risk_engine import assess_incident_risk
+from aws.sns_push_service import send_sms_alert
 
 try:
     import boto3
@@ -32,7 +33,6 @@ try:
 except ImportError:
     BOTO3_AVAILABLE = False
 
-SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN", "")
 DYNAMODB_RESPONDERS_TABLE = os.environ.get("DYNAMODB_RESPONDERS_TABLE", "guardian-responders")
 DYNAMODB_MISSIONS_TABLE = os.environ.get("DYNAMODB_MISSIONS_TABLE", "guardian-missions")
 
@@ -102,7 +102,40 @@ def notify_trusted_contact(incident_id: str, contact_id: Optional[str] = None) -
     Transitions state to CONTACTS_NOTIFIED only after dispatch acceptance.
     """
     ctx = get_incident_context(incident_id)
+    if ctx.get("state") in {
+        IncidentState.CONTACTS_NOTIFIED.value,
+        IncidentState.COMMUNITY_OFFERED.value,
+        IncidentState.RESPONDERS_ACCEPTED.value,
+        IncidentState.RESPONDERS_EN_ROUTE.value,
+        IncidentState.HELP_ARRIVED.value,
+        IncidentState.ESCALATED_TO_EMERGENCY_SERVICES.value,
+        IncidentState.RESOLVED.value,
+        IncidentState.CANCELLED.value,
+        IncidentState.EXPIRED.value,
+    }:
+        return {
+            "incident_id": incident_id,
+            "delivery_status": "ALREADY_PROCESSED",
+            "state": ctx.get("state"),
+        }
     contacts = ctx.get("contacts", [])
+    local_accepted = int((ctx.get("motion_data") or {}).get("local_sms_accepted_count", 0))
+    if local_accepted > 0:
+        res = update_incident_status(
+            incident_id=incident_id,
+            new_state=IncidentState.CONTACTS_NOTIFIED.value,
+            actor="DEVICE",
+            note=(
+                f"The user's device recorded {local_accepted} provider-accepted SMS "
+                "dispatch attempt(s); cloud duplicate suppressed."
+            ),
+        )
+        return {
+            "incident_id": incident_id,
+            "delivery_status": "LOCAL_PROVIDER_ACCEPTED",
+            "accepted_count": local_accepted,
+            "state": res.get("state"),
+        }
     
     target_contact = None
     if contact_id:
@@ -111,42 +144,38 @@ def notify_trusted_contact(incident_id: str, contact_id: Optional[str] = None) -
         target_contact = contacts[0]
 
     # Policy Check: Is the recipient in the user's authorized contacts list?
-    if not target_contact or not target_contact.get("authorized", False):
+    if not target_contact:
         raise PermissionError(f"Contact {contact_id} is not authorized for emergency alerts.")
 
     # Publish to AWS SNS
-    lat = ctx.get("location", {}).get("latitude", 19.0760)
-    lng = ctx.get("location", {}).get("longitude", 72.8777)
-    maps_url = f"https://maps.google.com/?q={lat},{lng}"
+    location = ctx.get("location") or {}
+    lat = location.get("latitude")
+    lng = location.get("longitude")
+    maps_line = (
+        f"Live GPS Location: https://maps.google.com/?q={lat},{lng}\n\n"
+        if isinstance(lat, (int, float)) and isinstance(lng, (int, float))
+        else "Current location was unavailable.\n\n"
+    )
     
-    alert_subject = f"EMERGENCY ALERT: Guardian Safety Alert for {ctx.get('user_id')}"
     alert_message = (
         f"🚨 GUARDIAN EMERGENCY ALERT 🚨\n\n"
         f"User: {ctx.get('user_id')}\n"
         f"Incident ID: {incident_id}\n"
         f"Event: {ctx.get('event_type')}\n"
         f"Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
-        f"Live GPS Location: {maps_url}\n\n"
+        f"{maps_line}"
         f"The user did not respond to safety verification. Immediate assistance requested."
     )
 
-    if not SNS_TOPIC_ARN or not BOTO3_AVAILABLE or not os.environ.get("AWS_EXECUTION_ENV"):
-        if not _dev_mode():
-            raise RuntimeError("AWS SNS is not configured; emergency alert was not sent")
+    if _dev_mode() and not os.environ.get("AWS_EXECUTION_ENV"):
         sns_message_id = None
         delivery_status = "DEV_MODE_NOT_SENT"
     else:
-        try:
-            sns = boto3.client("sns", region_name=AWS_REGION)
-            pub_res = sns.publish(
-                TopicArn=SNS_TOPIC_ARN,
-                Subject=alert_subject[:100],
-                Message=alert_message,
-            )
-            sns_message_id = pub_res.get("MessageId")
-            delivery_status = "SENT"
-        except Exception as exc:
-            raise RuntimeError("AWS SNS publish failed; emergency alert was not sent") from exc
+        dispatch = send_sms_alert(str(target_contact.get("phone", "")), alert_message)
+        if not dispatch.get("success"):
+            raise RuntimeError("AWS SNS SMS was not accepted; emergency alert was not sent")
+        sns_message_id = dispatch.get("message_id")
+        delivery_status = "PROVIDER_ACCEPTED"
 
     # Record the distinct contact-delivery lifecycle state.
     res = update_incident_status(
@@ -171,39 +200,9 @@ def notify_trusted_contact(incident_id: str, contact_id: Optional[str] = None) -
 
 import math
 
-# Local responder records are test/dev-only. Production uses DynamoDB.
-_LOCAL_RESPONDERS: Dict[str, Dict[str, Any]] = {
-    "resp_01": {
-        "responder_id": "resp_01",
-        "name": "Dr. Ananya Rao",
-        "phone": "+919811122233",
-        "latitude": 19.0772,
-        "longitude": 72.8785,
-        "trust_score": 92,  # Verified Medical / Community Responder
-        "is_active": True,
-        "fcm_token": "fcm_token_ananya",
-    },
-    "resp_02": {
-        "responder_id": "resp_02",
-        "name": "Vikram Seth (Verified Volunteer)",
-        "phone": "+919811122244",
-        "latitude": 19.0751,
-        "longitude": 72.8765,
-        "trust_score": 84,  # High Trust Good Samaritan
-        "is_active": True,
-        "fcm_token": "fcm_token_vikram",
-    },
-    "resp_low_trust": {
-        "responder_id": "resp_low_trust",
-        "name": "Unverified User",
-        "phone": "+919811122255",
-        "latitude": 19.0762,
-        "longitude": 72.8770,
-        "trust_score": 45,  # Below minimum trust threshold (<70)
-        "is_active": True,
-        "fcm_token": "fcm_token_low",
-    },
-}
+# Explicit development mode may use an in-process store, but it starts empty.
+# Tests seed their own records; production never ships invented responders.
+_LOCAL_RESPONDERS: Dict[str, Dict[str, Any]] = {}
 
 _LOCAL_MISSIONS: Dict[str, Dict[str, Any]] = {}
 
@@ -221,22 +220,26 @@ def _coarse_location(location: Dict[str, Any]) -> Dict[str, float]:
 
 def register_responder_heartbeat(
     responder_id: str,
-    name: str,
     latitude: float,
     longitude: float,
-    trust_score: int = 80,
     is_active: bool = True,
+    *,
+    name: Optional[str] = None,
+    trust_score: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Register or update active responder location."""
     record = {
         "responder_id": responder_id,
-        "name": name,
         "latitude": latitude,
         "longitude": longitude,
         "is_active": is_active,
         "last_seen": datetime.now(timezone.utc).isoformat(),
         "availability_expires_at": int(datetime.now(timezone.utc).timestamp()) + 300,
     }
+    if name is not None:
+        record["name"] = name
+    if trust_score is not None:
+        record["trust_score"] = trust_score
     dynamo = get_dynamo_resource()
     if dynamo:
         table = dynamo.Table(DYNAMODB_RESPONDERS_TABLE)
@@ -259,6 +262,10 @@ def register_responder_heartbeat(
         )
         record = {**existing, **record}
     elif _dev_mode():
+        existing = _LOCAL_RESPONDERS.get(responder_id)
+        if not existing or existing.get("verification_status") != "APPROVED":
+            raise PermissionError("Responder enrollment is not approved")
+        record = {**existing, **record}
         _LOCAL_RESPONDERS[responder_id] = record
     else:
         raise RuntimeError("Responder registry is unavailable")
@@ -291,9 +298,11 @@ def find_nearby_responders(incident_id: str, radius_meters: float = 1200.0) -> L
     Anti-Abuse Gating: Filters out any user with trust_score < 70.
     """
     ctx = get_incident_context(incident_id)
-    inc_loc = ctx.get("location") or {"latitude": 19.0760, "longitude": 72.8777}
-    lat1 = inc_loc.get("latitude", 19.0760)
-    lng1 = inc_loc.get("longitude", 72.8777)
+    inc_loc = ctx.get("location") or {}
+    lat1 = inc_loc.get("latitude")
+    lng1 = inc_loc.get("longitude")
+    if not isinstance(lat1, (int, float)) or not isinstance(lng1, (int, float)):
+        return []
 
     eligible_responders = []
     now_epoch = int(datetime.now(timezone.utc).timestamp())
@@ -339,7 +348,28 @@ def dispatch_community_alert(incident_id: str) -> Dict[str, Any]:
     Anti-Abuse Check 3: Differential Geo-Obfuscation (General landmark given initially).
     """
     ctx = get_incident_context(incident_id)
+    if ctx.get("state") in {
+        IncidentState.COMMUNITY_OFFERED.value,
+        IncidentState.RESPONDERS_ACCEPTED.value,
+        IncidentState.RESPONDERS_EN_ROUTE.value,
+        IncidentState.HELP_ARRIVED.value,
+        IncidentState.RESOLVED.value,
+        IncidentState.CANCELLED.value,
+        IncidentState.EXPIRED.value,
+    }:
+        return {
+            "incident_id": incident_id,
+            "status": "ALREADY_DISPATCHED",
+            "dispatched_count": 0,
+        }
     responders = find_nearby_responders(incident_id)
+
+    if not responders:
+        return {
+            "incident_id": incident_id,
+            "status": "NO_ELIGIBLE_RESPONDERS",
+            "dispatched_count": 0,
+        }
 
     # Anti-Lure Defense: Quorum Check
     is_isolated = ctx.get("location", {}).get("is_isolated", False)
@@ -355,8 +385,6 @@ def dispatch_community_alert(incident_id: str) -> Dict[str, Any]:
         }
 
     # Prepare obfuscated public broadcast payload
-    lat = ctx.get("location", {}).get("latitude", 19.0760)
-    lng = ctx.get("location", {}).get("longitude", 72.8777)
     now = datetime.now(timezone.utc)
     invitation_expiry = int(now.timestamp()) + 180
     dynamo = get_dynamo_resource()
@@ -389,10 +417,10 @@ def dispatch_community_alert(incident_id: str) -> Dict[str, Any]:
         "incident_id": incident_id,
         "event_type": ctx.get("event_type"),
         "approximate_location": {
-            "area": "Near Station Road / Market Cross",
-            "distance_hint": f"~{responders[0]['distance_meters']}m from you" if responders else "Nearby",
+            "latitude": round(float(ctx["location"]["latitude"]), 2),
+            "longitude": round(float(ctx["location"]["longitude"]), 2),
+            "distance_hint": f"~{responders[0]['distance_meters']}m from you",
         },
-        "tamper_proof_evidence_recording": True,  # Mutual digital witness activated
         "quorum_size": len(responders),
         "invite_count": min(len(responders), 6),
     }

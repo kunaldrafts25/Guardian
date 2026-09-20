@@ -257,8 +257,8 @@ def send_sms_alert(
         return {"success": False, "error": "SNS client unavailable"}
 
     phone = phone_number.strip()
-    if not phone.startswith("+"):
-        phone = f"+91{phone}"
+    if not phone.startswith("+") or not phone[1:].isdigit() or not 8 <= len(phone[1:]) <= 15:
+        return {"success": False, "error": "Phone number must use E.164 format"}
 
     try:
         resp = sns.publish(

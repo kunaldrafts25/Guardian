@@ -126,7 +126,11 @@ def test_nearby_responders_and_accept_handler():
     req = {
         "httpMethod": "POST",
         "path": "/incidents",
-        "body": json.dumps({"event_id": "test_evt_handler_comm", "event_type": "hardware_power_panic"}),
+        "body": json.dumps({
+            "event_id": "test_evt_handler_comm",
+            "event_type": "hardware_power_panic",
+            "location": {"latitude": 19.0760, "longitude": 72.8777},
+        }),
     }
     resp = lambda_handler(req, None)
     incident_id = json.loads(resp["body"])["incident_id"]

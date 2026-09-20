@@ -78,7 +78,7 @@ class AgentObservabilityCard extends ConsumerWidget {
                   ),
                   const SizedBox(width: 8),
                   const Text(
-                    'AWS Bedrock Agent',
+                    'Guardian Safety Agent',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -287,7 +287,7 @@ class AgentObservabilityCard extends ConsumerWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Escalated! Alerts dispatched to emergency contacts via AWS SNS.',
+                          'Escalation is active. Open the emergency screen for recorded channel status.',
                           style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -295,18 +295,6 @@ class AgentObservabilityCard extends ConsumerWidget {
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 10),
-                  ElevatedButton.icon(
-                    onPressed: () => notifier.acknowledgeAlert(),
-                    icon: const Icon(Icons.check_circle_outline, size: 16),
-                    label: const Text('Simulate Contact Acknowledgment'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade700,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                    ),
                   ),
                 ],
               ),
@@ -356,10 +344,20 @@ class AgentObservabilityCard extends ConsumerWidget {
   Widget _buildPipelineProgress(String currentState) {
     final stages = ['OBSERVE', 'ASSESS', 'VERIFY', 'RESPOND'];
     int activeIndex = 0;
-    if (currentState == 'SUSPECTED') activeIndex = 1;
-    if (currentState == 'VERIFYING') activeIndex = 2;
-    if (currentState == 'RESPONDING' || currentState == 'RESOLVED')
+    if (currentState == 'CLOUD_ACCEPTED') activeIndex = 2;
+    if (const {
+      'CONTACTS_NOTIFIED',
+      'COMMUNITY_OFFERED',
+      'RESPONDERS_ACCEPTED',
+      'RESPONDERS_EN_ROUTE',
+      'HELP_ARRIVED',
+      'ESCALATED_TO_EMERGENCY_SERVICES',
+      'RESOLVED',
+      'CANCELLED',
+      'EXPIRED',
+    }.contains(currentState)) {
       activeIndex = 3;
+    }
 
     return Row(
       children: List.generate(stages.length * 2 - 1, (index) {

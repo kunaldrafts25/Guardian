@@ -228,7 +228,7 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
       contactKey: Value(contact.id),
       contactUid: '',
       name: contact.name.trim(),
-      phone: contact.phone.trim(),
+      phone: _normalizePhone(contact.phone),
       relationship: Value(contact.relation.trim()),
       isPrimary: Value(contact.isPrimary),
       updatedAt: Value(DateTime.now()),
@@ -353,10 +353,17 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
     if (contact.name.trim().isEmpty) {
       throw const FormatException('Contact name is required.');
     }
-    final digits = contact.phone.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length < 7 || digits.length > 15) {
-      throw const FormatException('Enter a valid phone number.');
+    _normalizePhone(contact.phone);
+  }
+
+  String _normalizePhone(String value) {
+    final normalized = value.trim().replaceAll(RegExp(r'[\s().-]'), '');
+    if (!RegExp(r'^\+[1-9][0-9]{7,14}$').hasMatch(normalized)) {
+      throw const FormatException(
+        'Use international format with country code, for example +919876543210.',
+      );
     }
+    return normalized;
   }
 
   @override

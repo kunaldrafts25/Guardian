@@ -80,7 +80,6 @@ class OfflineSyncService {
             final motionValue = payload['motion_data'];
             final incident = await AwsIncidentService.instance.createIncident(
               eventId: operation.aggregateId,
-              userId: userId,
               eventType: payload['event_type'] as String,
               location: locationValue is Map
                   ? Map<String, dynamic>.from(locationValue)
@@ -110,7 +109,6 @@ class OfflineSyncService {
             await AwsIncidentService.instance.updateIncidentStatus(
               cloudIncidentId,
               targetState,
-              actor: payload['actor'] as String? ?? 'user',
               note: 'Replayed durable local terminal transition',
             );
             break;
@@ -150,7 +148,6 @@ class OfflineSyncService {
       try {
         final incident = await AwsIncidentService.instance.createIncident(
           eventId: alert.alertId,
-          userId: userId,
           eventType: alert.source,
           location: alert.latitude != null && alert.longitude != null
               ? {
