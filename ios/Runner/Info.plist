@@ -28,7 +28,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>MinimumOSVersion</key>
-	<string>14.0</string>
+	<string>16.0</string>
 
 	<!-- ═══════════════════════════════════════════════════
 	     PRIVACY USAGE STRINGS — Required or app crashes
