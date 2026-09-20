@@ -14,7 +14,6 @@ import '../../../../core/providers/auth_provider.dart';
 import '../../../../core/providers/settings_provider.dart';
 import '../../../../core/providers/emergency_provider.dart';
 import '../../../../core/providers/user_provider.dart';
-import '../../../../core/services/ble_emergency_mesh.dart';
 import '../../../../core/services/sos_service.dart';
 import '../widgets/agent_observability_card.dart';
 
@@ -89,38 +88,6 @@ class DashboardScreen extends ConsumerWidget {
                                 ),
                               ],
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Consumer(
-                            builder: (context, ref, _) {
-                              final mesh = ref.watch(bleMeshProvider);
-                              final isScanning = mesh.isScanning;
-                              return Row(
-                                children: [
-                                  Icon(
-                                    isScanning
-                                        ? Icons.bluetooth_searching
-                                        : Icons.bluetooth_disabled,
-                                    size: 14,
-                                    color:
-                                        isScanning ? Colors.blue : Colors.grey,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    isScanning ? 'Mesh active' : 'Mesh offline',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodyMedium
-                                        ?.copyWith(
-                                          color: isScanning
-                                              ? Colors.blue
-                                              : Colors.grey,
-                                          fontSize: 12,
-                                        ),
-                                  ),
-                                ],
-                              );
-                            },
                           ),
                         ],
                       ),

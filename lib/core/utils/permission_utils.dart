@@ -43,9 +43,6 @@ class PermissionUtils {
       Permission.locationAlways,
       Permission.camera,
       Permission.microphone,
-      Permission.bluetooth,
-      Permission.bluetoothConnect,
-      Permission.bluetoothScan,
       Permission.notification,
       Permission.sms,
     ]);

@@ -162,6 +162,38 @@ void main() {
     expect(contacts.single.deletedAt, isNull);
   });
 
+  test('v7 migration removes only the retired mesh cache', () async {
+    await database.customStatement('''
+      CREATE TABLE local_mesh_beacons (
+        beacon_id TEXT NOT NULL PRIMARY KEY,
+        received_at INTEGER NOT NULL
+      )
+    ''');
+    await database.customStatement('''
+      INSERT INTO local_mesh_beacons (beacon_id, received_at)
+      VALUES ('retired-beacon', 1000)
+    ''');
+    await database.into(database.localAlerts).insert(
+          LocalAlertsCompanion.insert(
+            alertId: 'preserved-alert',
+            userId: 'user-1',
+            source: 'sos_button',
+            status: 'active',
+            startedAt: DateTime.utc(2026, 9, 20),
+          ),
+        );
+
+    await database.migration.onUpgrade(Migrator(database), 6, 7);
+
+    final retiredTable = await database
+        .customSelect(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'local_mesh_beacons'",
+        )
+        .get();
+    expect(retiredTable, isEmpty);
+    expect(await database.getAlert('preserved-alert'), isNotNull);
+  });
+
   test('terminal transition supersedes create and replay cannot reopen alert',
       () async {
     final startedAt = DateTime.utc(2026, 9, 19, 10);

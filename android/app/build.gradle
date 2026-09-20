@@ -27,7 +27,7 @@ if (flutterVersionName == null) {
 
 android {
     namespace = "com.company.guardian"
-    compileSdk = 36 // Updated to 36 to satisfy plugin requirements (flutter_blue_plus, geolocator, etc.)
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

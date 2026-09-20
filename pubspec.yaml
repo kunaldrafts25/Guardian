@@ -44,11 +44,6 @@ dependencies:
   sensors_plus: ^4.0.2
 
   # ═══════════════════════════════════════════════
-  # Bluetooth Mesh — offline alert relay
-  # ═══════════════════════════════════════════════
-  flutter_blue_plus: ^1.35.3
-
-  # ═══════════════════════════════════════════════
   # Audio — voice SOS + emergency recording
   # ═══════════════════════════════════════════════
   speech_to_text: ^7.0.0
@@ -76,7 +71,7 @@ dependencies:
   http: ^1.2.0
   uuid: ^4.5.1
   geohash_plus: ^1.1.0
-  crypto: ^3.0.5                     # For BLE beacon signature verification
+  crypto: ^3.0.5                     # Compact SMS integrity checks
 
   # ═══════════════════════════════════════════════
   # Notifications

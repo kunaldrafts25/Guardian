@@ -45,9 +45,6 @@ class AppIcons {
   static const IconData hidePassword = Icons.visibility_off_rounded;
 
   // Device icons
-  static const IconData bluetooth = Icons.bluetooth_rounded;
-  static const IconData bluetoothConnected = Icons.bluetooth_connected_rounded;
-  static const IconData bluetoothSearching = Icons.bluetooth_searching_rounded;
   static const IconData battery = Icons.battery_full_rounded;
   static const IconData batteryLow = Icons.battery_alert_rounded;
 

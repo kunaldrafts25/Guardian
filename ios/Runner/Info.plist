@@ -59,16 +59,6 @@
 	<key>NSMotionUsageDescription</key>
 	<string>Guardian uses motion sensors to detect shake gestures and falls that may trigger an emergency alert.</string>
 
-	<!-- Bluetooth — for BLE mesh offline alert relay -->
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Guardian uses Bluetooth to relay emergency alerts to nearby Guardian users even when there is no internet connection.</string>
-	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Guardian uses Bluetooth to connect to safety wearables and nearby Guardian users.</string>
-
-	<!-- Local Network — for WiFi Direct P2P mesh -->
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Guardian uses your local network to relay emergency alerts to nearby Guardian users when the internet is unavailable.</string>
-
 	<!-- Face ID — for biometric lock of sensitive settings -->
 	<key>NSFaceIDUsageDescription</key>
 	<string>Use Face ID to quickly authenticate and access Guardian settings.</string>
@@ -82,8 +72,6 @@
 		<string>fetch</string>
 		<string>remote-notification</string>
 		<string>audio</string>
-		<string>bluetooth-central</string>
-		<string>bluetooth-peripheral</string>
 		<string>processing</string>
 	</array>
 

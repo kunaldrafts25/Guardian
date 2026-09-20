@@ -93,7 +93,6 @@
 
 ### 5.2 Feature Testing
 - [ ] Test triple tap power button feature
-- [ ] Test Bluetooth device pairing
 - [ ] Test background services
 - [ ] Test battery optimization exceptions
 

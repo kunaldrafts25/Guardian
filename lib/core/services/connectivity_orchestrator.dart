@@ -44,9 +44,8 @@ class ConnectivityOrchestrator {
   }
 
   void _updateLayer(List<ConnectivityResult> results) {
-    final hasNetwork = results.any((result) =>
-        result != ConnectivityResult.none &&
-        result != ConnectivityResult.bluetooth);
+    final hasNetwork =
+        results.any((result) => result != ConnectivityResult.none);
     final next =
         hasNetwork ? ConnectivityLayer.internet : ConnectivityLayer.offline;
     if (next == _currentLayer) return;

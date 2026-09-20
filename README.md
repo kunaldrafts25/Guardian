@@ -155,7 +155,7 @@ Guardian/
 ├── lib/                             # Flutter Cross-Platform Mobile Application
 │   ├── app/                         # App initialization, routing (go_router), and themes
 │   ├── core/                        # Core services, providers (Riverpod), and database (Drift)
-│   │   ├── services/                # AWS services, OSM maps, Bluetooth mesh, power optimization
+│   │   ├── services/                # AWS services, OSM maps, and power optimization
 │   │   └── providers/               # State notifiers for incidents, location, safe zones
 │   └── features/                    # Feature modules (Dashboard, Map, SOS, Guardian Mode, Community)
 │       ├── dashboard/               # Observability card, simulator, and main cockpit

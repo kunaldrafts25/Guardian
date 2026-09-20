@@ -175,7 +175,6 @@
     "cameraPermissionDenied": "कैमरा की अनुमति अस्वीकृत",
     "microphonePermissionDenied": "माइक्रोफोन की अनुमति अस्वीकृत",
     "storagePermissionDenied": "स्टोरेज की अनुमति अस्वीकृत",
-    "bluetoothPermissionDenied": "ब्लूटूथ की अनुमति अस्वीकृत",
     "smsPermissionDenied": "एसएमएस की अनुमति अस्वीकृत"
   }
 }

@@ -90,5 +90,4 @@ class AppStrings {
   static const String cameraPermissionDenied = 'Camera permission denied';
   static const String microphonePermissionDenied =
       'Microphone permission denied';
-  static const String bluetoothPermissionDenied = 'Bluetooth permission denied';
 }

@@ -175,7 +175,6 @@
     "cameraPermissionDenied": "Camera permission denied",
     "microphonePermissionDenied": "Microphone permission denied",
     "storagePermissionDenied": "Storage permission denied",
-    "bluetoothPermissionDenied": "Bluetooth permission denied",
     "smsPermissionDenied": "SMS permission denied"
   }
 }

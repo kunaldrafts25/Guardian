@@ -10,7 +10,6 @@
  *   - local_safe_zones    — geofenced safe zones
  *   - local_check_ins     — scheduled check-ins
  *   - local_location_log  — last N GPS positions for dead reckoning + route learning
- *   - local_mesh_beacons  — received BLE mesh beacons (store-and-forward)
  *   - local_incidents     — community incidents pending sync
  */
 
@@ -112,24 +111,6 @@ class LocalLocationLog extends Table {
   DateTimeColumn get timestamp => dateTime().withDefault(currentDateAndTime)();
 }
 
-/// BLE mesh beacons — store-and-forward for offline alert relay
-class LocalMeshBeacons extends Table {
-  TextColumn get beaconId => text()(); // hash(userHash + timestamp)
-  TextColumn get userHash => text()(); // Pseudonymous identifier
-  RealColumn get latitude => real().nullable()();
-  RealColumn get longitude => real().nullable()();
-  IntColumn get hopCount => integer().withDefault(const Constant(0))();
-  IntColumn get maxHops => integer().withDefault(const Constant(5))();
-  BoolColumn get forwarded => boolean().withDefault(const Constant(false))();
-  BoolColumn get relayedToCloud =>
-      boolean().withDefault(const Constant(false))();
-  DateTimeColumn get receivedAt => dateTime().withDefault(currentDateAndTime)();
-  DateTimeColumn get expiresAt => dateTime()(); // Beacons expire after 24 hours
-
-  @override
-  Set<Column> get primaryKey => {beaconId};
-}
-
 /// Community incidents pending sync
 class LocalIncidents extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -208,7 +189,6 @@ class LocalDeliveryAttempts extends Table {
   LocalSafeZones,
   LocalCheckIns,
   LocalLocationLog,
-  LocalMeshBeacons,
   LocalIncidents,
   LocalIncidentEvents,
   LocalOutboxOperations,
@@ -220,7 +200,7 @@ class GuardianDatabase extends _$GuardianDatabase {
   GuardianDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -267,6 +247,9 @@ class GuardianDatabase extends _$GuardianDatabase {
             await migrator.addColumn(
                 localCheckIns, localCheckIns.escalationAlertId);
             await migrator.addColumn(localCheckIns, localCheckIns.updatedAt);
+          }
+          if (from < 7 && to >= 7) {
+            await migrator.deleteTable('local_mesh_beacons');
           }
         },
       );
@@ -766,32 +749,6 @@ class GuardianDatabase extends _$GuardianDatabase {
     ));
     return affected == 1;
   }
-
-  // ─────────────────────────────────────────────────
-  // BLE Mesh beacons
-  // ─────────────────────────────────────────────────
-
-  Future<bool> hasBeacon(String beaconId) async {
-    final row = await (select(localMeshBeacons)
-          ..where((t) => t.beaconId.equals(beaconId)))
-        .getSingleOrNull();
-    return row != null;
-  }
-
-  Future<void> storeBeacon(LocalMeshBeaconsCompanion beacon) =>
-      into(localMeshBeacons).insertOnConflictUpdate(beacon);
-
-  Future<List<LocalMeshBeacon>>
-      getUnforwardedBeacons() => (select(localMeshBeacons)
-            ..where((t) =>
-                t.forwarded.equals(false) &
-                t.hopCount.isSmallerThan(const Variable(5))))
-          .get();
-
-  /// Delete expired beacons (> 24 hours old)
-  Future<void> pruneExpiredBeacons() => (delete(localMeshBeacons)
-        ..where((t) => t.expiresAt.isSmallerThan(Variable(DateTime.now()))))
-      .go();
 }
 
 // ═══════════════════════════════════════════════════════

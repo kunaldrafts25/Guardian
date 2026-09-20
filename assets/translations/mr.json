@@ -175,7 +175,6 @@
     "cameraPermissionDenied": "कॅमेरा परवानगी नाकारली",
     "microphonePermissionDenied": "मायक्रोफोन परवानगी नाकारली",
     "storagePermissionDenied": "स्टोरेज परवानगी नाकारली",
-    "bluetoothPermissionDenied": "ब्लूटूथ परवानगी नाकारली",
     "smsPermissionDenied": "एसएमएस परवानगी नाकारली"
   }
 }
