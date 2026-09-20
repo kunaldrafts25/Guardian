@@ -19,7 +19,7 @@ import androidx.core.app.NotificationCompat
  * A persistent Android Foreground Service that:
  * 1. Continuously tracks GPS location (survives screen off / app backgrounded)
  * 2. Maintains "last known good location" for immediate SOS use
- * 3. Monitors accelerometer for shake/fall detection (placeholder for TFLite)
+ * 3. Detects the supported screen-toggle panic gesture while running
  * 4. Broadcasts location updates and events to Flutter via static callbacks
  * 5. Restarts automatically after device reboot (via BootReceiver)
  *

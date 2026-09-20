@@ -162,6 +162,8 @@ def test_community_responder_trust_gating_and_anti_solo_quorum():
         dispatch_community_alert,
         find_nearby_responders,
         get_authorized_incident_location,
+        list_responder_invitations,
+        transition_rescue_mission,
     )
 
     # 1. Create incident in non-isolated zone
@@ -189,6 +191,20 @@ def test_community_responder_trust_gating_and_anti_solo_quorum():
     assert dispatch_res["invite_count"] >= 2
     assert dispatch_res["dispatched_count"] == 0
     assert "invitation_payload" in dispatch_res
+    invitations = list_responder_invitations("resp_01")
+    assert len(invitations) == 1
+    assert invitations[0]["approximate_location"] == {
+        "latitude": 19.08,
+        "longitude": 72.88,
+    }
+    assert "navigation_grant_hash" not in invitations[0]
+
+    # A replay is idempotent and cannot send/create a second invitation.
+    replay = dispatch_community_alert(
+        iid,
+        _tool_token(iid, "dispatch_community_alert"),
+    )
+    assert replay["status"] == "ALREADY_DISPATCHED"
 
     # 4. Acceptance reveals only a coarse area and a bound short-lived grant.
     accept_res = accept_rescue_mission(iid, responder_id="resp_01")
@@ -201,6 +217,30 @@ def test_community_responder_trust_gating_and_anti_solo_quorum():
     assert authorized["latitude"] == 19.0760
     with pytest.raises(PermissionError):
         get_authorized_incident_location(iid, "resp_01", "invalid-grant")
+
+    from aws.agent import tools as agent_tools
+
+    agent_tools._LOCAL_RESPONDERS["resp_01"]["trust_score"] = 0
+    with pytest.raises(PermissionError):
+        get_authorized_incident_location(
+            iid, "resp_01", accept_res["navigation_grant"]
+        )
+    agent_tools._LOCAL_RESPONDERS["resp_01"]["trust_score"] = 92
+
+    mission_id = accept_res["mission"]["mission_id"]
+    en_route = transition_rescue_mission(mission_id, "resp_01", "EN_ROUTE")
+    assert en_route["status"] == "EN_ROUTE"
+    arrived = transition_rescue_mission(mission_id, "resp_01", "ARRIVED")
+    assert arrived["status"] == "ARRIVED"
+    with pytest.raises(PermissionError):
+        get_authorized_incident_location(
+            iid, "resp_01", accept_res["navigation_grant"]
+        )
+    completed = transition_rescue_mission(mission_id, "resp_01", "COMPLETED")
+    assert completed["status"] == "COMPLETED"
+    assert "navigation_grant_hash" not in completed
+    with pytest.raises(ValueError):
+        transition_rescue_mission(mission_id, "resp_01", "EN_ROUTE")
 
     # 5. Low trust responder cannot accept mission
     with pytest.raises(PermissionError):

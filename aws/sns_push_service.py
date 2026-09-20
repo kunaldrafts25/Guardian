@@ -6,7 +6,7 @@ Architecture:
   - Each device registers an SNS Platform Endpoint (FCM/APNS token → SNS ARN)
   - Notifications are sent to individual endpoint ARNs or via SNS Topics
   - SMS fallback via SNS for when push fails (emergency contacts)
-  - Emergency community alerts broadcast via SNS Topic fan-out
+  - Responder invitations target only policy-selected endpoint ARNs
 
 Supported platforms:
   - Android: FCM via SNS Platform Application
@@ -32,7 +32,6 @@ logger = logging.getLogger("sns_push_service")
 AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "ap-south-1")
 SNS_FCM_PLATFORM_ARN = os.environ.get("SNS_FCM_PLATFORM_ARN", "")   # Android GCM/FCM
 SNS_APNS_PLATFORM_ARN = os.environ.get("SNS_APNS_PLATFORM_ARN", "") # iOS APNS
-SNS_SOS_TOPIC_ARN = os.environ.get("SNS_SOS_TOPIC_ARN", "")         # Broadcast SOS topic
 DYNAMODB_USERS_TABLE = os.environ.get("DYNAMODB_USERS_TABLE", "guardian-users")
 
 
@@ -81,7 +80,7 @@ def register_device_endpoint(
             Attributes={"Enabled": "true"},
         )
         endpoint_arn = resp["EndpointArn"]
-        logger.info(f"SNS endpoint registered for {user_id}: {endpoint_arn}")
+        logger.info(f"SNS endpoint registered for {user_id}")
 
         # Persist endpoint ARN in DynamoDB
         _save_endpoint_arn(user_id, endpoint_arn, platform)
@@ -187,59 +186,7 @@ def send_push_to_user(
         # Disable stale endpoint
         if "EndpointDisabled" in str(ce):
             _disable_endpoint(endpoint_arn, sns)
-        return {"success": False, "error": str(ce)}
-
-
-def send_community_sos_broadcast(
-    incident_id: str,
-    victim_location: Dict[str, float],
-    message: str = "⚡ Guardian SOS: Someone nearby needs urgent help!",
-) -> Dict[str, Any]:
-    """
-    Broadcast SOS alert to all nearby Guardian community members via SNS Topic.
-    All subscribers within the topic receive this alert.
-    """
-    sns = _sns_client()
-    if not sns:
-        return {"success": False, "error": "SNS client unavailable"}
-
-    if not SNS_SOS_TOPIC_ARN:
-        logger.warning("SNS_SOS_TOPIC_ARN not configured - skipping community broadcast")
-        return {"success": False, "error": "SOS topic ARN not configured"}
-
-    try:
-        resp = sns.publish(
-            TopicArn=SNS_SOS_TOPIC_ARN,
-            Message=json.dumps({
-                "default": message,
-                "GCM": json.dumps({
-                    "notification": {
-                        "title": "⚡ Guardian Community Alert",
-                        "body": message,
-                        "sound": "emergency_alert",
-                    },
-                    "data": {
-                        "type": "community_sos",
-                        "incident_id": incident_id,
-                        "lat": str(victim_location.get("latitude", 0)),
-                        "lng": str(victim_location.get("longitude", 0)),
-                    },
-                    "priority": "high",
-                }),
-            }),
-            MessageStructure="json",
-            Subject="Guardian Emergency SOS Alert",
-            MessageAttributes={
-                "incident_type": {
-                    "DataType": "String",
-                    "StringValue": "community_sos",
-                },
-            },
-        )
-        logger.info(f"SOS broadcast sent: MessageId={resp['MessageId']}")
-        return {"success": True, "message_id": resp["MessageId"]}
-    except ClientError as ce:
-        logger.error(f"SOS broadcast failed: {ce}")
+            _clear_endpoint_arn(user_id, endpoint_arn, dynamo)
         return {"success": False, "error": str(ce)}
 
 
@@ -400,6 +347,19 @@ def _disable_endpoint(endpoint_arn: str, sns_client):
             EndpointArn=endpoint_arn,
             Attributes={"Enabled": "false"},
         )
-        logger.info(f"Disabled stale endpoint: {endpoint_arn}")
+        logger.info("Disabled stale push endpoint")
     except Exception as e:
         logger.warning(f"Could not disable endpoint: {e}")
+
+
+def _clear_endpoint_arn(user_id: str, endpoint_arn: str, dynamo) -> None:
+    """Remove only the stale endpoint currently bound to this user."""
+    try:
+        dynamo.Table(DYNAMODB_USERS_TABLE).update_item(
+            Key={"user_id": user_id},
+            UpdateExpression="REMOVE sns_endpoint_arn, sns_platform",
+            ConditionExpression="sns_endpoint_arn = :endpoint",
+            ExpressionAttributeValues={":endpoint": endpoint_arn},
+        )
+    except Exception as error:
+        logger.warning(f"Could not clear stale push endpoint: {error}")

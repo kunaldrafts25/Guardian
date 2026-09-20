@@ -282,91 +282,31 @@ def get_incident_timeline(incident_id: str) -> list:
     return _LOCAL_EVENTS.get(incident_id, [])
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    """
-    Standard AWS API Gateway / EventBridge Lambda handler
-    """
-    http_method = event.get("httpMethod") or event.get("requestContext", {}).get("http", {}).get("method", "GET")
-    path = event.get("path") or event.get("rawPath", "/")
-
-    allowed_origin = os.environ.get("GUARDIAN_ALLOWED_ORIGIN", "")
-    headers = {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Amz-Date, X-Api-Key",
+def append_incident_event(
+    incident_id: str,
+    event_type: str,
+    actor: str,
+    details: str,
+    *,
+    state: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Append audit evidence without changing the incident lifecycle state."""
+    incident = get_incident(incident_id)
+    if not incident:
+        raise ValueError(f"Incident {incident_id} not found")
+    entry = {
+        "incident_id": incident_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event_type": str(event_type)[:80],
+        "state": state or incident["state"],
+        "actor": str(actor).upper()[:40],
+        "details": str(details)[:500],
     }
-    if allowed_origin:
-        headers["Access-Control-Allow-Origin"] = allowed_origin
-
-    if http_method == "OPTIONS":
-        return {"statusCode": 200, "headers": headers, "body": ""}
-
-    try:
-        body = {}
-        if event.get("body"):
-            body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
-
-        # POST /incidents
-        if http_method == "POST" and path.endswith("/incidents"):
-            res = create_incident(body)
-            return {"statusCode": 201, "headers": headers, "body": json.dumps(res)}
-
-        # PUT /incidents/{id}/status
-        if http_method == "PUT" and "/incidents/" in path and path.endswith("/status"):
-            parts = path.strip("/").split("/")
-            incident_id = parts[parts.index("incidents") + 1]
-            new_state = body.get("state")
-            actor = body.get("actor", "USER")
-            note = body.get("note", "")
-            res = update_incident_status(incident_id, new_state, actor, note)
-            return {"statusCode": 200, "headers": headers, "body": json.dumps(res)}
-
-        # GET /incidents/{id}/timeline
-        if http_method == "GET" and "/incidents/" in path and path.endswith("/timeline"):
-            parts = path.strip("/").split("/")
-            incident_id = parts[parts.index("incidents") + 1]
-            timeline = get_incident_timeline(incident_id)
-            return {"statusCode": 200, "headers": headers, "body": json.dumps({"incident_id": incident_id, "timeline": timeline})}
-
-        # GET /incidents/{id}
-        if http_method == "GET" and "/incidents/" in path:
-            parts = path.strip("/").split("/")
-            incident_id = parts[parts.index("incidents") + 1]
-            res = get_incident(incident_id)
-            if not res:
-                return {"statusCode": 404, "headers": headers, "body": json.dumps({"error": "Incident not found"})}
-        # GET /incidents/{id}/nearby
-        if http_method == "GET" and "/incidents/" in path and path.endswith("/nearby"):
-            parts = path.strip("/").split("/")
-            incident_id = parts[parts.index("incidents") + 1]
-            from aws.agent.tools import find_nearby_responders
-            responders = find_nearby_responders(incident_id)
-            return {"statusCode": 200, "headers": headers, "body": json.dumps({"incident_id": incident_id, "nearby_responders": responders})}
-
-        # POST /incidents/{id}/accept
-        if http_method == "POST" and "/incidents/" in path and path.endswith("/accept"):
-            parts = path.strip("/").split("/")
-            incident_id = parts[parts.index("incidents") + 1]
-            responder_id = body.get("responder_id", "resp_01")
-            from aws.agent.tools import accept_rescue_mission
-            result = accept_rescue_mission(incident_id, responder_id)
-            return {"statusCode": 200, "headers": headers, "body": json.dumps(result)}
-
-        # POST /responders/heartbeat
-        if http_method == "POST" and path.endswith("/responders/heartbeat"):
-            from aws.agent.tools import register_responder_heartbeat
-            res = register_responder_heartbeat(
-                responder_id=body.get("responder_id", "resp_new"),
-                name=body.get("name", "Good Samaritan"),
-                latitude=body.get("latitude", 19.0760),
-                longitude=body.get("longitude", 72.8777),
-                trust_score=body.get("trust_score", 85),
-            )
-            return {"statusCode": 200, "headers": headers, "body": json.dumps(res)}
-
-        return {"statusCode": 404, "headers": headers, "body": json.dumps({"error": f"Path not found: {path}"})}
-
-    except ValueError as ve:
-        return {"statusCode": 400, "headers": headers, "body": json.dumps({"error": str(ve)})}
-    except Exception as e:
-        return {"statusCode": 500, "headers": headers, "body": json.dumps({"error": str(e)})}
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        dynamo.Table(DYNAMODB_EVENTS_TABLE).put_item(Item=entry)
+    else:
+        _require_local_store()
+        with _LOCAL_STORE_LOCK:
+            _LOCAL_EVENTS.setdefault(incident_id, []).append(entry)
+    return entry

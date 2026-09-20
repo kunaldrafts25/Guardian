@@ -23,10 +23,8 @@ Mirrors real AWS API Gateway + Lambda endpoints:
 
   POST   /push/send                  → SNS: send push to user
   POST   /push/sms                   → SNS: send SMS to contact
-  POST   /push/sos-broadcast         → SNS: broadcast SOS to all community
 
   POST   /responders/heartbeat       → Update responder location
-  POST   /simulate/{scenario}        → Demo mode: trigger test incident
 """
 
 import os
@@ -98,7 +96,6 @@ from aws.sns_push_service import (
     register_device_endpoint,
     send_push_to_user,
     send_sms_alert,
-    send_community_sos_broadcast,
 )
 from aws.auth_middleware import (
     AuthenticationMiddleware,
@@ -193,7 +190,10 @@ def health_check():
         or os.environ.get("AWS_PROFILE")
     )
     cognito_configured = bool(os.environ.get("COGNITO_USER_POOL_ID"))
-    sns_configured = bool(os.environ.get("SNS_SOS_TOPIC_ARN"))
+    sns_configured = bool(
+        os.environ.get("SNS_FCM_PLATFORM_ARN")
+        or os.environ.get("SNS_APNS_PLATFORM_ARN")
+    )
     return {
         "status": "online",
         "service": "Guardian AWS Full-Stack API",
@@ -435,17 +435,16 @@ class SmsRequest(BaseModel):
     sender_id: str = "GUARDIAN"
 
 
-class SosBroadcastRequest(BaseModel):
-    incident_id: str
-    latitude: float
-    longitude: float
-    message: Optional[str] = None
-
-
 class ContactNotificationRequest(BaseModel):
     notification_type: str
     minutes_overdue: Optional[int] = None
     zone_name: Optional[str] = None
+
+
+class ContactTestRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    contact_id: Optional[str] = Field(default=None, max_length=128)
 
 
 @app.post("/push/send")
@@ -510,20 +509,41 @@ def api_notify_contacts(req: ContactNotificationRequest, request: Request):
     }
 
 
-@app.post("/push/sos-broadcast")
-def api_sos_broadcast(req: SosBroadcastRequest, request: Request):
-    """Broadcast SOS alert to all community members via SNS Topic."""
-    incident = _owned_incident(req.incident_id, request)
-    location = incident.get("location") or {}
-    result = send_community_sos_broadcast(
-        incident_id=req.incident_id,
-        victim_location={
-            "latitude": location.get("latitude"),
-            "longitude": location.get("longitude"),
-        },
-        message=req.message or "⚡ Guardian SOS: Someone nearby needs urgent help!",
+@app.post("/notifications/contact-test")
+def api_test_contact_notification(req: ContactTestRequest, request: Request):
+    """Send one clearly labelled, non-emergency test to an owned contact."""
+    user_id = authenticated_user_id(request)
+    profile = get_user_profile(user_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="User profile not found")
+    contacts = profile.get("emergency_contacts", [])
+    selected = next(
+        (
+            contact
+            for contact in contacts
+            if req.contact_id and str(contact.get("id")) == req.contact_id
+        ),
+        None,
     )
-    return result
+    if selected is None and req.contact_id is None:
+        selected = next(
+            (contact for contact in contacts if contact.get("is_primary")),
+            contacts[0] if contacts else None,
+        )
+    if selected is None or not str(selected.get("phone", "")).strip():
+        raise HTTPException(status_code=404, detail="Configured contact not found")
+    display_name = profile.get("display_name") or profile.get("phone") or "A Guardian user"
+    result = send_sms_alert(
+        str(selected["phone"]),
+        f"Guardian TEST — no emergency. {display_name} is verifying their safety contact setup. No action is required.",
+    )
+    return {
+        "contact_id": selected.get("id"),
+        "provider_accepted": bool(result.get("success")),
+        "message_id": result.get("message_id"),
+        "status": "PROVIDER_ACCEPTED" if result.get("success") else "FAILED",
+        "error": result.get("error"),
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -587,6 +607,14 @@ def api_update_incident_status(
             actor="USER",
             note=req.note or "",
         )
+        if updated.get("state") in {"RESOLVED", "CANCELLED", "EXPIRED"}:
+            from aws.agent.tools import cancel_incident_missions
+
+            cancelled = cancel_incident_missions(
+                incident_id,
+                req.note or f"Incident became {updated['state']}",
+            )
+            return {**updated, "cancelled_mission_count": cancelled}
         return updated
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
@@ -729,6 +757,62 @@ def api_responder_heartbeat(req: ResponderHeartbeatRequest, request: Request):
     return res
 
 
+@app.get("/responders/invitations")
+def api_responder_invitations(request: Request):
+    from aws.agent.tools import list_responder_invitations
+
+    _require_role(request, "responder")
+    responder_id = authenticated_user_id(request)
+    return {"invitations": list_responder_invitations(responder_id)}
+
+
+@app.get("/responders/missions")
+def api_responder_missions(request: Request):
+    from aws.agent.tools import list_responder_missions
+
+    _require_role(request, "responder")
+    responder_id = authenticated_user_id(request)
+    return {"missions": list_responder_missions(responder_id)}
+
+
+@app.get("/missions/{mission_id}")
+def api_get_responder_mission(mission_id: str, request: Request):
+    from aws.agent.tools import get_responder_mission
+
+    _require_role(request, "responder")
+    try:
+        return get_responder_mission(mission_id, authenticated_user_id(request))
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error))
+
+
+class MissionStatusRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str = Field(min_length=6, max_length=20)
+
+
+@app.put("/missions/{mission_id}/status")
+def api_transition_responder_mission(
+    mission_id: str,
+    req: MissionStatusRequest,
+    request: Request,
+):
+    from aws.agent.tools import transition_rescue_mission
+
+    _require_role(request, "responder")
+    try:
+        return transition_rescue_mission(
+            mission_id,
+            authenticated_user_id(request),
+            req.status,
+        )
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error))
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+
 @app.post("/incidents/{incident_id}/agent-step")
 def api_trigger_agent_step(incident_id: str, request: Request):
     incident = _owned_incident(incident_id, request)
@@ -790,75 +874,6 @@ def api_escalate_incident(incident_id: str, request: Request):
         raise HTTPException(status_code=403, detail=str(error))
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error))
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# DEMO SIMULATOR
-# ─────────────────────────────────────────────────────────────────────────────
-
-def api_simulate_scenario(
-    scenario: str,
-    background_tasks: BackgroundTasks,
-    request: Request,
-):
-    """
-    Demo Simulator — triggers realistic test incidents.
-    scenario: 'fall' | 'sos' | 'inactivity' | 'hardware_panic'
-    """
-    scenarios = {
-        "fall": {
-            "event_type": "fall_detected",
-            "motion_data": {"g_force": 4.8, "stationary_seconds": 15},
-            "location": {"latitude": 19.0760, "longitude": 72.8777, "is_isolated": True},
-        },
-        "sos": {
-            "event_type": "sos_button",
-            "motion_data": {"g_force": 1.2},
-            "location": {"latitude": 19.0760, "longitude": 72.8777},
-        },
-        "inactivity": {
-            "event_type": "prolonged_inactivity",
-            "motion_data": {"stationary_seconds": 120},
-            "location": {"latitude": 19.0760, "longitude": 72.8777, "is_isolated": True},
-        },
-        "hardware_panic": {
-            "event_type": "hardware_power_panic",
-            "motion_data": {"tap_count": 3, "interval_ms": 1850},
-            "location": {"latitude": 19.0760, "longitude": 72.8777, "is_isolated": True},
-        },
-    }
-
-    sc = scenarios.get(scenario.lower())
-    if not sc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown scenario '{scenario}'. Available: {list(scenarios.keys())}"
-        )
-
-    payload = {
-        "event_id": f"sim_{scenario}_{uuid.uuid4().hex[:6]}",
-        "user_id": authenticated_user_id(request),
-        "contacts": [{
-            "id": "dev_contact",
-            "name": "Development Test Contact",
-            "phone": "+10000000000",
-            "authorized": True,
-        }],
-        **sc,
-    }
-
-    incident = create_incident(payload)
-    iid = incident["incident_id"]
-    background_tasks.add_task(execute_agent_reasoning, iid)
-    return {
-        "scenario": scenario,
-        "message": f"Simulated '{scenario}' incident initiated successfully.",
-        "incident": incident,
-    }
-
-
-if is_dev_mode():
-    app.post("/simulate/{scenario}", include_in_schema=False)(api_simulate_scenario)
 
 
 if __name__ == "__main__":

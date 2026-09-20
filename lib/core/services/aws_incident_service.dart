@@ -54,7 +54,20 @@ class AwsIncidentService {
         'Accept': 'application/json',
         if (AwsAuthService.instance.accessToken != null)
           'Authorization': 'Bearer ${AwsAuthService.instance.accessToken}',
+        if (AwsAuthService.instance.sessionId != null)
+          'X-Guardian-Session-ID': AwsAuthService.instance.sessionId!,
       };
+
+  Future<bool> checkHealth() async {
+    try {
+      final response = await http.get(Uri.parse(baseUrl), headers: const {
+        'Accept': 'application/json'
+      }).timeout(const Duration(seconds: 5));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Ingest a potential incident
   Future<Map<String, dynamic>> createIncident({

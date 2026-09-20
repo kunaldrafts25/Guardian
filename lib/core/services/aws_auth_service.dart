@@ -121,9 +121,39 @@ class AwsAuthService {
   String? get currentUserId => _userId;
   String? get currentPhone => _phone;
   String? get accessToken => _accessToken;
+  String? get sessionId => _sessionId;
   bool get isSignedIn => _userId != null;
   AwsAuthUser? get currentUser => _currentUser;
   Stream<AwsAuthUser?> get authStateChanges => _authStateController.stream;
+
+  Set<String> get roles {
+    final token = _accessToken;
+    if (token == null) return const {};
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return const {};
+      final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+      ) as Map<String, dynamic>;
+      final claim = payload['cognito:groups'];
+      if (claim is List) {
+        return claim.map((value) => value.toString()).toSet();
+      }
+      if (claim is String) {
+        return claim
+            .split(',')
+            .map((value) => value.trim())
+            .where((value) => value.isNotEmpty)
+            .toSet();
+      }
+    } catch (_) {
+      // Invalid/opaque tokens have no client-trusted roles. The API remains
+      // authoritative for every responder operation.
+    }
+    return const {};
+  }
+
+  bool get isResponder => roles.contains('responder');
 
   // ─── Initialization ─────────────────────────────────────────────────────
 
@@ -378,6 +408,13 @@ class AwsAuthService {
 
   Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) =>
       _post(path, body);
+
+  Future<Map<String, dynamic>> get(String path) => _get(path);
+
+  Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body) =>
+      _put(path, body);
+
+  Future<Map<String, dynamic>> delete(String path) => _delete(path);
 
   Future<Map<String, dynamic>> _post(
     String path,

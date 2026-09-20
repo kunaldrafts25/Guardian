@@ -101,39 +101,6 @@ def create_dynamodb_tables():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SNS TOPICS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def create_sns_topics():
-    sns = boto3.client("sns", region_name=REGION)
-    print("\n📣 Setting up SNS Topics...")
-
-    topics = {
-        "guardian-community-sos": "Community SOS broadcast topic",
-        "guardian-contact-alerts": "Trusted contact emergency alerts",
-    }
-
-    arns = {}
-    for name, desc in topics.items():
-        try:
-            resp = sns.create_topic(
-                Name=name,
-                Tags=[
-                    {"Key": "app", "Value": "guardian"},
-                    {"Key": "description", "Value": desc},
-                ],
-            )
-            arn = resp["TopicArn"]
-            arns[name] = arn
-            print(f"  ✅ SNS Topic: {name}")
-            print(f"     ARN: {arn}")
-        except ClientError as e:
-            print(f"  ❌ Failed to create topic {name}: {e}")
-
-    return arns
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # COGNITO USER POOL
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -253,12 +220,11 @@ def create_cognito_user_pool():
 # WRITE .ENV
 # ─────────────────────────────────────────────────────────────────────────────
 
-def write_env_file(cognito_result, sns_arns, account_id):
+def write_env_file(cognito_result, account_id):
     env_path = Path(__file__).resolve().parent / ".env"
 
     pool_id = cognito_result.get("pool_id", "CONFIGURE_IN_AWS_CONSOLE")
     client_id = cognito_result.get("client_id", "CONFIGURE_IN_AWS_CONSOLE")
-    sos_arn = sns_arns.get("guardian-community-sos", "")
 
     existing_content = ""
     if env_path.exists():
@@ -270,8 +236,6 @@ def write_env_file(cognito_result, sns_arns, account_id):
         new_lines.append(f"COGNITO_USER_POOL_ID={pool_id}")
     if "COGNITO_CLIENT_ID=" not in existing_content:
         new_lines.append(f"COGNITO_CLIENT_ID={client_id}")
-    if "SNS_SOS_TOPIC_ARN=" not in existing_content and sos_arn:
-        new_lines.append(f"SNS_SOS_TOPIC_ARN={sos_arn}")
 
     if new_lines:
         with open(env_path, "a") as f:
@@ -305,14 +269,11 @@ def main():
     # 1. DynamoDB
     create_dynamodb_tables()
 
-    # 2. SNS Topics
-    sns_arns = create_sns_topics()
-
-    # 3. Cognito
+    # 2. Cognito
     cognito_result = create_cognito_user_pool()
 
-    # 4. Update .env
-    write_env_file(cognito_result, sns_arns, account_id)
+    # 3. Update .env
+    write_env_file(cognito_result, account_id)
 
     print("\n" + "=" * 60)
     print("🎉 Setup Complete!")

@@ -45,7 +45,7 @@
 
 	<!-- Microphone — for voice SOS triggers and audio threat detection -->
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Guardian uses the microphone to detect voice SOS commands and listen for sounds that may indicate danger.</string>
+	<string>Guardian uses the microphone when you enable and use voice SOS commands.</string>
 
 	<!-- Camera — for environment safety classification and evidence capture -->
 	<key>NSCameraUsageDescription</key>
@@ -57,7 +57,7 @@
 
 	<!-- Motion — for shake and fall detection -->
 	<key>NSMotionUsageDescription</key>
-	<string>Guardian uses motion sensors to detect shake gestures and falls that may trigger an emergency alert.</string>
+	<string>Guardian uses motion sensors when you enable shake gestures for emergency alerts.</string>
 
 	<!-- Face ID — for biometric lock of sensitive settings -->
 	<key>NSFaceIDUsageDescription</key>
@@ -72,7 +72,6 @@
 		<string>fetch</string>
 		<string>remote-notification</string>
 		<string>audio</string>
-		<string>processing</string>
 	</array>
 
 	<!-- ═══════════════════════════════════════════════════

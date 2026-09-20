@@ -21,6 +21,7 @@ import 'package:guardian/core/services/aws_incident_service.dart';
 import 'package:guardian/core/services/aws_sns_service.dart';
 import 'package:guardian/core/services/safety_service_bridge.dart';
 import 'package:guardian/core/services/power_optimization_service.dart';
+import 'package:guardian/core/services/firebase_runtime_options.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'app/app.dart';
 
@@ -32,13 +33,12 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 /// FCM background message handler — kept for backward compatibility
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  if (!FirebaseRuntimeOptions.isConfigured) return;
+  await Firebase.initializeApp(options: FirebaseRuntimeOptions.current);
   Logger.info('Background push received: ${message.messageId}');
 }
 
 /// Global navigator key — used for deep-navigation from notifications
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -60,10 +60,17 @@ void main() async {
   // ─── Firebase (Graceful Fallback — safe to remove later) ────────────────
 
   try {
-    await Firebase.initializeApp();
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    AwsSnsService.navigatorKey = navigatorKey;
-    await AwsSnsService.initialize();
+    if (FirebaseRuntimeOptions.isConfigured) {
+      await Firebase.initializeApp(options: FirebaseRuntimeOptions.current);
+      FirebaseMessaging.onBackgroundMessage(
+        _firebaseMessagingBackgroundHandler,
+      );
+      await AwsSnsService.initialize();
+    } else {
+      Logger.warning(
+        'Push is not configured; provide Firebase dart-defines for this build.',
+      );
+    }
   } catch (e) {
     // Firebase failure does NOT stop the app — AWS is primary
     Logger.warning('Push transport initialization failed: $e');
@@ -93,11 +100,7 @@ void main() async {
 
   // ─── Launch App ──────────────────────────────────────────────────────────
 
-  runApp(
-    ProviderScope(
-      child: GuardianApp(navigatorKey: navigatorKey),
-    ),
-  );
+  runApp(const ProviderScope(child: GuardianApp()));
 }
 
 /// Ping backend to verify connectivity — non-blocking, logged only.

@@ -115,13 +115,29 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build APK
+      - name: Create ephemeral CI signing key
+        run: |
+          keytool -genkeypair -v \
+            -keystore "$RUNNER_TEMP/guardian-ci.jks" \
+            -storepass guardian-ci-only \
+            -keypass guardian-ci-only \
+            -alias guardian-ci \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 2 \
+            -dname "CN=Guardian CI,OU=Build Verification,O=Guardian,C=IN"
+          echo "GUARDIAN_KEYSTORE_PATH=$RUNNER_TEMP/guardian-ci.jks" >> "$GITHUB_ENV"
+          echo "GUARDIAN_KEYSTORE_PASSWORD=guardian-ci-only" >> "$GITHUB_ENV"
+          echo "GUARDIAN_KEY_ALIAS=guardian-ci" >> "$GITHUB_ENV"
+          echo "GUARDIAN_KEY_PASSWORD=guardian-ci-only" >> "$GITHUB_ENV"
+
+      - name: Build signed release APK
         run: flutter build apk --release --android-skip-build-dependency-validation
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk
+          name: ci-signed-release-apk-not-for-distribution
           path: build/app/outputs/flutter-apk/app-release.apk
 
   build-ios:

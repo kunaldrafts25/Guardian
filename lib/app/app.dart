@@ -10,12 +10,11 @@ import 'package:guardian/app/theme/app_theme.dart';
 import 'package:guardian/core/providers/settings_provider.dart';
 import 'package:guardian/core/providers/sos_trigger_provider.dart';
 import 'package:guardian/core/services/offline_sync_service.dart';
+import 'package:guardian/core/services/aws_sns_service.dart';
 
 class GuardianApp extends ConsumerStatefulWidget {
   /// Global navigator key — required for FCM notification-tap navigation
-  final GlobalKey<NavigatorState>? navigatorKey;
-
-  const GuardianApp({super.key, this.navigatorKey});
+  const GuardianApp({super.key});
 
   @override
   ConsumerState<GuardianApp> createState() => _GuardianAppState();
@@ -36,6 +35,7 @@ class _GuardianAppState extends ConsumerState<GuardianApp> {
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
+    AwsSnsService.configureNavigation(router.go);
     final themeMode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
 

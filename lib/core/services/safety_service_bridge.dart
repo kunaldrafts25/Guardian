@@ -121,6 +121,17 @@ class SafetyServiceBridge {
     }
   }
 
+  Future<bool?> isBatteryOptimizationIgnored() async {
+    try {
+      return await _serviceChannel
+          .invokeMethod<bool>('isBatteryOptimizationIgnored');
+    } on MissingPluginException {
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<bool> updateEmergencySnapshot({
     required int version,
     required String userName,

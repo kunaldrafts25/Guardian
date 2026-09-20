@@ -9,9 +9,9 @@
  *   4. flutter_local_notifications displays foreground notifications
  */
 
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:guardian/core/services/aws_auth_service.dart';
 import 'package:guardian/core/utils/logger.dart';
@@ -25,9 +25,19 @@ class AwsSnsService {
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
-  static GlobalKey<NavigatorState>? navigatorKey;
+  static void Function(String location)? _routeHandler;
+  static String? _pendingLocation;
   static String? _deviceToken;
   static String? get deviceToken => _deviceToken;
+
+  static void configureNavigation(void Function(String location) handler) {
+    _routeHandler = handler;
+    final pending = _pendingLocation;
+    if (pending != null && AwsAuthService.instance.isSignedIn) {
+      _pendingLocation = null;
+      handler(pending);
+    }
+  }
 
   /// Initialize local notification display + register device with SNS
   static Future<void> initialize() async {
@@ -130,8 +140,7 @@ class AwsSnsService {
       if (settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional) {
         _deviceToken = await messaging.getToken();
-        Logger.info(
-            'Device token obtained: ${_deviceToken?.substring(0, 20)}...');
+        Logger.info('Device push token obtained');
 
         // Register with AWS SNS via backend
         await _registerWithSns();
@@ -146,6 +155,10 @@ class AwsSnsService {
         // Handle foreground FCM messages (backend still sends raw FCM via SNS)
         FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
         FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
+        final initialMessage = await messaging.getInitialMessage();
+        if (initialMessage != null) {
+          _handleNotificationTap(initialMessage);
+        }
       }
     } catch (e) {
       // FCM init failure is not critical — SMS fallback still works
@@ -163,7 +176,9 @@ class AwsSnsService {
       _deviceToken!,
       platform: platform,
     );
-    Logger.info('SNS endpoint registered: $arn');
+    Logger.info(arn == null
+        ? 'SNS endpoint registration unavailable'
+        : 'SNS endpoint registered');
   }
 
   // ─── Message Handlers ─────────────────────────────────────────────────────
@@ -177,7 +192,7 @@ class AwsSnsService {
     await showLocalNotification(
       title: title,
       body: body,
-      payload: type,
+      payload: jsonEncode({'type': type, ...message.data}),
       id: message.hashCode,
     );
   }
@@ -189,30 +204,51 @@ class AwsSnsService {
 
   static void _onNotificationTapped(NotificationResponse response) {
     final payload = response.payload ?? '';
-    _navigateForType(payload, {});
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is Map) {
+        final data = Map<String, dynamic>.from(decoded);
+        _navigateForType(data['type'] as String? ?? '', data);
+        return;
+      }
+    } catch (_) {
+      // Notifications created by older app versions contain only the type.
+    }
+    _navigateForType(payload, const {});
   }
 
   static void _navigateForType(String type, Map<String, dynamic> data) {
-    final navigator = navigatorKey?.currentState;
-    if (navigator == null) return;
-
-    switch (type) {
-      case 'sos':
-      case 'sos_alert':
-        navigator.pushNamed('/emergency', arguments: data['alertId']);
-        break;
-      case 'community_sos':
-        navigator.pushNamed('/community', arguments: data);
-        break;
-      case 'rescue_accepted':
-        navigator.pushNamed('/dashboard');
-        break;
-      case 'sos_resolved':
-        navigator.pushNamed('/dashboard');
-        break;
-      default:
-        navigator.pushNamed('/dashboard');
+    final location = notificationLocation(type, data);
+    final handler = _routeHandler;
+    if (handler == null || !AwsAuthService.instance.isSignedIn) {
+      _pendingLocation = location;
+      return;
     }
+    handler(location);
+  }
+
+  @visibleForTesting
+  static String notificationLocation(
+    String type,
+    Map<String, dynamic> data,
+  ) {
+    final incidentId = data['incident_id']?.toString();
+    final missionId = data['mission_id']?.toString();
+    return switch (type) {
+      'sos' || 'sos_alert' => incidentId == null
+          ? '/emergency'
+          : '/incidents/${Uri.encodeComponent(incidentId)}',
+      'responder_invitation' => missionId == null
+          ? '/responder/inbox'
+          : '/responder/mission/${Uri.encodeComponent(missionId)}',
+      'rescue_accepted' => incidentId == null
+          ? '/dashboard'
+          : '/incidents/${Uri.encodeComponent(incidentId)}',
+      'sos_resolved' => incidentId == null
+          ? '/dashboard'
+          : '/incidents/${Uri.encodeComponent(incidentId)}',
+      _ => '/dashboard',
+    };
   }
 
   // ─── SNS Push Helpers (via backend) ───────────────────────────────────────

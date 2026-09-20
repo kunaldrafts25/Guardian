@@ -128,6 +128,15 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 const Divider(height: 1),
                 ListTile(
+                  leading: const Icon(Icons.health_and_safety_outlined),
+                  title: const Text('Protection readiness'),
+                  subtitle:
+                      const Text('Permissions, contacts, service, and cloud'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push(Routes.readiness),
+                ),
+                const Divider(height: 1),
+                ListTile(
                   leading: const Icon(Icons.place),
                   title: const Text('Safe Zones'),
                   subtitle: const Text('Manage your safe locations'),

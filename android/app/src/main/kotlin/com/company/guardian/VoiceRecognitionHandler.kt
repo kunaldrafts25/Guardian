@@ -150,7 +150,7 @@ class VoiceRecognitionHandler(private val activity: Activity) {
             }
 
             override fun onPartialResults(partialResults: Bundle?) {
-                // Not used for now
+                // Final recognition results are the only events exposed to Flutter.
             }
 
             override fun onEvent(eventType: Int, params: Bundle?) {

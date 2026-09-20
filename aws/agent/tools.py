@@ -16,6 +16,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 
 from aws.incident_handler.handler import (
+    append_incident_event,
     get_incident,
     get_dynamo_resource,
     update_incident_status,
@@ -26,7 +27,7 @@ from aws.incident_handler.handler import (
 from aws.cognito_service import get_user_profile
 from aws.agent.risk_engine import assess_incident_risk
 from aws.agent.policy_authorization import consume_policy_authorization
-from aws.sns_push_service import send_sms_alert
+from aws.sns_push_service import send_push_to_user, send_sms_alert
 
 try:
     import boto3
@@ -420,30 +421,78 @@ def dispatch_community_alert(
     invitation_expiry = int(now.timestamp()) + 180
     dynamo = get_dynamo_resource()
     selected_responders = responders[:max_invitations]
+    created_missions = []
+    provider_accepted_count = 0
+    failed_count = 0
     for responder in selected_responders:
+        approximate_location = {
+            "latitude": round(float(ctx["location"]["latitude"]), precision),
+            "longitude": round(float(ctx["location"]["longitude"]), precision),
+        }
         mission = {
             "mission_id": _mission_id(incident_id, responder["responder_id"]),
             "incident_id": incident_id,
             "responder_id": responder["responder_id"],
             "status": "INVITED",
             "invited_at": now.isoformat(),
-            "expires_at": invitation_expiry,
+            "invitation_expires_at": invitation_expiry,
+            # DynamoDB TTL retains mission evidence for 30 days; invitation
+            # validity is enforced separately and never extended implicitly.
+            "expires_at": int(now.timestamp()) + 30 * 24 * 60 * 60,
             "updated_at": now.isoformat(),
+            "approximate_location": approximate_location,
+            "invitation_delivery_status": "PENDING",
         }
+        created = False
         if dynamo:
             try:
                 dynamo.Table(DYNAMODB_MISSIONS_TABLE).put_item(
                     Item=mission,
                     ConditionExpression="attribute_not_exists(mission_id)",
                 )
+                created = True
             except Exception as error:
                 code = getattr(error, "response", {}).get("Error", {}).get("Code")
                 if code != "ConditionalCheckFailedException":
                     raise
         elif _dev_mode():
-            _LOCAL_MISSIONS.setdefault(mission["mission_id"], mission)
+            if mission["mission_id"] not in _LOCAL_MISSIONS:
+                _LOCAL_MISSIONS[mission["mission_id"]] = mission
+                created = True
         else:
             raise RuntimeError("Mission store is unavailable")
+
+        # A replay must not produce a second transport attempt.
+        if not created:
+            continue
+        created_missions.append(mission)
+
+        if _dev_mode() and not os.environ.get("AWS_EXECUTION_ENV"):
+            delivery = {"success": False, "status": "DEV_MODE_NOT_SENT"}
+        else:
+            delivery = send_push_to_user(
+                responder["responder_id"],
+                "Guardian safety request nearby",
+                "Open Guardian to review a time-limited nearby assistance request.",
+                data={
+                    "incident_id": incident_id,
+                    "mission_id": mission["mission_id"],
+                    "expires_at": str(invitation_expiry),
+                },
+                notification_type="responder_invitation",
+            )
+            delivery["status"] = (
+                "PROVIDER_ACCEPTED" if delivery.get("success") else "FAILED"
+            )
+        if delivery["status"] == "PROVIDER_ACCEPTED":
+            provider_accepted_count += 1
+        elif delivery["status"] == "FAILED":
+            failed_count += 1
+        _record_invitation_delivery(
+            mission["mission_id"],
+            delivery["status"],
+            delivery.get("message_id"),
+        )
 
     invitation_payload = {
         "incident_id": incident_id,
@@ -465,18 +514,101 @@ def dispatch_community_alert(
         new_state=IncidentState.COMMUNITY_OFFERED.value,
         actor="AGENT",
         note=(
-            f"Created {len(selected_responders)} bounded invitations for verified "
-            "nearby responders; transport delivery is not yet claimed."
+            f"Created {len(created_missions)} bounded invitations for verified "
+            f"nearby responders; provider accepted {provider_accepted_count}."
         ),
     )
 
     return {
         "incident_id": incident_id,
         "status": "INVITATIONS_CREATED",
-        "dispatched_count": 0,
-        "invite_count": len(selected_responders),
+        "dispatched_count": provider_accepted_count,
+        "invite_count": len(created_missions),
         "invitation_payload": invitation_payload,
+        "provider_accepted_count": provider_accepted_count,
+        "failed_count": failed_count,
     }
+
+
+def _record_invitation_delivery(
+    mission_id: str,
+    status: str,
+    message_id: Optional[str],
+) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        values = {":status": status, ":now": now}
+        expression = "SET invitation_delivery_status = :status, delivery_attempted_at = :now"
+        if message_id:
+            expression += ", invitation_message_id = :message"
+            values[":message"] = message_id
+        dynamo.Table(DYNAMODB_MISSIONS_TABLE).update_item(
+            Key={"mission_id": mission_id},
+            UpdateExpression=expression,
+            ConditionExpression="attribute_exists(mission_id)",
+            ExpressionAttributeValues=values,
+        )
+    elif _dev_mode():
+        mission = _LOCAL_MISSIONS.get(mission_id)
+        if mission:
+            mission["invitation_delivery_status"] = status
+            mission["delivery_attempted_at"] = now
+            if message_id:
+                mission["invitation_message_id"] = message_id
+    else:
+        raise RuntimeError("Mission store is unavailable")
+
+
+def _responder_missions(responder_id: str) -> List[Dict[str, Any]]:
+    """Load missions by authenticated responder using the declared GSI."""
+    now = int(datetime.now(timezone.utc).timestamp())
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        missions = dynamo.Table(DYNAMODB_MISSIONS_TABLE).query(
+            IndexName="ResponderMissionsIndex",
+            KeyConditionExpression="responder_id = :responder",
+            ExpressionAttributeValues={":responder": responder_id},
+            ScanIndexForward=False,
+            Limit=50,
+        ).get("Items", [])
+    elif _dev_mode():
+        missions = [
+            mission
+            for mission in _LOCAL_MISSIONS.values()
+            if mission.get("responder_id") == responder_id
+        ]
+    else:
+        raise RuntimeError("Mission store is unavailable")
+
+    for mission in missions:
+        if mission.get("status") == "INVITED" and int(
+            mission.get("invitation_expires_at", mission.get("expires_at", 0))
+        ) <= now:
+            mission["status"] = "EXPIRED"
+    return missions
+
+
+def _public_mission(mission: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        key: value
+        for key, value in mission.items()
+        if key not in {"navigation_grant_hash", "invitation_message_id"}
+    }
+
+
+def list_responder_invitations(responder_id: str) -> List[Dict[str, Any]]:
+    """Return live invitations for one authenticated responder, never exact location."""
+    return [
+        _public_mission(mission)
+        for mission in _responder_missions(responder_id)
+        if mission.get("status") == "INVITED"
+    ]
+
+
+def list_responder_missions(responder_id: str) -> List[Dict[str, Any]]:
+    """Return the responder's missions without grant material or exact location."""
+    return [_public_mission(mission) for mission in _responder_missions(responder_id)]
 
 
 def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]:
@@ -516,7 +648,7 @@ def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]
                 ),
                 ConditionExpression=(
                     "#status = :invited AND responder_id = :responder "
-                    "AND expires_at > :now"
+                    "AND invitation_expires_at > :now"
                 ),
                 ExpressionAttributeNames={"#status": "status"},
                 ExpressionAttributeValues={
@@ -541,7 +673,11 @@ def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]
         existing = _LOCAL_MISSIONS.get(mission_id)
         if existing is None:
             # Direct tool tests create incidents without running dispatch first.
-            existing = {"status": "INVITED", "expires_at": int(now.timestamp()) + 180}
+            existing = {
+                "status": "INVITED",
+                "invitation_expires_at": int(now.timestamp()) + 180,
+                "expires_at": int(now.timestamp()) + 30 * 24 * 60 * 60,
+            }
         if existing.get("status") == "ACCEPTED":
             return {
                 "incident_id": incident_id,
@@ -549,7 +685,9 @@ def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]
                 "approximate_location": _coarse_location(ctx.get("location") or {}),
                 "navigation_grant": None,
             }
-        if existing.get("status") != "INVITED" or existing.get("expires_at", 0) <= int(now.timestamp()):
+        if existing.get("status") != "INVITED" or existing.get(
+            "invitation_expires_at", existing.get("expires_at", 0)
+        ) <= int(now.timestamp()):
             raise PermissionError("Mission invitation is unavailable or expired")
         _LOCAL_MISSIONS[mission_id] = {**existing, **acceptance_record}
     else:
@@ -579,6 +717,11 @@ def get_authorized_incident_location(
     incident_id: str, responder_id: str, navigation_grant: str
 ) -> Dict[str, Any]:
     """Return exact coordinates only for a live, bound mission grant."""
+    responder = _get_responder(responder_id)
+    if not responder or responder.get("trust_score", 0) < 70 or (
+        not _dev_mode() and responder.get("verification_status") != "APPROVED"
+    ):
+        raise PermissionError("Responder approval is no longer active")
     mission_id = _mission_id(incident_id, responder_id)
     dynamo = get_dynamo_resource()
     if dynamo:
@@ -598,6 +741,12 @@ def get_authorized_incident_location(
     ):
         raise PermissionError("Navigation grant is invalid or expired")
     incident = get_incident_context(incident_id)
+    if incident.get("state") in {
+        IncidentState.RESOLVED.value,
+        IncidentState.CANCELLED.value,
+        IncidentState.EXPIRED.value,
+    }:
+        raise PermissionError("The incident is closed")
     location = incident.get("location")
     if not location:
         raise ValueError("Incident location is unavailable")
@@ -608,4 +757,166 @@ def get_authorized_incident_location(
         "accuracy": location.get("accuracy"),
         "grant_expires_at": mission["navigation_grant_expires_at"],
     }
+
+
+_MISSION_TRANSITIONS = {
+    "ACCEPTED": {"EN_ROUTE", "WITHDRAWN"},
+    "EN_ROUTE": {"ARRIVED", "WITHDRAWN"},
+    "ARRIVED": {"COMPLETED", "WITHDRAWN"},
+}
+
+
+def get_responder_mission(mission_id: str, responder_id: str) -> Dict[str, Any]:
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        mission = dynamo.Table(DYNAMODB_MISSIONS_TABLE).get_item(
+            Key={"mission_id": mission_id}, ConsistentRead=True
+        ).get("Item")
+    elif _dev_mode():
+        mission = _LOCAL_MISSIONS.get(mission_id)
+    else:
+        raise RuntimeError("Mission store is unavailable")
+    if not mission or mission.get("responder_id") != responder_id:
+        raise PermissionError("Mission is unavailable to this responder")
+    return _public_mission(mission)
+
+
+def transition_rescue_mission(
+    mission_id: str,
+    responder_id: str,
+    new_status: str,
+) -> Dict[str, Any]:
+    """Conditionally advance one responder-owned mission."""
+    responder = _get_responder(responder_id)
+    if not responder or responder.get("trust_score", 0) < 70 or (
+        not _dev_mode() and responder.get("verification_status") != "APPROVED"
+    ):
+        raise PermissionError("Responder approval is no longer active")
+    target = str(new_status).upper()
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        table = dynamo.Table(DYNAMODB_MISSIONS_TABLE)
+        existing = table.get_item(
+            Key={"mission_id": mission_id}, ConsistentRead=True
+        ).get("Item")
+    elif _dev_mode():
+        table = None
+        existing = _LOCAL_MISSIONS.get(mission_id)
+    else:
+        raise RuntimeError("Mission store is unavailable")
+    if not existing or existing.get("responder_id") != responder_id:
+        raise PermissionError("Mission is unavailable to this responder")
+    current = str(existing.get("status", ""))
+    if target == current:
+        return _public_mission(existing)
+    if target not in _MISSION_TRANSITIONS.get(current, set()):
+        raise ValueError(f"Illegal mission transition from {current} to {target}")
+
+    now = datetime.now(timezone.utc).isoformat()
+    terminal = target in {"COMPLETED", "WITHDRAWN", "CANCELLED", "EXPIRED"}
+    if table:
+        update_expression = "SET #status = :target, updated_at = :updated"
+        if terminal:
+            update_expression += " REMOVE navigation_grant_hash, navigation_grant_expires_at"
+        try:
+            result = table.update_item(
+                Key={"mission_id": mission_id},
+                UpdateExpression=update_expression,
+                ConditionExpression="#status = :current AND responder_id = :responder",
+                ExpressionAttributeNames={"#status": "status"},
+                ExpressionAttributeValues={
+                    ":target": target,
+                    ":current": current,
+                    ":responder": responder_id,
+                    ":updated": now,
+                },
+                ReturnValues="ALL_NEW",
+            )
+            updated = result["Attributes"]
+        except Exception as error:
+            code = getattr(error, "response", {}).get("Error", {}).get("Code")
+            if code == "ConditionalCheckFailedException":
+                raise ValueError("Mission changed; refresh before trying again") from error
+            raise
+    else:
+        updated = {**existing, "status": target, "updated_at": now}
+        if terminal:
+            updated.pop("navigation_grant_hash", None)
+            updated.pop("navigation_grant_expires_at", None)
+        _LOCAL_MISSIONS[mission_id] = updated
+
+    incident_id = str(existing["incident_id"])
+    if target == "EN_ROUTE":
+        update_incident_status(
+            incident_id,
+            IncidentState.RESPONDERS_EN_ROUTE.value,
+            actor="COMMUNITY_RESPONDER",
+            note="An approved responder started navigating to the incident.",
+        )
+    elif target == "ARRIVED":
+        update_incident_status(
+            incident_id,
+            IncidentState.HELP_ARRIVED.value,
+            actor="COMMUNITY_RESPONDER",
+            note="An approved responder reported arrival.",
+        )
+    else:
+        append_incident_event(
+            incident_id,
+            f"mission_{target.lower()}",
+            "COMMUNITY_RESPONDER",
+            f"Responder mission {mission_id} changed from {current} to {target}.",
+        )
+    return _public_mission(updated)
+
+
+def cancel_incident_missions(incident_id: str, reason: str) -> int:
+    """Revoke active mission grants when an incident becomes terminal."""
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        missions = dynamo.Table(DYNAMODB_MISSIONS_TABLE).query(
+            IndexName="IncidentMissionsIndex",
+            KeyConditionExpression="incident_id = :incident",
+            ExpressionAttributeValues={":incident": incident_id},
+        ).get("Items", [])
+    elif _dev_mode():
+        missions = [
+            mission
+            for mission in _LOCAL_MISSIONS.values()
+            if mission.get("incident_id") == incident_id
+        ]
+    else:
+        raise RuntimeError("Mission store is unavailable")
+    cancelled = 0
+    for mission in missions:
+        if mission.get("status") not in {"INVITED", "ACCEPTED", "EN_ROUTE", "ARRIVED"}:
+            continue
+        mission_id = mission["mission_id"]
+        if dynamo:
+            dynamo.Table(DYNAMODB_MISSIONS_TABLE).update_item(
+                Key={"mission_id": mission_id},
+                UpdateExpression=(
+                    "SET #status = :cancelled, updated_at = :updated, "
+                    "cancellation_reason = :reason "
+                    "REMOVE navigation_grant_hash, navigation_grant_expires_at"
+                ),
+                ConditionExpression="#status = :expected",
+                ExpressionAttributeNames={"#status": "status"},
+                ExpressionAttributeValues={
+                    ":cancelled": "CANCELLED",
+                    ":expected": mission["status"],
+                    ":updated": datetime.now(timezone.utc).isoformat(),
+                    ":reason": reason[:200],
+                },
+            )
+        else:
+            mission.update(
+                status="CANCELLED",
+                updated_at=datetime.now(timezone.utc).isoformat(),
+                cancellation_reason=reason[:200],
+            )
+            mission.pop("navigation_grant_hash", None)
+            mission.pop("navigation_grant_expires_at", None)
+        cancelled += 1
+    return cancelled
 

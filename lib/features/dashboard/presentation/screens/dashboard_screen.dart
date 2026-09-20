@@ -25,6 +25,7 @@ class DashboardScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     final profile = ref.watch(userProfileStreamProvider).valueOrNull;
     final locationMode = ref.watch(locationModeProvider);
+    final isResponder = ref.watch(authServiceProvider).isResponder;
 
     return Scaffold(
       appBar: AppBar(
@@ -199,6 +200,21 @@ class DashboardScreen extends ConsumerWidget {
                     color: AppColors.warning,
                     onTap: () => context.push(Routes.quickActions),
                   ),
+                  _QuickActionCard(
+                    icon: Icons.health_and_safety_outlined,
+                    title: 'Readiness',
+                    subtitle: 'Check protection',
+                    color: AppColors.primary,
+                    onTap: () => context.push(Routes.readiness),
+                  ),
+                  if (isResponder)
+                    _QuickActionCard(
+                      icon: Icons.volunteer_activism_outlined,
+                      title: 'Responder',
+                      subtitle: 'Nearby requests',
+                      color: AppColors.guardian,
+                      onTap: () => context.push(Routes.responderInbox),
+                    ),
                 ],
               ),
 

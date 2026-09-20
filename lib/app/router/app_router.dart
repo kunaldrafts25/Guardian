@@ -25,6 +25,7 @@ import 'package:guardian/features/onboarding/presentation/screens/onboarding_scr
 // Main Screens
 import 'package:guardian/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:guardian/features/emergency/presentation/screens/emergency_screen.dart';
+import 'package:guardian/features/emergency/presentation/screens/incident_timeline_screen.dart';
 import 'package:guardian/features/contacts/presentation/screens/contacts_screen.dart';
 import 'package:guardian/features/map/presentation/screens/map_screen.dart';
 import 'package:guardian/features/settings/presentation/screens/settings_screen.dart';
@@ -33,6 +34,9 @@ import 'package:guardian/features/safezone/presentation/screens/safe_zones_scree
 import 'package:guardian/features/quickactions/presentation/screens/quick_actions_screen.dart';
 import 'package:guardian/features/settings/presentation/screens/sos_settings_screen.dart';
 import 'package:guardian/features/settings/presentation/screens/sessions_screen.dart';
+import 'package:guardian/features/settings/presentation/screens/readiness_screen.dart';
+import 'package:guardian/features/responder/presentation/screens/mission_screen.dart';
+import 'package:guardian/features/responder/presentation/screens/responder_inbox_screen.dart';
 
 /// Provider for the app router
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -129,6 +133,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const EmergencyScreen(),
           ),
 
+          GoRoute(
+            path: '${Routes.incidentTimeline}/:incidentId',
+            name: 'incident-timeline',
+            builder: (context, state) => IncidentTimelineScreen(
+              incidentId: state.pathParameters['incidentId']!,
+            ),
+          ),
+
           // Contacts
           GoRoute(
             path: Routes.contacts,
@@ -163,6 +175,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const SessionsScreen(),
           ),
 
+          GoRoute(
+            path: Routes.readiness,
+            name: 'readiness',
+            builder: (context, state) => const ReadinessScreen(),
+          ),
+
           // Profile
           GoRoute(
             path: Routes.profile,
@@ -182,6 +200,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: Routes.quickActions,
             name: 'quick-actions',
             builder: (context, state) => const QuickActionsScreen(),
+          ),
+
+          GoRoute(
+            path: Routes.responderInbox,
+            name: 'responder-inbox',
+            builder: (context, state) => const ResponderInboxScreen(),
+          ),
+
+          GoRoute(
+            path: '${Routes.responderMission}/:missionId',
+            name: 'responder-mission',
+            builder: (context, state) => MissionScreen(
+              missionId: state.pathParameters['missionId']!,
+            ),
           ),
         ],
       ),

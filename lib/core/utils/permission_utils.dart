@@ -4,7 +4,10 @@
  * Contact: kunalsingh2514@gmail.com
  */
 
-import 'package:permission_handler/permission_handler.dart';
+import 'package:permission_handler/permission_handler.dart'
+    hide openAppSettings;
+import 'package:permission_handler/permission_handler.dart' as ph
+    show openAppSettings;
 
 class PermissionUtils {
   /// Request multiple permissions at once
@@ -32,7 +35,7 @@ class PermissionUtils {
 
   /// Open app settings
   static Future<bool> openAppSettings() async {
-    return await openAppSettings();
+    return ph.openAppSettings();
   }
 
   /// Request all permissions needed for the app

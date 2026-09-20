@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.content.BroadcastReceiver
 import android.util.Log
 import android.Manifest
@@ -187,6 +188,10 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                     "isServiceRunning" -> result.success(SafetyForegroundService.isRunning)
+                    "isBatteryOptimizationIgnored" -> {
+                        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+                        result.success(powerManager.isIgnoringBatteryOptimizations(packageName))
+                    }
                     "getLastLocation" -> {
                         val loc = SafetyForegroundService.lastKnownLocation
                         result.success(loc?.let {

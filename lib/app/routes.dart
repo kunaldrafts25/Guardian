@@ -31,4 +31,8 @@ abstract class Routes {
   static const trustProfile = '/trust';
   static const safeSpots = '/safe-spots';
   static const quickActions = '/quick-actions';
+  static const responderInbox = '/responder/inbox';
+  static const responderMission = '/responder/mission';
+  static const incidentTimeline = '/incidents';
+  static const readiness = '/readiness';
 }

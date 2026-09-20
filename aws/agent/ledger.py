@@ -102,6 +102,9 @@ def _safe_evidence(value: Dict[str, Any]) -> Dict[str, Any]:
         "retryable",
         "error_type",
         "policy_reasons",
+        "provider_accepted_count",
+        "failed_count",
+        "invite_count",
     }
     return {
         key: value
