@@ -153,6 +153,14 @@ class SettingsScreen extends ConsumerWidget {
             child: Column(
               children: [
                 ListTile(
+                  leading: const Icon(Icons.devices),
+                  title: const Text('Signed-in devices'),
+                  subtitle: const Text('Review and revoke account sessions'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push(Routes.sessions),
+                ),
+                const Divider(height: 1),
+                ListTile(
                   leading: const Icon(Icons.help_outline),
                   title: const Text('Help & Support'),
                   trailing: const Icon(Icons.chevron_right),

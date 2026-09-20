@@ -12,6 +12,28 @@ from aws.agent.tools import (
     notify_trusted_contact,
 )
 from aws.agent.guardian_agent import execute_agent_reasoning
+from aws.agent.policy_authorization import issue_policy_authorizations
+from aws.agent.ledger import list_agent_events
+
+
+def _tool_token(incident_id: str, action: str) -> str:
+    constraints = (
+        {
+            "max_responder_invitations": 6,
+            "required_responder_quorum": 1,
+            "location_precision_decimals": 2,
+        }
+        if action == "dispatch_community_alert"
+        else {}
+    )
+    return issue_policy_authorizations(
+        incident_id=incident_id,
+        actions={action},
+        decision="OWNER_REQUESTED_ESCALATION",
+        correlation_id=f"test:{incident_id}:{action}",
+        actor="test_policy",
+        action_constraints={action: constraints},
+    )[action]
 
 
 def test_agent_tools_execution():
@@ -41,9 +63,13 @@ def test_agent_tools_execution():
     assert u_res["current_state"] == "CLOUD_ACCEPTED"
 
     # 5. Tool 4: Notify Contact (Policy check + SNS)
-    n_res = notify_trusted_contact(incident_id)
-    assert n_res["state"] == "CONTACTS_NOTIFIED"
-    assert n_res["contact_notified"] is not None
+    n_res = notify_trusted_contact(
+        incident_id,
+        _tool_token(incident_id, "notify_trusted_contact"),
+    )
+    assert n_res["state"] == "CLOUD_ACCEPTED"
+    assert n_res["delivery_status"] == "DEV_MODE_NOT_SENT"
+    assert n_res["contact_notified"] is None
 
 
 def test_agent_autonomous_reasoning_flow():
@@ -74,7 +100,8 @@ def test_agent_critical_immediate_escalation():
 
     res = execute_agent_reasoning(iid)
     assert "ESCALATE_IMMEDIATELY" in res["decision"]
-    assert res["action_result"]["contact_alert"]["state"] == "CONTACTS_NOTIFIED"
+    assert res["action_result"]["contact_alert"]["delivery_status"] == "DEV_MODE_NOT_SENT"
+    assert res["action_result"]["contact_alert"]["state"] == "CLOUD_ACCEPTED"
 
 
 def test_bedrock_advice_cannot_downgrade_deterministic_panic_policy():
@@ -113,7 +140,19 @@ def test_hardware_panic_immediate_critical_and_community_dispatch():
     res = execute_agent_reasoning(iid)
     assert res["decision"] == "ESCALATE_IMMEDIATELY_WITH_COMMUNITY"
     assert "community_dispatch" in res["action_result"]
-    assert res["action_result"]["community_dispatch"]["status"] == "COMMUNITY_DISPATCHED"
+    assert res["action_result"]["community_dispatch"]["status"] == "INVITATIONS_CREATED"
+    event_types = {
+        event["event_type"] for event in list_agent_events(iid)
+    }
+    assert {
+        "CONTEXT_ASSESSED",
+        "ACTION_PROPOSED",
+        "POLICY_DECIDED",
+        "ACTION_AUTHORIZED",
+        "TOOL_REQUESTED",
+        "TOOL_COMPLETED",
+        "AGENT_RUN_COMPLETED",
+    }.issubset(event_types)
 
 
 
@@ -142,10 +181,14 @@ def test_community_responder_trust_gating_and_anti_solo_quorum():
     assert all(r["responder_id"] != "resp_low_trust" for r in responders)
 
     # 3. Dispatch community alert: Anti-Solo Quorum check passes with >=2 helpers
-    dispatch_res = dispatch_community_alert(iid)
-    assert dispatch_res["status"] == "COMMUNITY_DISPATCHED"
-    assert dispatch_res["dispatched_count"] >= 2
-    assert "broadcast_payload" in dispatch_res
+    dispatch_res = dispatch_community_alert(
+        iid,
+        _tool_token(iid, "dispatch_community_alert"),
+    )
+    assert dispatch_res["status"] == "INVITATIONS_CREATED"
+    assert dispatch_res["invite_count"] >= 2
+    assert dispatch_res["dispatched_count"] == 0
+    assert "invitation_payload" in dispatch_res
 
     # 4. Acceptance reveals only a coarse area and a bound short-lived grant.
     accept_res = accept_rescue_mission(iid, responder_id="resp_01")

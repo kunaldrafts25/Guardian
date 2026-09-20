@@ -82,3 +82,8 @@ class PhoneVerificationNotifier extends StateNotifier<PhoneVerificationState> {
 final signOutProvider = Provider<Future<void> Function()>((ref) {
   return () => ref.read(authServiceProvider).signOut();
 });
+
+final authenticatedSessionsProvider =
+    FutureProvider.autoDispose<List<AuthenticatedSession>>((ref) {
+  return ref.watch(authServiceProvider).listSessions();
+});

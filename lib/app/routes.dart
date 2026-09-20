@@ -23,6 +23,7 @@ abstract class Routes {
   static const map = '/map';
   static const settings = '/settings';
   static const sosSettings = '/settings/sos';
+  static const sessions = '/settings/sessions';
   static const profile = '/profile';
 
   // Features

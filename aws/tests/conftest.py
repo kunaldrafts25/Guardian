@@ -6,9 +6,12 @@ import pytest
 @pytest.fixture(autouse=True)
 def seed_development_responder_store():
     from aws.agent import tools
+    from aws.agent import ledger, policy_authorization
 
     tools._LOCAL_RESPONDERS.clear()
     tools._LOCAL_MISSIONS.clear()
+    ledger._LOCAL_LEDGER.clear()
+    policy_authorization._CONSUMED_AUTHORIZATIONS.clear()
     for responder_id, latitude, longitude, trust_score in (
         ("resp_01", 19.0772, 72.8785, 92),
         ("resp_02", 19.0751, 72.8765, 84),
@@ -28,3 +31,5 @@ def seed_development_responder_store():
     yield
     tools._LOCAL_RESPONDERS.clear()
     tools._LOCAL_MISSIONS.clear()
+    ledger._LOCAL_LEDGER.clear()
+    policy_authorization._CONSUMED_AUTHORIZATIONS.clear()

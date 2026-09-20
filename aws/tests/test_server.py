@@ -8,22 +8,61 @@ import pytest
 os.environ["GUARDIAN_DEV_MODE"] = "true"
 from fastapi.testclient import TestClient
 from aws.server import app
+from aws.session_service import create_session
 
 
 client = TestClient(
     app,
-    headers={"Authorization": "Bearer dev_access_token_test_user"},
+    headers={
+        "Authorization": "Bearer dev_access_token_test_user",
+        "X-Guardian-Session-ID": "dev-session",
+    },
 )
 unauthenticated_client = TestClient(app)
 other_user_client = TestClient(
     app,
-    headers={"Authorization": "Bearer dev_access_token_other_user"},
+    headers={
+        "Authorization": "Bearer dev_access_token_other_user",
+        "X-Guardian-Session-ID": "dev-session",
+    },
 )
 
 
 def test_protected_endpoints_require_bearer_token():
     response = unauthenticated_client.post("/simulate/fall")
     assert response.status_code == 401
+
+
+def test_sign_out_requires_an_authenticated_bearer_session():
+    response = unauthenticated_client.post(
+        "/auth/sign-out",
+        json={"access_token": "someone-elses-token"},
+    )
+    assert response.status_code == 401
+
+
+def test_revoked_session_is_denied_on_the_next_api_request():
+    session = create_session(
+        "session_test_user",
+        "refresh-token",
+        "Guardian Android device",
+        "android",
+    )
+    session_client = TestClient(
+        app,
+        headers={
+            "Authorization": "Bearer dev_access_token_session_test_user",
+            "X-Guardian-Session-ID": session["session_id"],
+        },
+    )
+
+    listed = session_client.get("/auth/sessions")
+    assert listed.status_code == 200
+    assert listed.json()["sessions"][0]["current"] is True
+
+    revoked = session_client.delete(f"/auth/sessions/{session['session_id']}")
+    assert revoked.status_code == 200
+    assert session_client.get("/auth/sessions").status_code == 401
 
 
 def test_incident_is_not_readable_by_another_user():
@@ -53,6 +92,28 @@ def test_incident_contract_rejects_client_supplied_user_identity():
         json={"user_id": "another_user", "event_type": "sos_button"},
     )
     assert response.status_code == 422
+
+
+def test_assistant_rejects_client_authored_incident_context():
+    response = client.post(
+        "/assistant/chat",
+        json={
+            "message": "What should I do?",
+            "context": {"incident_state": "help_arrived"},
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_assistant_cannot_ground_on_another_users_incident():
+    created = client.post("/simulate/fall")
+    incident_id = created.json()["incident"]["incident_id"]
+
+    response = other_user_client.post(
+        "/assistant/chat",
+        json={"message": "Summarize this", "incident_id": incident_id},
+    )
+    assert response.status_code == 403
 
 
 def test_health_endpoint():

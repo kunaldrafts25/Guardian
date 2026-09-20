@@ -9,6 +9,7 @@ import sys
 import json
 import logging
 import math
+import uuid
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,17 +38,35 @@ from aws.incident_handler.handler import (
     IncidentState,
     AWS_REGION,
 )
+from aws.agent.ledger import append_agent_event
+from aws.agent.policy_authorization import (
+    POLICY_VERSION,
+    issue_policy_authorizations,
+    read_policy_authorization,
+)
+from aws.agent.safety_policy import evaluate_safety_policy
 
 logger = logging.getLogger("guardian_agent")
 
 try:
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError
+    from botocore.config import Config
     BOTO3_AVAILABLE = True
 except ImportError:
     BOTO3_AVAILABLE = False
+    Config = None
 
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
+BEDROCK_CONFIG = (
+    Config(
+        connect_timeout=2,
+        read_timeout=8,
+        retries={"max_attempts": 1, "mode": "standard"},
+    )
+    if Config
+    else None
+)
 
 SYSTEM_PROMPT = """You are the Guardian Autonomous Emergency Response Agent.
 Your responsibility is personal safety monitoring and rapid, accountable escalation.
@@ -96,7 +115,7 @@ def query_safety_companion(message: str, context: Optional[Dict[str, str]] = Non
         raise RuntimeError("Bedrock runtime is not available")
 
     region = os.environ.get("AWS_DEFAULT_REGION") or os.environ.get("AWS_REGION") or "us-east-1"
-    client = boto3.client("bedrock-runtime", region_name=region)
+    client = boto3.client("bedrock-runtime", region_name=region, config=BEDROCK_CONFIG)
     context_text = json.dumps(context or {}, separators=(",", ":"))
     response = client.converse(
         modelId=BEDROCK_MODEL_ID,
@@ -129,7 +148,7 @@ def _query_bedrock_llm(context: Dict[str, Any], risk_info: Dict[str, Any]) -> Op
 
     try:
         region = os.environ.get("AWS_DEFAULT_REGION") or os.environ.get("AWS_REGION") or "us-east-1"
-        client = boto3.client("bedrock-runtime", region_name=region)
+        client = boto3.client("bedrock-runtime", region_name=region, config=BEDROCK_CONFIG)
 
         location = context.get("location") or {}
         coarse_location = {
@@ -185,29 +204,64 @@ def _query_bedrock_llm(context: Dict[str, Any], risk_info: Dict[str, Any]) -> Op
             return parsed
 
     except Exception as e:
-        logger.warning(f"Live Bedrock invocation failed or unconfigured, using hybrid fallback: {e}")
+        logger.warning(
+            "Bedrock advisory unavailable; deterministic policy remains active: %s",
+            type(e).__name__,
+        )
 
     return None
 
 
-def _policy_decision(context: Dict[str, Any], risk_info: Dict[str, Any]) -> str:
-    """Authorize an action from deterministic, versioned safety policy."""
-    event_type = str(context.get("event_type", "")).lower()
-    risk_level = str(risk_info.get("level", "MEDIUM")).upper()
-    if (
-        risk_level == "CRITICAL"
-        or event_type in {"sos_button", "hardware_power_panic", "crash_detected", "check_in_expired"}
-    ):
-        return "ESCALATE_IMMEDIATELY_WITH_COMMUNITY"
-    if risk_level in {"HIGH", "MEDIUM"}:
-        return "REQUEST_USER_VERIFICATION"
-    return "MONITOR_NORMAL"
+def execute_authorized_tool(
+    *,
+    incident_id: str,
+    correlation_id: str,
+    action: str,
+    token: str,
+    tool,
+) -> Dict[str, Any]:
+    authorization = read_policy_authorization(
+        token,
+        expected_incident_id=incident_id,
+        expected_action=action,
+    )
+    ledger_context = {
+        "incident_id": incident_id,
+        "correlation_id": correlation_id,
+        "policy_version": POLICY_VERSION,
+        "action": action,
+        "authorization_id": authorization["authorization_id"],
+    }
+    append_agent_event(event_type="ACTION_AUTHORIZED", **ledger_context)
+    append_agent_event(event_type="TOOL_REQUESTED", **ledger_context)
+    try:
+        result = tool(incident_id, token)
+    except Exception as error:
+        append_agent_event(
+            event_type="TOOL_FAILED",
+            outcome="FAILED",
+            evidence={"error_type": type(error).__name__, "retryable": True},
+            **ledger_context,
+        )
+        raise
+    append_agent_event(
+        event_type="TOOL_COMPLETED",
+        outcome="COMPLETED",
+        evidence=result,
+        **ledger_context,
+    )
+    return result
 
 
-def execute_agent_reasoning(incident_id: str) -> Dict[str, Any]:
+def execute_agent_reasoning(
+    incident_id: str,
+    correlation_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Core agentic loop: Observe -> Gather Context -> Assess Risk -> Bedrock LLM Reasoning -> Act -> Document.
     """
+    correlation_id = correlation_id or str(uuid.uuid4())
+
     # Agent execution is idempotent. API Gateway/background retries must never
     # resend contact or community notifications for the same incident.
     existing = get_incident(incident_id)
@@ -220,6 +274,7 @@ def execute_agent_reasoning(incident_id: str) -> Dict[str, Any]:
             "risk_level": existing.get("risk_level"),
             "risk_score": existing.get("risk_score"),
             "action_result": {"status": "ALREADY_EXECUTED"},
+            "correlation_id": correlation_id,
         }
 
     # 1. Gather Context
@@ -232,18 +287,48 @@ def execute_agent_reasoning(incident_id: str) -> Dict[str, Any]:
     risk_level = risk_info.get("level", "MEDIUM")
     risk_score = risk_info.get("score", 0.5)
     reasons = risk_info.get("reasons", [])
+    append_agent_event(
+        incident_id=incident_id,
+        correlation_id=correlation_id,
+        event_type="CONTEXT_ASSESSED",
+        policy_version=POLICY_VERSION,
+        evidence={"risk_level": risk_level, "risk_score": risk_score},
+    )
 
     # 3. Live Amazon Bedrock LLM Reasoning (with resilient fallback)
     bedrock_result = _query_bedrock_llm(context, risk_info)
 
-    decision = _policy_decision(context, risk_info)
+    policy = evaluate_safety_policy(
+        event_type=str(context.get("event_type", "")),
+        risk_level=str(risk_info.get("level", "MEDIUM")),
+        incident_state=str(context.get("state", "")),
+        is_isolated=bool((context.get("location") or {}).get("is_isolated", False)),
+    )
+    decision = policy.decision
     provider_name = (
         "Deterministic policy v1 + Amazon Bedrock advisory"
         if bedrock_result
         else "Deterministic policy v1"
     )
+    append_agent_event(
+        incident_id=incident_id,
+        correlation_id=correlation_id,
+        event_type="ACTION_PROPOSED",
+        policy_version=POLICY_VERSION,
+        decision=bedrock_result["decision"] if bedrock_result else decision,
+        outcome="MODEL_ADVISORY" if bedrock_result else "DETERMINISTIC_PROPOSAL",
+        evidence={"provider": provider_name},
+    )
 
     if bedrock_result:
+        append_agent_event(
+            incident_id=incident_id,
+            correlation_id=correlation_id,
+            event_type="MODEL_ADVISORY_VALIDATED",
+            policy_version=POLICY_VERSION,
+            decision=bedrock_result["decision"],
+            evidence={"provider": bedrock_result.get("provider", "Validated Bedrock advisory")},
+        )
         rationale = (
             f"Policy authorized {decision}. Bedrock advisory: "
             f"{bedrock_result['rationale']}"
@@ -262,17 +347,64 @@ def execute_agent_reasoning(incident_id: str) -> Dict[str, Any]:
         else:
             rationale = f"Low risk score ({risk_score}). Telemetry within acceptable threshold. Continuing passive monitoring."
 
+    append_agent_event(
+        incident_id=incident_id,
+        correlation_id=correlation_id,
+        event_type="POLICY_DECIDED",
+        policy_version=POLICY_VERSION,
+        decision=decision,
+        outcome="AUTHORIZED" if decision != "MONITOR_NORMAL" else "NO_ACTION",
+        evidence={
+            "risk_level": risk_level,
+            "risk_score": risk_score,
+            "policy_reasons": ",".join(policy.reason_codes),
+        },
+    )
+
     # 4. Act according to decision
     action_result = {}
     if decision == "ESCALATE_IMMEDIATELY_WITH_COMMUNITY":
-        contact_res = notify_trusted_contact(incident_id)
-        community_res = dispatch_community_alert(incident_id)
+        authorizations = issue_policy_authorizations(
+            incident_id=incident_id,
+            actions=policy.authorized_actions,
+            decision=decision,
+            correlation_id=correlation_id,
+            actor="guardian_agent",
+            action_constraints={
+                action: policy.constraints_for(action)
+                for action in policy.authorized_actions
+            },
+        )
+        contact_res = execute_authorized_tool(
+            incident_id=incident_id,
+            correlation_id=correlation_id,
+            action="notify_trusted_contact",
+            token=authorizations["notify_trusted_contact"],
+            tool=notify_trusted_contact,
+        )
+        community_res = execute_authorized_tool(
+            incident_id=incident_id,
+            correlation_id=correlation_id,
+            action="dispatch_community_alert",
+            token=authorizations["dispatch_community_alert"],
+            tool=dispatch_community_alert,
+        )
         action_result = {
             "contact_alert": contact_res,
             "community_dispatch": community_res,
         }
     elif decision == "REQUEST_USER_VERIFICATION":
         action_result = ask_user_confirmation(incident_id, timeout_seconds=15)
+
+    append_agent_event(
+        incident_id=incident_id,
+        correlation_id=correlation_id,
+        event_type="AGENT_RUN_COMPLETED",
+        policy_version=POLICY_VERSION,
+        decision=decision,
+        outcome="COMPLETED",
+        evidence={"provider": provider_name},
+    )
 
     # 5. Document & Persist
     incident = get_incident(incident_id)
@@ -317,6 +449,7 @@ def execute_agent_reasoning(incident_id: str) -> Dict[str, Any]:
         "decision": decision,
         "rationale": rationale,
         "action_result": action_result,
+        "correlation_id": correlation_id,
     }
 
 
@@ -326,7 +459,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     if not incident_id:
         return {"statusCode": 400, "error": "incident_id missing in event"}
 
-    result = execute_agent_reasoning(incident_id)
+    correlation_id = getattr(context, "aws_request_id", None) if context else None
+    result = execute_agent_reasoning(incident_id, correlation_id=correlation_id)
     return {
         "statusCode": 200,
         "body": result,

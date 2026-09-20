@@ -191,13 +191,16 @@ class AwsIncidentService {
   /// Ask the production Bedrock safety companion.
   Future<String> askSafetyCompanion(
     String message, {
-    Map<String, String>? context,
+    String? incidentId,
   }) async {
     final response = await http
         .post(
           Uri.parse('$baseUrl/assistant/chat'),
           headers: _headers,
-          body: jsonEncode({'message': message, 'context': context}),
+          body: jsonEncode({
+            'message': message,
+            if (incidentId != null) 'incident_id': incidentId,
+          }),
         )
         .timeout(const Duration(seconds: 20));
     if (response.statusCode != 200) {

@@ -182,6 +182,58 @@ Resources:
         Enabled: true
       AttributeDefinitions: [{AttributeName: throttle_key, AttributeType: S}]
       KeySchema: [{AttributeName: throttle_key, KeyType: HASH}]
+  SessionsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: guardian-sessions
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+      SSESpecification: {SSEEnabled: true}
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
+      AttributeDefinitions:
+        - {AttributeName: session_id, AttributeType: S}
+        - {AttributeName: user_id, AttributeType: S}
+        - {AttributeName: created_at, AttributeType: S}
+      KeySchema: [{AttributeName: session_id, KeyType: HASH}]
+      GlobalSecondaryIndexes:
+        - IndexName: UserSessionsIndex
+          KeySchema:
+            - {AttributeName: user_id, KeyType: HASH}
+            - {AttributeName: created_at, KeyType: RANGE}
+          Projection: {ProjectionType: ALL}
+  AgentLedgerTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: guardian-agent-ledger
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+      SSESpecification: {SSEEnabled: true}
+      AttributeDefinitions:
+        - {AttributeName: incident_id, AttributeType: S}
+        - {AttributeName: event_id, AttributeType: S}
+      KeySchema:
+        - {AttributeName: incident_id, KeyType: HASH}
+        - {AttributeName: event_id, KeyType: RANGE}
+  AgentAuthorizationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: guardian-agent-authorizations
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification: {SSEEnabled: true}
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
+      AttributeDefinitions: [{AttributeName: authorization_id, AttributeType: S}]
+      KeySchema: [{AttributeName: authorization_id, KeyType: HASH}]
+  AgentPolicySigningSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: HMAC key for short-lived Guardian agent policy capabilities
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
 
   EmergencyAlertsTopic:
     Type: AWS::SNS::Topic
@@ -204,6 +256,10 @@ Resources:
           DYNAMODB_MISSIONS_TABLE: !Ref MissionsTable
           DYNAMODB_USERS_TABLE: !Ref UsersTable
           DYNAMODB_AUTH_THROTTLE_TABLE: !Ref AuthThrottleTable
+          DYNAMODB_SESSIONS_TABLE: !Ref SessionsTable
+          DYNAMODB_AGENT_LEDGER_TABLE: !Ref AgentLedgerTable
+          DYNAMODB_AGENT_AUTHORIZATIONS_TABLE: !Ref AgentAuthorizationsTable
+          AGENT_POLICY_SECRET_ARN: !Ref AgentPolicySigningSecret
           EVENTBUS_NAME: default
           SNS_TOPIC_ARN: !Ref EmergencyAlertsTopic
           BEDROCK_MODEL_ID: anthropic.claude-3-haiku-20240307-v1:0
@@ -214,6 +270,9 @@ Resources:
         - DynamoDBCrudPolicy: {TableName: !Ref MissionsTable}
         - DynamoDBCrudPolicy: {TableName: !Ref UsersTable}
         - DynamoDBCrudPolicy: {TableName: !Ref AuthThrottleTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref SessionsTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref AgentLedgerTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref AgentAuthorizationsTable}
         - SNSPublishMessagePolicy: {TopicName: !GetAtt EmergencyAlertsTopic.TopicName}
         - EventBridgePutEventsPolicy: {EventBusName: default}
         - Statement:
@@ -236,6 +295,9 @@ Resources:
             - Effect: Allow
               Action: bedrock:InvokeModel
               Resource: '*'
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Ref AgentPolicySigningSecret
       Events:
         PublicRoot:
           Type: Api
@@ -249,9 +311,6 @@ Resources:
         RefreshToken:
           Type: Api
           Properties: {Path: /auth/refresh, Method: post, Auth: {Authorizer: NONE}}
-        SignOut:
-          Type: Api
-          Properties: {Path: /auth/sign-out, Method: post, Auth: {Authorizer: NONE}}
         ProtectedApi:
           Type: Api
           Properties: {Path: '/{proxy+}', Method: any}
@@ -268,12 +327,17 @@ Resources:
         - DynamoDBCrudPolicy: {TableName: !Ref IncidentEventsTable}
         - DynamoDBReadPolicy: {TableName: !Ref RespondersTable}
         - DynamoDBCrudPolicy: {TableName: !Ref MissionsTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref AgentLedgerTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref AgentAuthorizationsTable}
         - DynamoDBReadPolicy: {TableName: !Ref UsersTable}
         - SNSPublishMessagePolicy: {TopicName: !GetAtt EmergencyAlertsTopic.TopicName}
         - Statement:
             - Effect: Allow
               Action: bedrock:InvokeModel
               Resource: '*'
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Ref AgentPolicySigningSecret
       Events:
         IncidentCreatedEvent:
           Type: EventBridgeRule

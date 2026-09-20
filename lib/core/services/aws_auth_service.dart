@@ -18,6 +18,7 @@ const _kAccessToken = 'aws_access_token';
 const _kIdToken = 'aws_id_token';
 const _kRefreshToken = 'aws_refresh_token';
 const _kPhone = 'aws_user_phone';
+const _kSessionId = 'guardian_session_id';
 
 class AwsAuthUser {
   final String uid;
@@ -37,6 +38,38 @@ class AwsAuthUser {
         phoneNumber: phoneNumber,
         displayName: displayName ?? this.displayName,
         photoURL: photoURL ?? this.photoURL,
+      );
+}
+
+class AuthenticatedSession {
+  final String id;
+  final String deviceLabel;
+  final String platform;
+  final String status;
+  final DateTime? createdAt;
+  final DateTime? lastSeenAt;
+  final bool isCurrent;
+
+  const AuthenticatedSession({
+    required this.id,
+    required this.deviceLabel,
+    required this.platform,
+    required this.status,
+    required this.createdAt,
+    required this.lastSeenAt,
+    required this.isCurrent,
+  });
+
+  factory AuthenticatedSession.fromJson(Map<String, dynamic> json) =>
+      AuthenticatedSession(
+        id: json['session_id'] as String,
+        deviceLabel:
+            json['device_label'] as String? ?? 'Guardian mobile device',
+        platform: json['platform'] as String? ?? 'unknown',
+        status: json['status'] as String? ?? 'revoked',
+        createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
+        lastSeenAt: DateTime.tryParse(json['last_seen_at'] as String? ?? ''),
+        isCurrent: json['current'] as bool? ?? false,
       );
 }
 
@@ -78,6 +111,7 @@ class AwsAuthService {
   String? _userId;
   String? _accessToken;
   String? _phone;
+  String? _sessionId;
   String? _pendingSession; // Cognito auth session for OTP verification
   AwsAuthUser? _currentUser;
   Future<bool>? _refreshInFlight;
@@ -99,10 +133,13 @@ class AwsAuthService {
       _userId = await _storage.read(key: _kUserId);
       _accessToken = await _storage.read(key: _kAccessToken);
       _phone = await _storage.read(key: _kPhone);
+      _sessionId = await _storage.read(key: _kSessionId);
       if (_userId != null &&
           _userId!.isNotEmpty &&
           _accessToken != null &&
-          _accessToken!.isNotEmpty) {
+          _accessToken!.isNotEmpty &&
+          _sessionId != null &&
+          _sessionId!.isNotEmpty) {
         if (_isJwtExpired(_accessToken!)) {
           final refreshed = await refreshSession();
           if (!refreshed) {
@@ -112,6 +149,8 @@ class AwsAuthService {
           }
         }
         _currentUser = AwsAuthUser(uid: _userId!, phoneNumber: _phone);
+      } else if (_userId != null || _accessToken != null) {
+        await _clearLocalSession();
       }
       _authStateController.add(_currentUser);
       Logger.info('AwsAuthService: restored user=$_userId');
@@ -148,6 +187,9 @@ class AwsAuthService {
       'phone_number': _phone!,
       'otp_code': otp,
       'session': _pendingSession!,
+      'device_label':
+          'Guardian ${kIsWeb ? 'web' : defaultTargetPlatform.name} device',
+      'platform': kIsWeb ? 'web' : defaultTargetPlatform.name,
     });
 
     if (resp['user_id'] != null) {
@@ -170,13 +212,16 @@ class AwsAuthService {
 
   Future<bool> _refreshSessionInternal() async {
     final refreshToken = await _storage.read(key: _kRefreshToken);
-    if (refreshToken == null || _userId == null) return false;
+    if (refreshToken == null || _userId == null || _sessionId == null) {
+      return false;
+    }
 
     try {
       final resp = await _post(
           '/auth/refresh',
           {
             'refresh_token': refreshToken,
+            'session_id': _sessionId,
           },
           retryUnauthorized: false);
       if (resp['access_token'] != null) {
@@ -196,7 +241,7 @@ class AwsAuthService {
   Future<void> signOut() async {
     if (_accessToken != null) {
       try {
-        await _post('/auth/sign-out', {'access_token': _accessToken!});
+        await _post('/auth/sign-out', const {});
       } catch (e) {
         Logger.warning('AwsAuthService: sign-out API error: $e');
       }
@@ -204,6 +249,23 @@ class AwsAuthService {
     await _clearLocalSession();
     _authStateController.add(null);
     Logger.info('AwsAuthService: signed out');
+  }
+
+  Future<List<AuthenticatedSession>> listSessions() async {
+    final response = await _get('/auth/sessions');
+    final sessions = response['sessions'] as List<dynamic>? ?? const [];
+    return sessions
+        .whereType<Map<String, dynamic>>()
+        .map(AuthenticatedSession.fromJson)
+        .toList(growable: false);
+  }
+
+  Future<void> revokeSession(String sessionId) async {
+    await _delete('/auth/sessions/${Uri.encodeComponent(sessionId)}');
+    if (sessionId == _sessionId) {
+      await _clearLocalSession();
+      _authStateController.add(null);
+    }
   }
 
   bool _isJwtExpired(String token) {
@@ -226,6 +288,7 @@ class AwsAuthService {
     _userId = null;
     _accessToken = null;
     _phone = null;
+    _sessionId = null;
     _pendingSession = null;
     _currentUser = null;
     for (final key in [
@@ -234,6 +297,7 @@ class AwsAuthService {
       _kIdToken,
       _kRefreshToken,
       _kPhone,
+      _kSessionId,
     ]) {
       await _storage.delete(key: key);
     }
@@ -309,6 +373,7 @@ class AwsAuthService {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
         if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
+        if (_sessionId != null) 'X-Guardian-Session-ID': _sessionId!,
       };
 
   Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) =>
@@ -344,6 +409,14 @@ class AwsAuthService {
     );
   }
 
+  Future<Map<String, dynamic>> _delete(String path) async {
+    return _request(
+      path: path,
+      timeout: const Duration(seconds: 10),
+      send: (url) => http.delete(url, headers: _headers),
+    );
+  }
+
   Future<Map<String, dynamic>> _request({
     required String path,
     required Duration timeout,
@@ -354,7 +427,7 @@ class AwsAuthService {
     var response = await send(url).timeout(timeout);
     if (response.statusCode == 401 &&
         retryUnauthorized &&
-        !path.startsWith('/auth/') &&
+        !_isPublicAuthPath(path) &&
         await refreshSession()) {
       response = await send(url).timeout(timeout);
     }
@@ -364,19 +437,28 @@ class AwsAuthService {
         ? decoded
         : <String, dynamic>{'data': decoded};
     if (response.statusCode >= 400) {
-      if (response.statusCode == 401 && !path.startsWith('/auth/')) {
+      if (response.statusCode == 401 && !_isPublicAuthPath(path)) {
         await _clearLocalSession();
         _authStateController.add(null);
       }
-      throw Exception(
-          data['detail'] ?? 'Request failed: ${response.statusCode}');
+      final structuredError = data['error'];
+      final message = structuredError is Map<String, dynamic>
+          ? structuredError['message']
+          : data['detail'];
+      throw Exception(message ?? 'Request failed: ${response.statusCode}');
     }
     return data;
   }
 
+  bool _isPublicAuthPath(String path) =>
+      path == '/auth/send-otp' ||
+      path == '/auth/verify-otp' ||
+      path == '/auth/refresh';
+
   Future<void> _persistSession(Map<String, dynamic> resp) async {
     _userId = resp['user_id'] as String;
     _accessToken = resp['access_token'] as String?;
+    _sessionId = resp['session_id'] as String?;
     _phone = resp['phone'] as String? ?? _phone;
     _currentUser = AwsAuthUser(uid: _userId!, phoneNumber: _phone);
 
@@ -386,6 +468,7 @@ class AwsAuthService {
     await _storage.write(
         key: _kRefreshToken, value: resp['refresh_token'] ?? '');
     await _storage.write(key: _kPhone, value: _phone ?? '');
+    await _storage.write(key: _kSessionId, value: _sessionId ?? '');
 
     Logger.info('AwsAuthService: session persisted for user=$_userId');
     _authStateController.add(_currentUser);

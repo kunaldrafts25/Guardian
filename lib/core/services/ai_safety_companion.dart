@@ -72,7 +72,7 @@ class AISafetyCompanionNotifier extends StateNotifier<AISafetyCompanionState> {
     }
   }
 
-  Future<void> ask(String question, {Map<String, String>? context}) async {
+  Future<void> ask(String question, {String? incidentId}) async {
     final userMessage = ChatMessage(
       text: question,
       isUser: true,
@@ -84,7 +84,7 @@ class AISafetyCompanionNotifier extends StateNotifier<AISafetyCompanionState> {
       error: null,
     );
     try {
-      final response = await _companion.ask(question, context: context);
+      final response = await _companion.ask(question, incidentId: incidentId);
       state = state.copyWith(
         status: AICompanionStatus.ready,
         currentResponse: response,
@@ -120,8 +120,8 @@ class AISafetyCompanion {
     }
   }
 
-  Future<String> ask(String question, {Map<String, String>? context}) =>
-      _service.askSafetyCompanion(question, context: context);
+  Future<String> ask(String question, {String? incidentId}) =>
+      _service.askSafetyCompanion(question, incidentId: incidentId);
 
   Future<String> draftIncidentReport(Map<String, dynamic> incident) async {
     final type = incident['type'] ?? 'Incident';

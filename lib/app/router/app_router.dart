@@ -32,6 +32,7 @@ import 'package:guardian/features/profile/presentation/screens/profile_screen.da
 import 'package:guardian/features/safezone/presentation/screens/safe_zones_screen.dart';
 import 'package:guardian/features/quickactions/presentation/screens/quick_actions_screen.dart';
 import 'package:guardian/features/settings/presentation/screens/sos_settings_screen.dart';
+import 'package:guardian/features/settings/presentation/screens/sessions_screen.dart';
 
 /// Provider for the app router
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -154,6 +155,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: Routes.sosSettings,
             name: 'sos-settings',
             builder: (context, state) => const SosSettingsScreen(),
+          ),
+
+          GoRoute(
+            path: Routes.sessions,
+            name: 'sessions',
+            builder: (context, state) => const SessionsScreen(),
           ),
 
           // Profile

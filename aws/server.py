@@ -68,7 +68,13 @@ from aws.incident_handler.handler import (
     get_incident_timeline,
     IncidentState,
 )
-from aws.agent.guardian_agent import execute_agent_reasoning, query_safety_companion
+from aws.agent.guardian_agent import (
+    execute_agent_reasoning,
+    execute_authorized_tool,
+    query_safety_companion,
+)
+from aws.agent.policy_authorization import issue_policy_authorizations
+from aws.agent.safety_policy import evaluate_safety_policy
 
 # AWS Services
 from aws.cognito_service import (
@@ -79,6 +85,14 @@ from aws.cognito_service import (
     update_user_profile,
     get_user_profile,
     save_fcm_token,
+)
+from aws.session_service import (
+    create_session,
+    list_sessions,
+    revoke_all_sessions,
+    revoke_session,
+    touch_session,
+    validate_refresh_session,
 )
 from aws.sns_push_service import (
     register_device_endpoint,
@@ -106,7 +120,12 @@ app.add_middleware(
     else ["http://localhost:8000"],
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Correlation-ID",
+        "X-Guardian-Session-ID",
+    ],
 )
 
 
@@ -168,7 +187,11 @@ app.add_middleware(AuthenticationMiddleware)
 
 @app.get("/")
 def health_check():
-    aws_configured = bool(os.environ.get("AWS_ACCESS_KEY_ID") or os.environ.get("AWS_PROFILE"))
+    aws_configured = bool(
+        os.environ.get("AWS_EXECUTION_ENV")
+        or os.environ.get("AWS_ACCESS_KEY_ID")
+        or os.environ.get("AWS_PROFILE")
+    )
     cognito_configured = bool(os.environ.get("COGNITO_USER_POOL_ID"))
     sns_configured = bool(os.environ.get("SNS_SOS_TOPIC_ARN"))
     return {
@@ -177,10 +200,10 @@ def health_check():
         "version": "3.0.0",
         "aws_region": os.environ.get("AWS_DEFAULT_REGION", "ap-south-1"),
         "services": {
-            "auth": "AWS Cognito" if cognito_configured else "Dev Mode (Cognito not configured)",
-            "database": "AWS DynamoDB" if aws_configured else "In-Memory (Dev)",
-            "push": "AWS SNS" if sns_configured else "Dev Mode (SNS not configured)",
-            "ai": "Amazon Bedrock Claude" if aws_configured else "Hybrid Fallback Engine",
+            "auth": "AWS Cognito" if cognito_configured else "Unavailable",
+            "database": "AWS DynamoDB" if aws_configured else "Unavailable",
+            "push": "AWS SNS" if sns_configured else "Unavailable",
+            "ai": "Amazon Bedrock advisory" if aws_configured else "Unavailable",
         },
         "model": os.environ.get("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0"),
     }
@@ -198,19 +221,20 @@ class VerifyOtpRequest(BaseModel):
     phone_number: str
     otp_code: str
     session: str
+    device_label: str = Field(default="Guardian mobile device", max_length=80)
+    platform: str = Field(default="unknown", max_length=20)
 
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
-
-
-class SignOutRequest(BaseModel):
-    access_token: str
+    session_id: str = Field(min_length=1, max_length=64)
 
 
 class AssistantRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     message: str = Field(min_length=1, max_length=4000)
-    context: Optional[Dict[str, str]] = None
+    incident_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
 
 
 @app.post("/auth/send-otp")
@@ -230,6 +254,13 @@ def api_verify_otp(req: VerifyOtpRequest):
     """Verify SMS OTP and return JWT tokens (access + id + refresh)."""
     try:
         result = verify_otp(req.phone_number, req.otp_code, req.session)
+        guardian_session = create_session(
+            result["user_id"],
+            result["refresh_token"],
+            req.device_label,
+            req.platform,
+        )
+        result.update(guardian_session)
         return result
     except ValueError as ve:
         raise HTTPException(status_code=401, detail=str(ve))
@@ -241,26 +272,61 @@ def api_verify_otp(req: VerifyOtpRequest):
 def api_refresh_token(req: RefreshTokenRequest):
     """Refresh expired JWT access/id tokens."""
     try:
+        user_id = validate_refresh_session(req.session_id, req.refresh_token)
         result = refresh_tokens(req.refresh_token)
+        touch_session(req.session_id, user_id)
+        result["session_id"] = req.session_id
         return result
     except ValueError as ve:
         raise HTTPException(status_code=401, detail=str(ve))
 
 
 @app.post("/auth/sign-out")
-def api_sign_out(req: SignOutRequest):
+def api_sign_out(request: Request):
     """Revoke all tokens — global sign out from Cognito."""
-    result = sign_out(req.access_token)
+    result = sign_out(request.state.access_token)
+    revoke_all_sessions(authenticated_user_id(request))
     return result
 
 
+@app.get("/auth/sessions")
+def api_list_sessions(request: Request):
+    try:
+        sessions = list_sessions(authenticated_user_id(request))
+        for session in sessions:
+            session["current"] = session["session_id"] == request.state.session_id
+        return {"sessions": sessions}
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error))
+
+
+@app.delete("/auth/sessions/{session_id}")
+def api_revoke_session(session_id: str, request: Request):
+    try:
+        revoke_session(authenticated_user_id(request), session_id)
+        return {"success": True}
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+
+
 @app.post("/assistant/chat")
-def api_assistant_chat(req: AssistantRequest):
+def api_assistant_chat(req: AssistantRequest, request: Request):
     """Generate a safety response using the configured Amazon Bedrock model."""
     try:
-        return {"response": query_safety_companion(req.message, req.context)}
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Safety assistant unavailable: {exc}")
+        authorized_context: Dict[str, str] = {}
+        if req.incident_id:
+            incident = _owned_incident(req.incident_id, request)
+            authorized_context = {
+                "incident_id": str(incident["incident_id"]),
+                "state": str(incident.get("state", "unknown")),
+                "event_type": str(incident.get("event_type", "unknown")),
+                "risk_level": str(incident.get("risk_level", "unknown")),
+            }
+        return {"response": query_safety_companion(req.message, authorized_context)}
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503, detail="Safety assistant is temporarily unavailable")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -604,18 +670,34 @@ def api_dispatch_community(
 ):
     from aws.agent.tools import dispatch_community_alert
     try:
-        _owned_incident(incident_id, request)
-        result = dispatch_community_alert(incident_id)
-        
-        # Also broadcast via SNS to community topic
-        incident = get_incident(incident_id)
-        if incident:
-            location = incident.get("location", {})
-            background_tasks.add_task(
-                send_community_sos_broadcast,
-                incident_id,
-                location,
-            )
+        incident = _owned_incident(incident_id, request)
+        correlation_id = request.state.correlation_id
+        policy = evaluate_safety_policy(
+            event_type=str(incident.get("event_type", "")),
+            risk_level=str((incident.get("risk_assessment") or {}).get("level", "MEDIUM")),
+            incident_state=str(incident.get("state", "")),
+            is_isolated=bool((incident.get("location") or {}).get("is_isolated", False)),
+            owner_requested=True,
+        )
+        token = issue_policy_authorizations(
+            incident_id=incident_id,
+            actions={"dispatch_community_alert"},
+            decision=policy.decision,
+            correlation_id=correlation_id,
+            actor=f"user:{authenticated_user_id(request)}",
+            action_constraints={
+                "dispatch_community_alert": policy.constraints_for(
+                    "dispatch_community_alert"
+                )
+            },
+        )["dispatch_community_alert"]
+        result = execute_authorized_tool(
+            incident_id=incident_id,
+            correlation_id=correlation_id,
+            action="dispatch_community_alert",
+            token=token,
+            tool=dispatch_community_alert,
+        )
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -649,8 +731,11 @@ def api_responder_heartbeat(req: ResponderHeartbeatRequest, request: Request):
 
 @app.post("/incidents/{incident_id}/agent-step")
 def api_trigger_agent_step(incident_id: str, request: Request):
-    _owned_incident(incident_id, request)
-    res = execute_agent_reasoning(incident_id)
+    incident = _owned_incident(incident_id, request)
+    res = execute_agent_reasoning(
+        incident_id,
+        correlation_id=request.state.correlation_id,
+    )
     if "error" in res:
         raise HTTPException(status_code=404, detail=res["error"])
     return res
@@ -663,8 +748,39 @@ def api_escalate_incident(incident_id: str, request: Request):
     from aws.agent.tools import dispatch_community_alert, notify_trusted_contact
 
     try:
-        contact_result = notify_trusted_contact(incident_id)
-        community_result = dispatch_community_alert(incident_id)
+        correlation_id = request.state.correlation_id
+        policy = evaluate_safety_policy(
+            event_type=str(incident.get("event_type", "")),
+            risk_level=str((incident.get("risk_assessment") or {}).get("level", "MEDIUM")),
+            incident_state=str(incident.get("state", "")),
+            is_isolated=bool((incident.get("location") or {}).get("is_isolated", False)),
+            owner_requested=True,
+        )
+        tokens = issue_policy_authorizations(
+            incident_id=incident_id,
+            actions=policy.authorized_actions,
+            decision=policy.decision,
+            correlation_id=correlation_id,
+            actor=f"user:{authenticated_user_id(request)}",
+            action_constraints={
+                action: policy.constraints_for(action)
+                for action in policy.authorized_actions
+            },
+        )
+        contact_result = execute_authorized_tool(
+            incident_id=incident_id,
+            correlation_id=correlation_id,
+            action="notify_trusted_contact",
+            token=tokens["notify_trusted_contact"],
+            tool=notify_trusted_contact,
+        )
+        community_result = execute_authorized_tool(
+            incident_id=incident_id,
+            correlation_id=correlation_id,
+            action="dispatch_community_alert",
+            token=tokens["dispatch_community_alert"],
+            tool=dispatch_community_alert,
+        )
         return {
             "incident_id": incident_id,
             "contact_alert": contact_result,

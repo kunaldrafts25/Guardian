@@ -12,6 +12,8 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from aws.session_service import validate_access_session
+
 
 def _dev_mode_enabled() -> bool:
     return os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
@@ -76,6 +78,9 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
     _public_paths = {
         "/",
+        "/auth/send-otp",
+        "/auth/verify-otp",
+        "/auth/refresh",
         "/docs",
         "/docs/oauth2-redirect",
         "/openapi.json",
@@ -84,9 +89,6 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         if request.method == "OPTIONS" or request.url.path in self._public_paths:
-            return await call_next(request)
-
-        if request.url.path.startswith("/auth/"):
             return await call_next(request)
 
         header = request.headers.get("Authorization", "")
@@ -107,6 +109,22 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             )
 
         request.state.user_id, request.state.roles = identity
+        request.state.access_token = token
+        session_id = request.headers.get("X-Guardian-Session-ID", "")
+        try:
+            session_is_valid = validate_access_session(session_id, request.state.user_id)
+        except Exception:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Session validation is temporarily unavailable."},
+            )
+        if not session_is_valid:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "The application session is invalid or revoked."},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        request.state.session_id = session_id
         return await call_next(request)
 
 

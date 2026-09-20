@@ -25,6 +25,7 @@ from aws.incident_handler.handler import (
 )
 from aws.cognito_service import get_user_profile
 from aws.agent.risk_engine import assess_incident_risk
+from aws.agent.policy_authorization import consume_policy_authorization
 from aws.sns_push_service import send_sms_alert
 
 try:
@@ -96,11 +97,20 @@ def ask_user_confirmation(incident_id: str, timeout_seconds: int = 15) -> Dict[s
     }
 
 
-def notify_trusted_contact(incident_id: str, contact_id: Optional[str] = None) -> Dict[str, Any]:
+def notify_trusted_contact(
+    incident_id: str,
+    authorization_token: str,
+    contact_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Tool 4: Enforce authorization policy and publish escalation alert via AWS SNS.
     Transitions state to CONTACTS_NOTIFIED only after dispatch acceptance.
     """
+    consume_policy_authorization(
+        authorization_token,
+        expected_incident_id=incident_id,
+        expected_action="notify_trusted_contact",
+    )
     ctx = get_incident_context(incident_id)
     if ctx.get("state") in {
         IncidentState.CONTACTS_NOTIFIED.value,
@@ -168,8 +178,13 @@ def notify_trusted_contact(incident_id: str, contact_id: Optional[str] = None) -
     )
 
     if _dev_mode() and not os.environ.get("AWS_EXECUTION_ENV"):
-        sns_message_id = None
-        delivery_status = "DEV_MODE_NOT_SENT"
+        return {
+            "incident_id": incident_id,
+            "contact_notified": None,
+            "sns_message_id": None,
+            "delivery_status": "DEV_MODE_NOT_SENT",
+            "state": ctx.get("state"),
+        }
     else:
         dispatch = send_sms_alert(str(target_contact.get("phone", "")), alert_message)
         if not dispatch.get("success"):
@@ -340,13 +355,29 @@ def find_nearby_responders(incident_id: str, radius_meters: float = 1200.0) -> L
     return eligible_responders
 
 
-def dispatch_community_alert(incident_id: str) -> Dict[str, Any]:
+def dispatch_community_alert(
+    incident_id: str,
+    authorization_token: str,
+) -> Dict[str, Any]:
     """
-    Tool 6: Dispatches emergency request to nearby verified responders.
+    Tool 6: Creates bounded invitations for nearby verified responders.
     Anti-Abuse Check 2: Anti-Solo Quorum Rule.
     If the incident is isolated/at night, alerts are dispatched to at least 2 responders in parallel.
     Anti-Abuse Check 3: Differential Geo-Obfuscation (General landmark given initially).
     """
+    authorization = consume_policy_authorization(
+        authorization_token,
+        expected_incident_id=incident_id,
+        expected_action="dispatch_community_alert",
+    )
+    constraints = authorization.get("constraints") or {}
+    max_invitations = int(constraints.get("max_responder_invitations", 0))
+    required_quorum = int(constraints.get("required_responder_quorum", 0))
+    precision = int(constraints.get("location_precision_decimals", -1))
+    if not 1 <= max_invitations <= 10 or not 1 <= required_quorum <= max_invitations:
+        raise PermissionError("Policy authorization has invalid responder constraints")
+    if precision not in {1, 2}:
+        raise PermissionError("Policy authorization has invalid location precision")
     ctx = get_incident_context(incident_id)
     if ctx.get("state") in {
         IncidentState.COMMUNITY_OFFERED.value,
@@ -372,23 +403,24 @@ def dispatch_community_alert(incident_id: str) -> Dict[str, Any]:
         }
 
     # Anti-Lure Defense: Quorum Check
-    is_isolated = ctx.get("location", {}).get("is_isolated", False)
-    if is_isolated and len(responders) < 2:
+    if len(responders) < required_quorum:
         # If alone in an isolated dark area, do NOT send a single responder alone.
         # Fall back to routing towards public landmark or police.
         return {
             "incident_id": incident_id,
             "status": "QUORUM_FALLBACK",
-            "message": "Anti-Solo Quorum defense triggered: Less than 2 nearby helpers available in isolated zone. Directing to emergency services.",
+            "message": "The policy-required responder quorum is unavailable; no community invitation was created.",
             "dispatched_count": 0,
             "responders": [],
         }
 
-    # Prepare obfuscated public broadcast payload
+    # Prepare coarse, responder-bound invitation records. Delivery through
+    # targeted push is a separate transport step and is never implied here.
     now = datetime.now(timezone.utc)
     invitation_expiry = int(now.timestamp()) + 180
     dynamo = get_dynamo_resource()
-    for responder in responders[:6]:
+    selected_responders = responders[:max_invitations]
+    for responder in selected_responders:
         mission = {
             "mission_id": _mission_id(incident_id, responder["responder_id"]),
             "incident_id": incident_id,
@@ -413,16 +445,18 @@ def dispatch_community_alert(incident_id: str) -> Dict[str, Any]:
         else:
             raise RuntimeError("Mission store is unavailable")
 
-    dispatch_payload = {
+    invitation_payload = {
         "incident_id": incident_id,
         "event_type": ctx.get("event_type"),
         "approximate_location": {
-            "latitude": round(float(ctx["location"]["latitude"]), 2),
-            "longitude": round(float(ctx["location"]["longitude"]), 2),
+            "latitude": round(float(ctx["location"]["latitude"]), precision),
+            "longitude": round(float(ctx["location"]["longitude"]), precision),
             "distance_hint": f"~{responders[0]['distance_meters']}m from you",
         },
-        "quorum_size": len(responders),
-        "invite_count": min(len(responders), 6),
+        "eligible_count": len(responders),
+        "invite_count": len(selected_responders),
+        "required_quorum": required_quorum,
+        "policy_version": authorization["policy_version"],
     }
 
     # Append to incident audit timeline
@@ -430,14 +464,18 @@ def dispatch_community_alert(incident_id: str) -> Dict[str, Any]:
         incident_id=incident_id,
         new_state=IncidentState.COMMUNITY_OFFERED.value,
         actor="AGENT",
-        note=f"Community Rescue dispatched to {len(responders)} verified nearby responders. Anti-Solo Quorum satisfied.",
+        note=(
+            f"Created {len(selected_responders)} bounded invitations for verified "
+            "nearby responders; transport delivery is not yet claimed."
+        ),
     )
 
     return {
         "incident_id": incident_id,
-        "status": "COMMUNITY_DISPATCHED",
-        "dispatched_count": len(responders),
-        "broadcast_payload": dispatch_payload,
+        "status": "INVITATIONS_CREATED",
+        "dispatched_count": 0,
+        "invite_count": len(selected_responders),
+        "invitation_payload": invitation_payload,
     }
 
 
