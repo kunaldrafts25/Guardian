@@ -59,6 +59,55 @@ class _MissionScreenState extends State<MissionScreen> {
     });
   }
 
+  Future<void> _confirmAccept() async {
+    final accepted = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Before you accept',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 12),
+              const Text(
+                'Guardian will request a short-lived precise-location grant for navigation. Access is revoked when you arrive, withdraw, or the incident ends.',
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Stay in public areas. Do not confront anyone. Call emergency services if immediate danger is visible.',
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Accept and continue'),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Not now'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (accepted == true) await _accept();
+  }
+
+  Future<void> _callEmergencyServices() async {
+    final uri = Uri(scheme: 'tel', path: '112');
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        setState(() =>
+            _error = 'Unable to open the phone dialer. Call 112 manually.');
+      }
+    }
+  }
+
   Future<void> _transition(String status) async {
     await _run(() async {
       _mission = await ResponderService.instance.transition(
@@ -155,6 +204,12 @@ class _MissionScreenState extends State<MissionScreen> {
         ],
         const SizedBox(height: 20),
         ..._actions(mission),
+        const SizedBox(height: 24),
+        OutlinedButton.icon(
+          onPressed: _acting ? null : _callEmergencyServices,
+          icon: const Icon(Icons.local_police_outlined),
+          label: const Text('Call emergency services'),
+        ),
         if (_acting) ...[
           const SizedBox(height: 16),
           const Center(child: CircularProgressIndicator()),
@@ -166,7 +221,7 @@ class _MissionScreenState extends State<MissionScreen> {
   List<Widget> _actions(ResponderMission mission) => switch (mission.status) {
         'INVITED' => [
             FilledButton.icon(
-              onPressed: _acting ? null : _accept,
+              onPressed: _acting ? null : _confirmAccept,
               icon: const Icon(Icons.volunteer_activism),
               label: const Text('Accept request'),
             ),

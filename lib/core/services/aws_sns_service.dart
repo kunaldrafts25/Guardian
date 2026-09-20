@@ -1,12 +1,11 @@
 /*
- * Guardian — AWS SNS Push Notification Service (Flutter)
- * Replaces firebase_messaging + FcmService with AWS SNS.
+ * Guardian AWS SNS push-notification service.
  *
  * Flow:
- *   1. On app launch → get device token (FCM token on Android, APNS on iOS)
- *   2. POST /users/{id}/device → backend registers with SNS → returns endpoint ARN
- *   3. When SOS fired → backend sends targeted push via SNS to all circle members
- *   4. flutter_local_notifications displays foreground notifications
+ *   1. Obtain an FCM registration token on Android or native APNs token on iOS.
+ *   2. Register it through the authenticated Guardian API under the correct platform.
+ *   3. The backend creates an SNS endpoint and sends policy-approved alerts.
+ *   4. Foreground messages are rendered with flutter_local_notifications.
  */
 
 import 'dart:convert';
@@ -16,11 +15,11 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:guardian/core/services/aws_auth_service.dart';
 import 'package:guardian/core/utils/logger.dart';
 
-// ─── Optional: keep FCM just for the device token (not for notification delivery)
-// The token is sent to SNS which does the actual delivery.
+// Firebase Messaging supplies Android FCM registration and Apple notification
+// integration. Amazon SNS remains the server-side delivery gateway.
 import 'package:firebase_messaging/firebase_messaging.dart';
 
-/// AWS SNS Notification Service — replaces FcmService
+/// AWS SNS notification service.
 class AwsSnsService {
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
@@ -139,20 +138,27 @@ class AwsSnsService {
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional) {
-        _deviceToken = await messaging.getToken();
+        _deviceToken = await _platformDeviceToken(messaging);
+        if (_deviceToken == null || _deviceToken!.isEmpty) {
+          Logger.warning('Native push token is not available yet');
+          return;
+        }
         Logger.info('Device push token obtained');
 
         // Register with AWS SNS via backend
         await _registerWithSns();
 
         // Listen for token refresh
-        messaging.onTokenRefresh.listen((token) async {
-          _deviceToken = token;
-          await _registerWithSns();
-          Logger.info('Device token refreshed and re-registered with SNS');
+        messaging.onTokenRefresh.listen((fcmToken) async {
+          _deviceToken =
+              Platform.isIOS ? await _platformDeviceToken(messaging) : fcmToken;
+          if (_deviceToken != null && _deviceToken!.isNotEmpty) {
+            await _registerWithSns();
+            Logger.info('Device token refreshed and re-registered with SNS');
+          }
         });
 
-        // Handle foreground FCM messages (backend still sends raw FCM via SNS)
+        // Handle foreground messages surfaced by Firebase Messaging.
         FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
         FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
         final initialMessage = await messaging.getInitialMessage();
@@ -161,9 +167,24 @@ class AwsSnsService {
         }
       }
     } catch (e) {
-      // FCM init failure is not critical — SMS fallback still works
+      // Push initialization failure is non-fatal; trusted-contact SMS remains.
       Logger.warning('Device token error (SMS fallback active): $e');
     }
+  }
+
+  static Future<String?> _platformDeviceToken(
+    FirebaseMessaging messaging,
+  ) async {
+    if (!Platform.isIOS) return messaging.getToken();
+
+    // APNs registration completes asynchronously after permission is granted.
+    // SNS APNs applications require the native APNs token, never the FCM token.
+    for (var attempt = 0; attempt < 10; attempt++) {
+      final token = await messaging.getAPNSToken();
+      if (token != null && token.isNotEmpty) return token;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    return null;
   }
 
   static Future<void> _registerWithSns() async {

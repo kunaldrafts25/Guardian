@@ -14,6 +14,7 @@ import 'package:guardian/core/models/user_model.dart';
 import 'package:guardian/core/providers/settings_provider.dart';
 import 'package:guardian/core/providers/auth_provider.dart';
 import 'package:guardian/core/providers/sos_settings_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -99,14 +100,6 @@ class SettingsScreen extends ConsumerWidget {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _showThemeDialog(context, ref, themeMode),
                 ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.language),
-                  title: const Text('Language'),
-                  subtitle: const Text('English'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {},
-                ),
               ],
             ),
           ),
@@ -173,14 +166,20 @@ class SettingsScreen extends ConsumerWidget {
                   leading: const Icon(Icons.help_outline),
                   title: const Text('Help & Support'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () {},
+                  onTap: () => _openSupport(context),
                 ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.info_outline),
                   title: const Text('About Guardian'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () {},
+                  onTap: () => showAboutDialog(
+                    context: context,
+                    applicationName: 'Guardian',
+                    applicationVersion: '2.0.0',
+                    applicationLegalese:
+                        'Guardian records and shares safety evidence through configured services. It does not guarantee delivery or replace emergency services.',
+                  ),
                 ),
                 const Divider(height: 1),
                 ListTile(
@@ -188,7 +187,8 @@ class SettingsScreen extends ConsumerWidget {
                   title: Text('Sign Out',
                       style: TextStyle(color: AppColors.error)),
                   onTap: () async {
-                    await ref.read(signOutProvider)();
+                    final confirmed = await _confirmSignOut(context);
+                    if (confirmed) await ref.read(signOutProvider)();
                   },
                 ),
               ],
@@ -209,6 +209,48 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _openSupport(BuildContext context) async {
+    final uri = Uri(
+      scheme: 'mailto',
+      path: 'kunalsingh2514@gmail.com',
+      queryParameters: {'subject': 'Guardian support request'},
+    );
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
+        context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Email support at kunalsingh2514@gmail.com'),
+        ),
+      );
+    }
+  }
+
+  Future<bool> _confirmSignOut(BuildContext context) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Sign out of Guardian?'),
+            content: const Text(
+              'Offline safety evidence stays on this device, but cloud actions require you to sign in again.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.error,
+                ),
+                child: const Text('Sign out'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   String _getThemeName(ThemeMode mode) {

@@ -113,6 +113,29 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ],
       ),
 
+      // Critical journeys deliberately live outside the navigation shell.
+      // Bottom navigation must never compete with an active incident or
+      // responder mission.
+      GoRoute(
+        path: Routes.emergency,
+        name: 'emergency',
+        builder: (context, state) => const EmergencyScreen(),
+      ),
+      GoRoute(
+        path: '${Routes.incidentTimeline}/:incidentId',
+        name: 'incident-timeline',
+        builder: (context, state) => IncidentTimelineScreen(
+          incidentId: state.pathParameters['incidentId']!,
+        ),
+      ),
+      GoRoute(
+        path: '${Routes.responderMission}/:missionId',
+        name: 'responder-mission',
+        builder: (context, state) => MissionScreen(
+          missionId: state.pathParameters['missionId']!,
+        ),
+      ),
+
       // Main App Shell
       ShellRoute(
         builder: (context, state, child) {
@@ -124,21 +147,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: Routes.dashboard,
             name: 'dashboard',
             builder: (context, state) => const DashboardScreen(),
-          ),
-
-          // Emergency
-          GoRoute(
-            path: Routes.emergency,
-            name: 'emergency',
-            builder: (context, state) => const EmergencyScreen(),
-          ),
-
-          GoRoute(
-            path: '${Routes.incidentTimeline}/:incidentId',
-            name: 'incident-timeline',
-            builder: (context, state) => IncidentTimelineScreen(
-              incidentId: state.pathParameters['incidentId']!,
-            ),
           ),
 
           // Contacts
@@ -206,14 +214,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: Routes.responderInbox,
             name: 'responder-inbox',
             builder: (context, state) => const ResponderInboxScreen(),
-          ),
-
-          GoRoute(
-            path: '${Routes.responderMission}/:missionId',
-            name: 'responder-mission',
-            builder: (context, state) => MissionScreen(
-              missionId: state.pathParameters['missionId']!,
-            ),
           ),
         ],
       ),
@@ -288,7 +288,7 @@ class MainBottomNavigation extends ConsumerWidget {
         NavigationDestination(
           icon: Icon(Icons.people_outline),
           selectedIcon: Icon(Icons.people),
-          label: 'Contacts',
+          label: 'Circle',
         ),
         NavigationDestination(
           icon: Icon(Icons.settings_outlined),

@@ -93,9 +93,9 @@ class _ResponderInboxScreenState extends State<ResponderInboxScreen> {
     final lat = mission.approximateLatitude;
     final lng = mission.approximateLongitude;
     if (lat != null && lng != null) {
-      return 'Approximate area: ${lat.toStringAsFixed(2)}, ${lng.toStringAsFixed(2)}';
+      return 'Approximate area available • exact location is hidden';
     }
-    return 'Incident ${mission.incidentId}';
+    return 'Exact location remains hidden until acceptance';
   }
 
   String _statusLabel(String status) => switch (status) {

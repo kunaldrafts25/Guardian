@@ -1,20 +1,15 @@
-/*
- * Guardian 2.0 - Women's Safety App
- * © 2025 All Rights Reserved - Kunal Singh
- * 
- * Emergency Screen - SOS trigger with countdown
- */
-
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:guardian/app/theme/app_theme.dart';
+import 'package:guardian/core/providers/contacts_provider.dart';
 import 'package:guardian/core/providers/emergency_provider.dart';
 import 'package:guardian/core/providers/sos_settings_provider.dart';
-import 'package:guardian/core/providers/contacts_provider.dart';
 import 'package:guardian/core/providers/sos_trigger_provider.dart';
 import 'package:guardian/core/services/sos_sound_service.dart';
+import 'package:guardian/core/widgets/guardian_ui.dart';
 
 class EmergencyScreen extends ConsumerStatefulWidget {
   const EmergencyScreen({super.key});
@@ -25,15 +20,14 @@ class EmergencyScreen extends ConsumerStatefulWidget {
 
 class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
   Timer? _countdownTimer;
-  late int _countdown;
+  int _countdown = 0;
   bool _isHolding = false;
 
   @override
   void initState() {
     super.initState();
-    // Initialize shake detection
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(sosTriggerProvider); // Initialize trigger provider
+      ref.read(sosTriggerProvider);
     });
   }
 
@@ -44,520 +38,537 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
   }
 
   void _startHold() {
+    if (_isHolding) return;
     final settings = ref.read(sosSettingsProvider);
-
-    // Haptic feedback
-    if (settings.vibrationEnabled) {
-      HapticFeedback.mediumImpact();
-    }
-
+    if (settings.vibrationEnabled) HapticFeedback.mediumImpact();
     setState(() {
       _isHolding = true;
       _countdown = settings.countdownSeconds;
     });
-
     ref.read(emergencyProvider.notifier).startCountdown();
 
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted || !_isHolding) {
+        timer.cancel();
+        return;
+      }
       if (_countdown > 1) {
         setState(() => _countdown--);
         ref.read(emergencyProvider.notifier).updateCountdown(_countdown);
-        // Haptic tick
-        if (settings.vibrationEnabled) {
-          HapticFeedback.lightImpact();
-        }
-        // Sound beep
-        if (settings.soundEnabled) {
-          SosSoundService.instance.playCountdownBeep();
-        }
+        if (settings.vibrationEnabled) HapticFeedback.lightImpact();
+        if (settings.soundEnabled) SosSoundService.instance.playCountdownBeep();
       } else {
-        timer.cancel();
-        // Heavy haptic for trigger
-        if (settings.vibrationEnabled) {
-          HapticFeedback.heavyImpact();
-        }
-        // Alarm sound on activation
-        if (settings.soundEnabled) {
-          SosSoundService.instance.playSOSActivation();
-        }
-        // Trigger emergency
-        ref.read(emergencyProvider.notifier).triggerEmergency();
-        setState(() => _isHolding = false);
+        _activateEmergency();
       }
     });
   }
 
+  void _activateEmergency() {
+    _countdownTimer?.cancel();
+    final settings = ref.read(sosSettingsProvider);
+    if (settings.vibrationEnabled) HapticFeedback.heavyImpact();
+    if (settings.soundEnabled) SosSoundService.instance.playSOSActivation();
+    ref.read(emergencyProvider.notifier).triggerEmergency();
+    if (mounted) {
+      setState(() {
+        _isHolding = false;
+        _countdown = 0;
+      });
+    }
+  }
+
   void _cancelHold() {
+    if (!_isHolding) return;
     _countdownTimer?.cancel();
     ref.read(emergencyProvider.notifier).cancelCountdown();
-    final settings = ref.read(sosSettingsProvider);
     setState(() {
       _isHolding = false;
-      _countdown = settings.countdownSeconds;
+      _countdown = 0;
     });
   }
 
-  void _cancelEmergency() {
-    ref.read(emergencyProvider.notifier).cancelEmergency();
-  }
-
-  Future<void> _callPolice() async {
-    await ref.read(emergencyProvider.notifier).callEmergencyServices();
-  }
-
-  Future<void> _shareLocation() async {
-    await ref.read(emergencyProvider.notifier).shareLocation();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final emergencyState = ref.watch(emergencyProvider);
-    final contacts = ref.watch(contactsProvider).contacts;
-    final isActive = emergencyState.isActive;
-
-    return Scaffold(
-      backgroundColor: isActive ? AppColors.sos : null,
-      appBar: AppBar(
-        title: const Text('Emergency'),
-        backgroundColor: isActive ? AppColors.sos : null,
-        foregroundColor: isActive ? Colors.white : null,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+  Future<void> _confirmSafe() async {
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (isActive) ...[
-                // Active Emergency State
-                const SizedBox(height: 40),
-                const Icon(
-                  Icons.warning_rounded,
-                  size: 80,
-                  color: Colors.white,
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'EMERGENCY ACTIVE',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '${emergencyState.notifiedContacts.length} SMS dispatches accepted',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Colors.white70,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Delivery is not confirmed until a receipt or acknowledgement arrives',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.white60,
-                      ),
-                ),
-                const SizedBox(height: 24),
-
-                // Notified contacts list
-                Card(
-                  color: const Color.fromRGBO(255, 255, 255, 0.15),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'SMS dispatch status:',
-                          style:
-                              Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    color: Colors.white70,
-                                  ),
-                        ),
-                        const SizedBox(height: 8),
-                        if (emergencyState.sosAlert?.contactStatuses.isEmpty ??
-                            true)
-                          const Text(
-                            'No contacts configured',
-                            style: TextStyle(color: Colors.white60),
-                          )
-                        else
-                          ...emergencyState.sosAlert!.contactStatuses
-                              .map((status) => Padding(
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 4),
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          status.smsSent
-                                              ? Icons.outbox
-                                              : Icons.error_outline,
-                                          color: Colors.white,
-                                          size: 16,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            '${status.contact.name} — ${status.smsSent ? 'accepted by device' : 'dispatch failed'}',
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  )),
-                      ],
-                    ),
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.outline,
+                    borderRadius: BorderRadius.circular(99),
                   ),
                 ),
-
-                // Quick Action Buttons
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: _callPolice,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              const Color.fromRGBO(255, 255, 255, 0.2),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
-                        icon: const Icon(Icons.local_police),
-                        label: const Text('Call Police'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: _shareLocation,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              const Color.fromRGBO(255, 255, 255, 0.2),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
-                        icon: const Icon(Icons.share_location),
-                        label: const Text('Share Location'),
-                      ),
-                    ),
-                  ],
-                ),
-
-                // Live Location Info
-                if (emergencyState.currentLocation != null) ...[
-                  const SizedBox(height: 16),
-                  Card(
-                    color: const Color.fromRGBO(255, 255, 255, 0.15),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.gps_fixed,
-                              color: Colors.white, size: 20),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Live Location Active',
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold),
-                                ),
-                                Text(
-                                  '${emergencyState.currentLocation!.latitude.toStringAsFixed(6)}, ${emergencyState.currentLocation!.longitude.toStringAsFixed(6)}',
-                                  style: const TextStyle(
-                                      color: Colors.white70, fontSize: 12),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-
-                const SizedBox(height: 32),
-                OutlinedButton(
-                  onPressed: _cancelEmergency,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white, width: 2),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 48, vertical: 16),
-                  ),
-                  child: const Text('I\'m Safe - Cancel'),
-                ),
-              ] else if (emergencyState.state == SosState.error) ...[
-                // Error State
-                const SizedBox(height: 40),
-                Icon(
-                  Icons.error_outline,
-                  size: 80,
-                  color: AppColors.sos,
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'Error',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        color: AppColors.sos,
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  emergencyState.errorMessage ?? 'Something went wrong',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: Colors.grey[700],
-                      ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 32),
-                ElevatedButton(
-                  onPressed: () {
-                    ref.read(emergencyProvider.notifier).clearError();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 32, vertical: 16),
-                  ),
-                  child: const Text('Try Again'),
-                ),
-              ] else ...[
-                // Normal State
-                Text(
-                  'Emergency Mode',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Hold the button below to activate emergency mode',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: Colors.grey,
-                      ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 48),
-
-                // Large SOS Button with Countdown
-                GestureDetector(
-                  onLongPressStart: (_) => _startHold(),
-                  onLongPressEnd: (_) {
-                    if (_isHolding && _countdown > 0) {
-                      _cancelHold();
-                    }
-                  },
-                  onLongPressCancel: _cancelHold,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: _isHolding ? 220 : 200,
-                    height: _isHolding ? 220 : 200,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _isHolding
-                          ? Color.fromRGBO(
-                              AppColors.sos.r.toInt(),
-                              AppColors.sos.g.toInt(),
-                              AppColors.sos.b.toInt(),
-                              0.8)
-                          : AppColors.sos,
-                      boxShadow: [
-                        BoxShadow(
-                          color: _isHolding ? AppColors.sos : AppColors.sosGlow,
-                          blurRadius: _isHolding ? 60 : 40,
-                          spreadRadius: _isHolding ? 25 : 15,
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          if (_isHolding) ...[
-                            Text(
-                              '$_countdown',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .displayLarge
-                                  ?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                            ),
-                            Text(
-                              'Release to cancel',
-                              style: TextStyle(
-                                  color: Colors.white70, fontSize: 12),
-                            ),
-                          ] else ...[
-                            const Icon(
-                              Icons.emergency,
-                              size: 60,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'SOS',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineLarge
-                                  ?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-                Text(
-                  _isHolding
-                      ? 'Keep holding...'
-                      : 'Hold for 3 seconds to activate',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: _isHolding ? AppColors.sos : Colors.grey,
-                        fontWeight:
-                            _isHolding ? FontWeight.bold : FontWeight.normal,
-                      ),
-                ),
-
-                const SizedBox(height: 48),
-
-                // Emergency contacts summary
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.people, color: AppColors.primary),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Emergency Contacts',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                            ),
-                            const Spacer(),
-                            Text(
-                              '${contacts.length}/5',
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        if (contacts.isEmpty)
-                          Text(
-                            'No emergency contacts added yet',
-                            style: TextStyle(color: Colors.grey),
-                          )
-                        else
-                          ...contacts.take(3).map((c) => Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 4),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.person,
-                                        size: 16, color: Colors.grey),
-                                    const SizedBox(width: 8),
-                                    Text(c.name),
-                                    if (c.isPrimary) ...[
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: Color.fromRGBO(
-                                              AppColors.primary.r.toInt(),
-                                              AppColors.primary.g.toInt(),
-                                              AppColors.primary.b.toInt(),
-                                              0.1),
-                                          borderRadius:
-                                              BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          'Primary',
-                                          style: const TextStyle(
-                                              fontSize: 10,
-                                              color: AppColors.primary),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              )),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // What happens section
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'When you trigger SOS:',
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildInfoRow(
-                          Icons.location_on,
-                          'Available location is included in emergency messages',
-                        ),
-                        _buildInfoRow(
-                          Icons.sms,
-                          'Guardian attempts SMS dispatch to each configured contact',
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+              ),
+              const SizedBox(height: 20),
+              Text('Confirm you are safe',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(
+                'This ends live emergency updates. Only confirm when you no longer need help.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('I am safe — end incident'),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Keep incident active'),
+              ),
             ],
           ),
         ),
       ),
     );
+    if (confirmed == true) {
+      ref.read(emergencyProvider.notifier).cancelEmergency();
+    }
   }
 
-  Widget _buildInfoRow(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: AppColors.primary),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
+  @override
+  Widget build(BuildContext context) {
+    final emergency = ref.watch(emergencyProvider);
+    final contacts = ref.watch(contactsProvider).contacts;
+    final settings = ref.watch(sosSettingsProvider);
+
+    return PopScope(
+      canPop: !emergency.isActive,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && emergency.isActive) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'The incident stays active. Confirm “I am safe” to end it.'),
+            ),
+          );
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(emergency.isActive ? 'Active incident' : 'Emergency SOS'),
+        ),
+        body: SafeArea(
+          top: false,
+          child: emergency.isActive
+              ? _ActiveIncident(
+                  emergency: emergency,
+                  onCallPolice: () => ref
+                      .read(emergencyProvider.notifier)
+                      .callEmergencyServices(),
+                  onShareLocation: () =>
+                      ref.read(emergencyProvider.notifier).shareLocation(),
+                  onSafe: _confirmSafe,
+                )
+              : emergency.state == SosState.error
+                  ? _ErrorState(
+                      message: emergency.errorMessage,
+                      onRetry: () =>
+                          ref.read(emergencyProvider.notifier).clearError(),
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                      children: [
+                        Text(
+                          _isHolding ? 'Keep holding' : 'Help is one hold away',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _isHolding
+                              ? 'Release before the countdown ends to cancel.'
+                              : 'Press and hold. Guardian will count down before sending the alert.',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyLarge,
+                        ),
+                        const SizedBox(height: 36),
+                        _HoldControl(
+                          isHolding: _isHolding,
+                          countdown: _countdown,
+                          totalSeconds: settings.countdownSeconds,
+                          onLongPressStart: _startHold,
+                          onLongPressEnd: _cancelHold,
+                        ),
+                        if (_isHolding) ...[
+                          const SizedBox(height: 16),
+                          GuardianDangerButton(
+                            label: 'Send now',
+                            icon: Icons.send_rounded,
+                            onPressed: _activateEmergency,
+                          ),
+                          const SizedBox(height: 4),
+                          TextButton(
+                            onPressed: _cancelHold,
+                            child: const Text('Cancel countdown'),
+                          ),
+                        ],
+                        const SizedBox(height: 36),
+                        _ReadinessSummary(contactCount: contacts.length),
+                        const SizedBox(height: 16),
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('What Guardian will do',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium),
+                                const SizedBox(height: 14),
+                                const _InfoRow(
+                                  icon: Icons.location_on_outlined,
+                                  text:
+                                      'Capture the best available location evidence.',
+                                ),
+                                const SizedBox(height: 12),
+                                const _InfoRow(
+                                  icon: Icons.outbox_outlined,
+                                  text:
+                                      'Attempt dispatch to configured contacts and record provider acceptance.',
+                                ),
+                                const SizedBox(height: 12),
+                                const _InfoRow(
+                                  icon: Icons.sync_rounded,
+                                  text:
+                                      'Keep durable local evidence and sync queued actions when connectivity returns.',
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HoldControl extends StatelessWidget {
+  const _HoldControl({
+    required this.isHolding,
+    required this.countdown,
+    required this.totalSeconds,
+    required this.onLongPressStart,
+    required this.onLongPressEnd,
+  });
+
+  final bool isHolding;
+  final int countdown;
+  final int totalSeconds;
+  final VoidCallback onLongPressStart;
+  final VoidCallback onLongPressEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final emergency = Theme.of(context).colorScheme.error;
+    final progress = totalSeconds <= 0
+        ? 0.0
+        : ((totalSeconds - countdown) / totalSeconds).clamp(0.0, 1.0);
+    return Center(
+      child: Semantics(
+        button: true,
+        label: isHolding
+            ? 'SOS countdown. $countdown seconds remaining. Release to cancel.'
+            : 'Hold to start SOS countdown',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onLongPressStart: (_) => onLongPressStart(),
+          onLongPressEnd: (_) => onLongPressEnd(),
+          onLongPressCancel: onLongPressEnd,
+          child: SizedBox(
+            width: 208,
+            height: 208,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox.expand(
+                  child: CircularProgressIndicator(
+                    value: isHolding ? progress : 0,
+                    strokeWidth: 8,
+                    backgroundColor: emergency.withValues(alpha: 0.15),
+                    color: emergency,
+                  ),
+                ),
+                Container(
+                  width: 180,
+                  height: 180,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: emergency,
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (isHolding)
+                        Text(
+                          '$countdown',
+                          style: Theme.of(context)
+                              .textTheme
+                              .displayLarge
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        )
+                      else ...[
+                        const Icon(Icons.sos_rounded,
+                            size: 56, color: Colors.white),
+                        const SizedBox(height: 6),
+                        Text(
+                          'HOLD',
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1.5,
+                                  ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReadinessSummary extends StatelessWidget {
+  const _ReadinessSummary({required this.contactCount});
+
+  final int contactCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = contactCount > 0;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Icon(
+              ready
+                  ? Icons.people_outline_rounded
+                  : Icons.person_add_alt_1_rounded,
+              color: guardianToneColor(
+                context,
+                ready ? GuardianStatusTone.success : GuardianStatusTone.warning,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    ready
+                        ? '$contactCount contacts configured'
+                        : 'No contacts configured',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    ready
+                        ? 'Guardian will attempt each configured delivery.'
+                        : 'SOS can still record evidence, but nobody will receive a contact message.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActiveIncident extends StatelessWidget {
+  const _ActiveIncident({
+    required this.emergency,
+    required this.onCallPolice,
+    required this.onShareLocation,
+    required this.onSafe,
+  });
+
+  final EmergencyState emergency;
+  final Future<void> Function() onCallPolice;
+  final Future<void> Function() onShareLocation;
+  final VoidCallback onSafe;
+
+  @override
+  Widget build(BuildContext context) {
+    final statuses = emergency.sosAlert?.contactStatuses ?? const [];
+    final accepted = statuses.where((status) => status.smsSent).length;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const GuardianStatusPill(
+                  label: 'Incident active',
+                  tone: GuardianStatusTone.emergency,
+                  icon: Icons.emergency_rounded,
+                ),
+                const SizedBox(height: 16),
+                Text('Guardian is continuing emergency actions',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                Text(
+                  '$accepted of ${statuses.length} contact dispatches were accepted by the device or provider. Delivery is only confirmed when evidence arrives.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        GuardianDangerButton(
+          label: 'Call emergency services',
+          icon: Icons.local_police_outlined,
+          onPressed: onCallPolice,
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: onShareLocation,
+          icon: const Icon(Icons.share_location_outlined),
+          label: const Text('Share current location'),
+        ),
+        const SizedBox(height: 24),
+        const GuardianSectionHeader(title: 'Contact dispatch evidence'),
+        const SizedBox(height: 10),
+        if (statuses.isEmpty)
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                  'No emergency contacts were configured for this incident.'),
+            ),
+          )
+        else
+          Card(
+            child: Column(
+              children: [
+                for (var index = 0; index < statuses.length; index++) ...[
+                  ListTile(
+                    leading: Icon(
+                      statuses[index].smsSent
+                          ? Icons.outbox_rounded
+                          : Icons.error_outline_rounded,
+                      color: guardianToneColor(
+                        context,
+                        statuses[index].smsSent
+                            ? GuardianStatusTone.success
+                            : GuardianStatusTone.warning,
+                      ),
+                    ),
+                    title: Text(statuses[index].contact.name),
+                    subtitle: Text(
+                      statuses[index].smsSent
+                          ? 'Dispatch accepted — awaiting delivery evidence'
+                          : 'Dispatch was not accepted',
+                    ),
+                  ),
+                  if (index != statuses.length - 1)
+                    const Divider(height: 1, indent: 56),
+                ],
+              ],
+            ),
+          ),
+        if (emergency.currentLocation != null) ...[
+          const SizedBox(height: 16),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.gps_fixed_rounded),
+              title: const Text('Location evidence captured'),
+              subtitle: const Text(
+                'Precise coordinates are available to authorized emergency workflows.',
+              ),
+            ),
           ),
         ],
+        const SizedBox(height: 28),
+        OutlinedButton.icon(
+          onPressed: onSafe,
+          icon: const Icon(Icons.check_circle_outline_rounded),
+          label: const Text('I am safe'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.message, required this.onRetry});
+
+  final String? message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline_rounded,
+                size: 56, color: Theme.of(context).colorScheme.error),
+            const SizedBox(height: 16),
+            Text('Emergency action needs attention',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            Text(
+              message ?? 'Guardian could not complete the requested action.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(onPressed: onRetry, child: const Text('Try again')),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 22, color: AppColors.brand),
+        const SizedBox(width: 12),
+        Expanded(
+            child: Text(text, style: Theme.of(context).textTheme.bodyMedium)),
+      ],
     );
   }
 }

@@ -1,21 +1,12 @@
-/*
- * Guardian 2.0 - Women's Safety App
- * © 2025 All Rights Reserved - Kunal Singh
- * 
- * Dashboard Screen - Main Home Screen
- */
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../app/theme/app_theme.dart';
-import '../../../../app/routes.dart';
-import '../../../../core/providers/auth_provider.dart';
-import '../../../../core/providers/settings_provider.dart';
-import '../../../../core/providers/emergency_provider.dart';
-import '../../../../core/providers/user_provider.dart';
-import '../../../../core/services/sos_service.dart';
-import '../widgets/agent_observability_card.dart';
+import 'package:guardian/app/routes.dart';
+import 'package:guardian/core/providers/auth_provider.dart';
+import 'package:guardian/core/providers/contacts_provider.dart';
+import 'package:guardian/core/providers/emergency_provider.dart';
+import 'package:guardian/core/providers/settings_provider.dart';
+import 'package:guardian/core/widgets/guardian_ui.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -23,278 +14,276 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
-    final profile = ref.watch(userProfileStreamProvider).valueOrNull;
+    final contacts = ref.watch(contactsProvider).contacts;
+    final emergency = ref.watch(emergencyProvider);
     final locationMode = ref.watch(locationModeProvider);
     final isResponder = ref.watch(authServiceProvider).isResponder;
+    final firstName = _firstName(user?.displayName);
+
+    final status = emergency.isActive
+        ? _ProtectionStatus(
+            title: 'Incident active',
+            description: 'Emergency actions and live status are available now.',
+            actionLabel: 'View incident',
+            tone: GuardianStatusTone.emergency,
+            icon: Icons.emergency_rounded,
+            onTap: () => context.push(Routes.emergency),
+          )
+        : contacts.isEmpty
+            ? _ProtectionStatus(
+                title: 'Action needed',
+                description:
+                    'Add at least one emergency contact before an SOS.',
+                actionLabel: 'Add contact',
+                tone: GuardianStatusTone.warning,
+                icon: Icons.person_add_alt_1_rounded,
+                onTap: () => context.push(Routes.contacts),
+              )
+            : _ProtectionStatus(
+                title: 'Protection ready',
+                description:
+                    '${contacts.length} contact${contacts.length == 1 ? '' : 's'} ready • ${_humanize(locationMode.name)} location',
+                actionLabel: 'Review',
+                tone: GuardianStatusTone.success,
+                icon: Icons.verified_user_outlined,
+                onTap: () => context.push(Routes.readiness),
+              );
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Guardian'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.person_outline),
+            tooltip: 'Profile',
+            icon: const Icon(Icons.account_circle_outlined),
             onPressed: () => context.push(Routes.profile),
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Welcome Card
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hello, ${user?.displayName ?? 'Guardian'}! 👋',
-                        style:
-                            Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppColors.success.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: AppColors.success,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  '${locationMode.name.toUpperCase()} Mode',
-                                  style: TextStyle(
-                                    color: AppColors.success,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // AWS Bedrock Agent Observability & Live State Card
-              const AgentObservabilityCard(),
-
-              // SOS Button (Large, Prominent)
-              Center(
-                child: GestureDetector(
-                  onTap: () => context.push(Routes.emergency),
-                  onLongPress: () {
-                    // Trigger actual SOS via provider
-                    ref.read(emergencyProvider.notifier).triggerEmergency(
-                          source: SosTriggerSource.button,
-                        );
-                  },
-                  child: Container(
-                    width: 180,
-                    height: 180,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.sos,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.sosGlow,
-                          blurRadius: 30,
-                          spreadRadius: 10,
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.emergency,
-                            size: 50,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'SOS',
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineMedium
-                                ?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                          Text(
-                            'Hold for emergency',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Colors.white70,
-                                    ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 32),
-
-              // Quick Actions
-              Text(
-                'Quick Actions',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: 12),
-
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 2,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 1.5,
-                children: [
-                  _QuickActionCard(
-                    icon: Icons.people,
-                    title: 'Guardian Circle',
-                    subtitle: 'Emergency contacts',
-                    color: AppColors.secondary,
-                    onTap: () => context.push(Routes.contacts),
-                  ),
-                  _QuickActionCard(
-                    icon: Icons.shield,
-                    title: 'Safe Zones',
-                    subtitle: 'Manage locations',
-                    color: AppColors.success,
-                    onTap: () => context.push(Routes.safeZones),
-                  ),
-                  _QuickActionCard(
-                    icon: Icons.timer,
-                    title: 'Check-In Timer',
-                    subtitle: 'I\'ll be home by',
-                    color: AppColors.warning,
-                    onTap: () => context.push(Routes.quickActions),
-                  ),
-                  _QuickActionCard(
-                    icon: Icons.health_and_safety_outlined,
-                    title: 'Readiness',
-                    subtitle: 'Check protection',
-                    color: AppColors.primary,
-                    onTap: () => context.push(Routes.readiness),
-                  ),
-                  if (isResponder)
-                    _QuickActionCard(
-                      icon: Icons.volunteer_activism_outlined,
-                      title: 'Responder',
-                      subtitle: 'Nearby requests',
-                      color: AppColors.guardian,
-                      onTap: () => context.push(Routes.responderInbox),
-                    ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              // Trust Score Card
-              Card(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: AppColors.guardian.withOpacity(0.2),
-                    child: Icon(Icons.star, color: AppColors.guardian),
-                  ),
-                  title: const Text('Your Trust Score'),
-                  subtitle: Text(
-                    '${profile?.trustRankDisplayName ?? 'Watcher'} • '
-                    '${profile?.trustScore ?? 0} points',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.push(Routes.profile),
-                ),
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          children: [
+            Text(
+              firstName == null ? 'Your safety at a glance' : 'Hi, $firstName',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Everything important, without the noise.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 20),
+            _ProtectionStatusCard(status: status),
+            const SizedBox(height: 20),
+            _EmergencyEntry(
+              active: emergency.isActive,
+              onTap: () => context.push(Routes.emergency),
+            ),
+            const SizedBox(height: 24),
+            const GuardianSectionHeader(title: 'Quick actions'),
+            const SizedBox(height: 10),
+            GuardianActionCard(
+              icon: Icons.timer_outlined,
+              title: 'Start a safety check-in',
+              description:
+                  'Set a time for Guardian to check that you are safe.',
+              onTap: () => context.push(Routes.quickActions),
+            ),
+            const SizedBox(height: 10),
+            GuardianActionCard(
+              icon: Icons.people_outline_rounded,
+              title: 'View your circle',
+              description: contacts.isEmpty
+                  ? 'Add people who should receive emergency updates.'
+                  : '${contacts.length} emergency contact${contacts.length == 1 ? '' : 's'} configured.',
+              onTap: () => context.push(Routes.contacts),
+              tone: contacts.isEmpty
+                  ? GuardianStatusTone.warning
+                  : GuardianStatusTone.neutral,
+            ),
+            const SizedBox(height: 24),
+            const GuardianSectionHeader(title: 'More safety tools'),
+            const SizedBox(height: 10),
+            GuardianActionCard(
+              icon: Icons.health_and_safety_outlined,
+              title: 'Safety readiness',
+              description: 'Review permissions, contacts, and service access.',
+              onTap: () => context.push(Routes.readiness),
+            ),
+            const SizedBox(height: 10),
+            GuardianActionCard(
+              icon: Icons.location_on_outlined,
+              title: 'Saved places',
+              description: 'Manage locations that matter to your safety.',
+              onTap: () => context.push(Routes.safeZones),
+            ),
+            if (isResponder) ...[
+              const SizedBox(height: 10),
+              GuardianActionCard(
+                icon: Icons.volunteer_activism_outlined,
+                title: 'Responder requests',
+                description:
+                    'Review nearby invitations you are allowed to see.',
+                onTap: () => context.push(Routes.responderInbox),
+                tone: GuardianStatusTone.success,
               ),
             ],
-          ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String? _firstName(String? displayName) {
+    final value = displayName?.trim();
+    if (value == null || value.isEmpty) return null;
+    return value.split(RegExp(r'\s+')).first;
+  }
+
+  static String _humanize(String value) {
+    if (value.isEmpty) return value;
+    return '${value[0].toUpperCase()}${value.substring(1).toLowerCase()}';
+  }
+}
+
+class _ProtectionStatus {
+  const _ProtectionStatus({
+    required this.title,
+    required this.description,
+    required this.actionLabel,
+    required this.tone,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String title;
+  final String description;
+  final String actionLabel;
+  final GuardianStatusTone tone;
+  final IconData icon;
+  final VoidCallback onTap;
+}
+
+class _ProtectionStatusCard extends StatelessWidget {
+  const _ProtectionStatusCard({required this.status});
+
+  final _ProtectionStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final toneColor = guardianToneColor(context, status.tone);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: toneColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(status.icon, color: toneColor),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  GuardianStatusPill(label: status.title, tone: status.tone),
+                  const SizedBox(height: 10),
+                  Text(
+                    status.description,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: status.onTap,
+                      child: Text(status.actionLabel),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _QuickActionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final VoidCallback onTap;
+class _EmergencyEntry extends StatelessWidget {
+  const _EmergencyEntry({required this.active, required this.onTap});
 
-  const _QuickActionCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.onTap,
-  });
+  final bool active;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: color, size: 24),
-              const SizedBox(height: 6),
-              Flexible(
-                child: Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
+    final emergency = Theme.of(context).colorScheme.error;
+    return Semantics(
+      button: true,
+      label: active
+          ? 'Open active emergency incident'
+          : 'Open emergency controls. You will need to hold to send an SOS.',
+      child: Card(
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: Column(
+              children: [
+                Container(
+                  width: 144,
+                  height: 144,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: emergency,
+                    border: Border.all(
+                      color: emergency.withValues(alpha: 0.25),
+                      width: 8,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.sos_rounded,
+                          size: 46, color: Colors.white),
+                      const SizedBox(height: 4),
+                      Text(
+                        active ? 'VIEW' : 'SOS',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1,
+                            ),
                       ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                    ],
+                  ),
                 ),
-              ),
-              Flexible(
-                child: Text(
-                  subtitle,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey,
-                      ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                const SizedBox(height: 16),
+                Text(
+                  active ? 'Emergency incident is active' : 'Emergency help',
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
-              ),
-            ],
+                const SizedBox(height: 4),
+                Text(
+                  active
+                      ? 'Open the incident to see confirmed actions.'
+                      : 'Open, then hold to prevent accidental alerts.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
           ),
         ),
       ),
