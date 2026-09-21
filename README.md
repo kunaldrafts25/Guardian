@@ -1,247 +1,257 @@
-# 🛡️ Guardian: Autonomous Agentic Emergency Response & Personal Safety Platform
+# Guardian
 
-[![AWS Serverless](https://img.shields.io/badge/AWS-Serverless-orange.svg?logo=amazon-aws)](https://aws.amazon.com/)
-[![Amazon Bedrock](https://img.shields.io/badge/Amazon-Bedrock_Claude_3_Haiku-blue.svg)](https://aws.amazon.com/bedrock/)
-[![Flutter](https://img.shields.io/badge/Flutter-3.x_Riverpod-02569B.svg?logo=flutter)](https://flutter.dev/)
-[![OpenStreetMap](https://img.shields.io/badge/Maps-OpenStreetMap_100%25_Free-7EBC6F.svg?logo=openstreetmap)](https://www.openstreetmap.org/)
-[![Tests Passing](https://img.shields.io/badge/Tests-16_Pytest_%7C_88_Flutter-brightgreen.svg)]()
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+**A safety-orchestration MVP for durable SOS reporting, trusted-contact escalation, and controlled nearby-responder coordination.**
 
----
+[![Flutter CI](https://github.com/kunaldrafts25/Guardian/actions/workflows/flutter_ci.yml/badge.svg?branch=main)](https://github.com/kunaldrafts25/Guardian/actions/workflows/flutter_ci.yml)
+[![Flutter](https://img.shields.io/badge/Flutter-3.47.4-02569B?logo=flutter)](https://flutter.dev/)
+[![AWS SAM](https://img.shields.io/badge/AWS-SAM-FF9900?logo=amazonwebservices)](https://aws.amazon.com/serverless/sam/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-2E7D32.svg)](LICENSE)
 
-## 1. Executive Summary: The 2-to-5 Minute Survival Window
+Guardian combines a Flutter mobile client, Android-native emergency handling, and an AWS serverless backend. An emergency incident is recorded locally first, synchronized through an authenticated API, evaluated by deterministic safety policy, and then optionally enriched by Amazon Bedrock advisory reasoning. Trusted contacts and a closed cohort of approved responders can receive real notifications without exposing precise location before authorization.
 
-Traditional personal safety applications suffer from a catastrophic structural limitation: **The Response Time Dilemma**.
+> [!IMPORTANT]
+> Guardian is a controlled MVP, not an emergency-service replacement. It does not contact police, ambulance, or other public emergency services automatically. Delivery depends on device permissions, operating-system restrictions, carrier/network availability, and correctly deployed cloud infrastructure.
 
-1. **Emergency Services (112 / 911 / Police)**: Average arrival times range from **15 to 45 minutes** in suburban, rural, or congested urban areas at night.
-2. **Personal / Family Contacts**: Frequently reside far away, have phones on silent during sleep hours, or are physically incapable of immediate intervention.
+## What works today
 
-> **In active street harassment, stalkings, physical assaults, or sudden medical collapses, the critical survival window is between 2 and 5 minutes.**
+- Hold-to-activate SOS with a cancellation window and an evidence-backed incident timeline.
+- Durable local incident journal and retry queue for interrupted or offline requests.
+- Android foreground protection service with a configurable rapid screen/power-toggle panic gesture.
+- Android direct-SMS fallback to configured trusted contacts when permission and cellular service are available.
+- Phone-number authentication through Amazon Cognito custom challenges.
+- Authenticated incident, session, contact, device, and responder APIs.
+- Targeted push delivery through Amazon SNS: FCM on Android and native APNs on iOS.
+- Deterministic emergency policy with optional Amazon Bedrock advisory reasoning.
+- Signed, short-lived, single-use authorization for safety-critical agent tools.
+- Append-only decision and execution ledger for agent actions.
+- Closed, manually approved responder cohort with coarse invitations.
+- Conditional mission lifecycle: `INVITED → ACCEPTED → EN_ROUTE → ARRIVED → COMPLETED`.
+- Precise-location grants that are issued only after acceptance and revoked at terminal states.
+- OpenStreetMap-based map display and navigation hand-off.
+- Light and dark semantic themes with compact-screen and large-text component coverage.
 
-**Guardian** bridges this survival gap by turning everyday smartphones into an **autonomous, agentic emergency-response mesh**:
-* **Covert Physical Hardware Trigger**: 3+ rapid taps on the physical hardware power button triggers an instant panic signal—no screen unlock, no app launch, and zero display illumination.
-* **Autonomous AWS Bedrock Agent (Claude 3 Haiku)**: Evaluates real-time multimodal context (kinematic sensor spikes, ambient time, geohash danger indices, safe zone proximity) and autonomously orchestrates escalation without human bottlenecks.
-* **Hyper-Local Peer-to-Peer Good Samaritan Network**: Alerts nearby verified Guardian users (within 200m–800m) to provide collective, non-violent presence and deterrence before first responders arrive.
-* **100% Free Open-Source Geospatial Stack**: Powered entirely by OpenStreetMap (OSM), Nominatim, and OSRM—zero Google Maps billing or API key requirements.
-* **Dual-Channel Zero-Internet Fallback**: If cellular data is offline or in a basement dead zone, direct hardware SMS sends GPS coordinates instantly to emergency contacts.
-* **Anti-Abuse Security Shield**: Rigorous architectural defenses against honey-trapping, ambushes, stalking, prank swarming, and bystander liability.
+## Safety boundaries
 
----
+Guardian intentionally does not claim capabilities the operating systems or current product cannot guarantee:
 
-## 2. System Architecture
+- Android hardware-trigger behavior varies by manufacturer and requires the protection service to be enabled.
+- iOS does not permit third-party apps to intercept arbitrary power-button presses. iOS activation must use supported system surfaces or the in-app SOS flow.
+- The responder network is not a public marketplace. Responders must be manually reviewed and approved.
+- Bedrock is advisory. It cannot suppress or downgrade deterministic handling of an explicit panic event.
+- A push or SMS submission is not represented as delivered unless real delivery evidence exists.
+- BLE mesh relaying, wearable integration, and fall-detection ML are outside the current product scope.
+
+## Architecture
 
 ```mermaid
-flowchart TD
-    subgraph Mobile ["📱 Mobile Client Layer (Flutter + Android Native)"]
-        A1["Hardware Power Button (3+ Taps)"] -->|ScreenStateReceiver| B["SafetyServiceBridge (Native)"]
-        A2["Sensors: Accelerometer / Gyroscope"] -->|Fall / Impact Detected| B
-        A3["On-Screen Emergency Interface"] -->|Manual SOS Button| B
-        B -->|Offline Direct SMS| C["Android TelephonyManager"]
-        B -->|Encrypted REST HTTPS| D["FastAPI / AWS API Gateway"]
+flowchart LR
+    subgraph Device[Flutter mobile app]
+        Trigger[Manual SOS or Android panic gesture]
+        Journal[(Drift incident journal and outbox)]
+        Contacts[Trusted contacts]
+        Mission[Responder mission UI]
+        Trigger --> Journal
+        Contacts --> Journal
     end
 
-    subgraph AWS ["☁️ AWS Serverless & Agentic AI Backend"]
-        D -->|/incidents| E["Incident Ingestion Handler"]
-        E -->|Atomic State Write| F[("Amazon DynamoDB: Incidents & Audit Ledger")]
-        E -->|incident.created| G["Amazon EventBridge"]
-        
-        G --> H["Guardian Autonomous Agent"]
-        
-        subgraph Bedrock ["🧠 Amazon Bedrock Reasoning Loop"]
-            H <-->|Model: Claude 3 Haiku| I["Agentic Decision Loop"]
-            I --> J1["Tool: get_incident_context"]
-            I --> J2["Tool: assess_risk"]
-            I --> J3["Tool: ask_user_confirmation"]
-            I --> J4["Tool: notify_trusted_contact"]
-            I --> J5["Tool: find_nearby_responders"]
-            I --> J6["Tool: dispatch_community_alert"]
-            I --> J7["Tool: accept_rescue_mission"]
-        end
+    Journal -->|HTTPS + Cognito token| API[API Gateway + FastAPI Lambda]
+    API --> Tables[(DynamoDB)]
+    API --> Events[EventBridge]
+    Events --> Agent[Guardian agent Lambda]
 
-        J4 --> K["Amazon SNS: Priority SMS / Email Dispatch"]
-        J6 --> L["Push Notification: Geo-Obfuscated Alert"]
+    subgraph GuardedAgent[Policy-governed agent]
+        Policy[Deterministic risk and authorization policy]
+        Advice[Amazon Bedrock advisory reasoning]
+        Ledger[(Append-only action ledger)]
+        Policy --> Advice
+        Advice --> Ledger
     end
 
-    subgraph Community ["👥 Good Samaritan Peer Responders (200m - 800m)"]
-        L --> M["Nearby Responders Alert Cockpit"]
-        M -->|Anti-Solo Quorum >= 2 Helpers| N["Accept Rescue Mission"]
-        N -->|Precision Coordinates Unlocked| O["Rendezvous & Deterrence"]
-    end
+    Agent --> Policy
+    Policy --> SNS[Amazon SNS]
+    SNS --> SMS[Trusted-contact SMS]
+    SNS --> FCM[Android FCM]
+    SNS --> APNS[iOS APNs]
+    FCM --> Mission
+    APNS --> Mission
 ```
 
----
+The key authority boundary is simple: the model may recommend and explain, but deterministic policy decides whether a safety-critical tool is allowed. Approved actions require an incident-bound capability, and capability consumption is atomic to prevent replay.
 
-## 3. Core Architectural Innovations
+## Technology
 
-### A. Covert Hardware Power Button Trigger (3+ Taps)
-* **Android Native `ScreenStateReceiver`**: Directly monitors rapid display power state toggles (`ACTION_SCREEN_ON` / `ACTION_SCREEN_OFF`) within a 3000ms rolling window inside a foreground service.
-* **Pocket-Safe & Covert**: Operates when the phone is locked, inside a bag, or in a pocket without lighting up the screen.
-* **Zero Delay**: Bypasses the 15-second false-alarm countdown, immediately assigning a `CRITICAL` risk classification (`0.98`) for instant dispatch.
-* **Dual-Channel Fallback**: If mobile data is disabled or unavailable, the native `SmsHelper` broadcasts emergency coordinates directly via cellular SMS to emergency contacts.
+| Layer | Implementation |
+| --- | --- |
+| Mobile | Flutter, Dart, Riverpod, go_router |
+| Local durability | Drift and SQLite |
+| Android native | Kotlin foreground service, encrypted emergency snapshot, SMS fallback |
+| Maps and location | flutter_map, OpenStreetMap, geolocator |
+| API | FastAPI on AWS Lambda through Mangum and API Gateway |
+| Identity | Amazon Cognito phone custom challenge |
+| Data | DynamoDB with conditional writes, TTL, and point-in-time recovery |
+| Events and reasoning | EventBridge, deterministic policy, Amazon Bedrock |
+| Notifications | Amazon SNS, FCM, APNs, SMS |
+| Infrastructure | AWS SAM / CloudFormation |
 
-### B. Autonomous Agentic Workflow (AWS Bedrock + Tool Use)
-Instead of static hardcoded `if/else` logic, Guardian uses **Amazon Bedrock (Claude 3 Haiku)** with structured tool-calling contracts:
-1. `get_incident_context()`: Gathers telemetry, timestamps, motion spikes, and safe zone proximity.
-2. `assess_risk()`: Computes multi-factor composite risk scores integrating temporal factors (nighttime multiplier), spatial factors (isolated corridors), and kinematic data (fall impact).
-3. `ask_user_confirmation()`: Triggers a 15-second non-intrusive countdown for ambiguous anomalies.
-4. `notify_trusted_contact()`: Dispatches priority alerts via **Amazon SNS** with interactive map navigation links.
-5. `find_nearby_responders()`: Locates active, backgrounded users within 800m filtered by verified Trust Score ($\ge 70$).
-6. `dispatch_community_alert()`: Enforces the Anti-Solo Quorum and dispatches fuzzy, landmark-based location data.
-7. `accept_rescue_mission()`: Unlocks precision coordinates and establishes mutual telemetry once quorum criteria are met.
+## Repository layout
 
-### C. 100% Free OpenStreetMap Geospatial Stack
-Guardian replaces paid Google Maps APIs with a completely open-source mapping stack:
-* **Map Display**: Vector/raster tile rendering via `flutter_map` powered by OpenStreetMap public tile servers.
-* **Place Search & Autocomplete**: Powered by OpenStreetMap **Nominatim** with zero API key configuration.
-* **Pedestrian Navigation**: Real street-following safe walking routes powered by **OSRM (Open Source Routing Machine)**.
-* **Emergency Infrastructure**: Real-time extraction of police stations, hospitals, and 24/7 pharmacies via **Overpass API**.
-* **Offline Tile Caching**: Built-in SQLite tile caching enables map functionality in cellular dead zones.
-
----
-
-## 4. Threat Model & Anti-Abuse Security Shield
-
-A peer-to-peer physical emergency dispatch system introduces critical attack vectors if unprotected. Guardian implements a defensive matrix:
-
-| Attack Vector | Threat Scenario | Guardian Architectural Defense |
-|---|---|---|
-| **1. The Honey-Trap / Ambush** | An attacker creates a fake SOS in an isolated area to lure solo helpers into an ambush. | **Anti-Solo Quorum (Buddy System)**: Alerts require $\ge 2\text{--}3$ verified responders before precision coordinates unlock. Responders rendezvous at an open, well-lit landmark first. All participant telemetry and rolling audio are logged to an immutable cloud audit ledger. |
-| **2. Prank Swarming** | Hostile actors or trolls spam fake alerts to cause fatigue among volunteer responders. | **Dynamic Rate-Limiting & Slashing**: Max 1 community broadcast per device/hour. Confirmed false alarms slash user Trust Score by **-40 points**. If Trust Score drops below 50, community alert privileges are permanently revoked. |
-| **3. Stalking & Doxxing** | Malicious users try to locate victims or track women returning home. | **Differential Geo-Obfuscation**: Initial alerts broadcast only broad landmarks (*"~350m near Station Square"*). Precision GPS is cryptographically gated until verified responders are within 150m and part of an accepted quorum. |
-| **4. Good Samaritan Safety** | Responders fear physical confrontation with armed attackers or legal liability. | **Non-Violent Deterrence Protocol**: App instructions enforce non-contact deterrence (honking horns, flashing high-beam lights, group presence). 85%+ of street crimes are aborted by noise and group presence. Includes a 1-tap *"I'm in danger too"* escalation button. |
-| **5. Network Dead Zones** | Incidents in basements or underground transit with no internet. | **Dual-Channel Native SMS Fallback**: Device automatically sends SMS with last known GPS via Android TelephonyManager without waiting for cloud HTTP responses. |
-
----
-
-## 5. AWS Cloud Infrastructure
-
-| AWS Service | Role in Guardian | Architectural Justification |
-|---|---|---|
-| **Amazon Bedrock (Claude 3 Haiku)** | Autonomous incident triaging & tool calling | Sub-400ms inference latency, native structured tool-calling support, highly cost-effective for burst emergency triage. |
-| **Amazon Cognito** | Secure phone number OTP authentication | Serverless identity provider with SMS OTP delivery, eliminating password vulnerabilities. |
-| **Amazon DynamoDB** | Incident record ledger & timeline audit trail | Single-digit millisecond latency for status updates and idempotent event de-duplication (`event_id`). Pay-per-request billing. |
-| **Amazon SNS** | Trusted contact dispatch & community broadcast | Reliable, cross-carrier multi-channel delivery (Transactional SMS and push notifications) with carrier failover. |
-| **Amazon EventBridge** | Decoupled event-driven bus | Decouples fast client ingestion (`/incidents` responds in <50ms) from autonomous agent reasoning and notifications. |
-| **AWS SAM (Serverless Application Model)** | Infrastructure as Code (IaC) | Declarative template (`aws/template.yaml`) enabling single-command reproducible deployments. |
-
----
-
-## 6. Project Structure
-
-```
+```text
 Guardian/
-├── android/                         # Native Android Foreground Service & Telephony
-│   └── app/src/main/kotlin/.../
-│       ├── SafetyForegroundService.kt # Foreground service & ScreenStateReceiver (3 taps)
-│       ├── SmsHelper.kt             # Direct offline SMS fallback
-│       └── MainActivity.kt          # MethodChannel bridging to Flutter
-├── aws/                             # AWS Serverless & Agentic AI Backend
-│   ├── agent/
-│   │   ├── guardian_agent.py        # Amazon Bedrock autonomous reasoning agent loop
-│   │   ├── tools.py                 # 7 production agent tools (risk, contacts, community)
-│   │   └── risk_engine.py           # Multi-factor algorithmic risk assessment engine
-│   ├── incident_handler/
-│   │   ├── handler.py               # Lambda function handling REST API & state transitions
-│   │   └── state_machine.py         # Incident finite state machine & validation
-│   ├── tests/                       # Comprehensive Pytest test suite
-│   │   ├── test_agent.py            # Agent autonomous reasoning & tool execution tests
-│   │   ├── test_risk_engine.py      # Sensor & temporal heuristic tests
-│   │   ├── test_server.py           # Local FastAPI end-to-end integration tests
-│   │   └── test_state_machine.py    # State transition & illegal transition tests
-│   ├── server.py                    # FastAPI backend server (mirrors AWS API Gateway)
-│   └── template.yaml                # AWS SAM Infrastructure as Code deployment template
-├── lib/                             # Flutter Cross-Platform Mobile Application
-│   ├── app/                         # App initialization, routing (go_router), and themes
-│   ├── core/                        # Core services, providers (Riverpod), and database (Drift)
-│   │   ├── services/                # AWS services, OSM maps, and power optimization
-│   │   └── providers/               # State notifiers for incidents, location, safe zones
-│   └── features/                    # Feature modules (Dashboard, Map, SOS, Guardian Mode, Community)
-│       ├── dashboard/               # Protection status, active incident, and safety actions
-│       ├── map/                     # OpenStreetMap interactive map, heatmap, and routes
-│       └── community/               # Mission navigation, responder quorum, and alerts
-└── test/                            # 88 Flutter Unit & Widget tests
+├── android/        Android host app and native emergency services
+├── ios/            iOS runner, entitlements, CocoaPods configuration
+├── lib/
+│   ├── app/        Routing, theme, and application shell
+│   ├── core/       Database, models, providers, services, shared UI
+│   └── features/   Auth, dashboard, emergency, map, responder, settings
+├── aws/
+│   ├── agent/      Policy authorization, reasoning, tools, and ledger
+│   ├── tests/      Backend unit and API tests
+│   ├── server.py   Authenticated API surface
+│   └── template.yaml  AWS SAM infrastructure definition
+├── test/           Flutter unit, database, service, and widget tests
+└── .github/        Android, iOS, Flutter, backend, and SAM CI
 ```
 
----
+## Prerequisites
 
-## 7. Testing & Quality Assurance
+- Flutter `3.47.4`
+- Dart version bundled with Flutter
+- JDK 17
+- Android Studio and Android SDK 36 for Android builds
+- Python 3.12 for backend tests and local development
+- AWS CLI and AWS SAM CLI for cloud deployment
+- macOS, Xcode, CocoaPods, and an Apple Developer account for signed iOS builds
 
-### Python AWS Backend Test Suite (16/16 Passed)
-```bash
-python -m pytest aws/tests/ -v
-```
-```
-aws/tests/test_agent.py::test_agent_tools_execution PASSED
-aws/tests/test_agent.py::test_agent_autonomous_reasoning_flow PASSED
-aws/tests/test_agent.py::test_agent_critical_immediate_escalation PASSED
-aws/tests/test_hardware_panic_immediate_critical_and_community_dispatch PASSED
-aws/tests/test_community_responder_trust_gating_and_anti_solo_quorum PASSED
-aws/tests/test_handler.py::test_create_incident_and_idempotency PASSED
-aws/tests/test_handler.py::test_state_transitions_and_timeline PASSED
-aws/tests/test_handler.py::test_invalid_transition_returns_400 PASSED
-aws/tests/test_handler.py::test_nearby_responders_and_accept_handler PASSED
-aws/tests/test_risk_engine.py::test_nighttime_risk PASSED
-aws/tests/test_risk_engine.py::test_fall_movement_risk PASSED
-aws/tests/test_risk_engine.py::test_incident_composite_assessment PASSED
-aws/tests/test_server.py::test_health_endpoint PASSED
-aws/tests/test_server.py::test_e2e_fall_simulation_flow PASSED
-aws/tests/test_state_machine.py::test_valid_transitions PASSED
-aws/tests/test_state_machine.py::test_invalid_transitions PASSED
+Check the local toolchain:
 
-======================== 16 passed in 1.15s ========================
+```powershell
+flutter doctor -v
+python --version
+sam --version
+aws --version
 ```
 
-### Flutter Mobile Test Suite (88/88 Passed)
-```bash
+## Run the mobile app
+
+Install packages:
+
+```powershell
+flutter pub get
+```
+
+Guardian uses build-time configuration, not a runtime `.env` loader. Run a configured development build with:
+
+```powershell
+flutter run `
+  --dart-define=AWS_API_ENDPOINT=https://YOUR_API_ENDPOINT `
+  --dart-define=FIREBASE_API_KEY=YOUR_FIREBASE_API_KEY `
+  --dart-define=FIREBASE_PROJECT_ID=YOUR_FIREBASE_PROJECT_ID `
+  --dart-define=FIREBASE_MESSAGING_SENDER_ID=YOUR_SENDER_ID `
+  --dart-define=FIREBASE_ANDROID_APP_ID=YOUR_ANDROID_APP_ID
+```
+
+For iOS, replace `FIREBASE_ANDROID_APP_ID` with these values:
+
+```text
+FIREBASE_IOS_APP_ID
+FIREBASE_IOS_BUNDLE_ID=com.company.guardian
+```
+
+`FIREBASE_STORAGE_BUCKET` is optional. Release builds require a valid HTTPS `AWS_API_ENDPOINT`.
+
+## Validate the project
+
+Run the same core checks used by CI:
+
+```powershell
+dart format --output=none --set-exit-if-changed lib test
+flutter analyze --no-fatal-infos
 flutter test
-```
-```
-00:32 +88: All tests passed!
+python -m pip install --requirement aws/requirements-test.txt
+python -m pytest aws/tests --quiet
+sam validate --lint --template-file aws/template.yaml
+sam build --template-file aws/template.yaml
 ```
 
-### Static Analysis
+Current verified baseline:
+
+- 107 Flutter tests passing.
+- 38 backend tests passing.
+- Android signed release APK builds in CI.
+- iOS simulator build passes in CI.
+- SAM template validation and packaging pass in CI.
+
+The CI signing key is ephemeral and must never be used for distribution.
+
+## Build release artifacts
+
+Android releases require all four signing environment variables:
+
+```text
+GUARDIAN_KEYSTORE_PATH
+GUARDIAN_KEYSTORE_PASSWORD
+GUARDIAN_KEY_ALIAS
+GUARDIAN_KEY_PASSWORD
+```
+
+Build the Play Store App Bundle with the same AWS/Firebase Dart defines used above:
+
+```powershell
+flutter build appbundle --release `
+  --dart-define=AWS_API_ENDPOINT=https://YOUR_API_ENDPOINT `
+  --dart-define=FIREBASE_API_KEY=YOUR_FIREBASE_API_KEY `
+  --dart-define=FIREBASE_PROJECT_ID=YOUR_FIREBASE_PROJECT_ID `
+  --dart-define=FIREBASE_MESSAGING_SENDER_ID=YOUR_SENDER_ID `
+  --dart-define=FIREBASE_ANDROID_APP_ID=YOUR_ANDROID_APP_ID
+```
+
+Verify iOS dependencies and compilation on macOS before signing:
+
 ```bash
-flutter analyze
-# 0 compilation errors across the entire codebase.
+flutter pub get
+cd ios && pod install && cd ..
+flutter build ios --simulator --no-codesign
 ```
 
----
+A production iOS archive additionally requires an Apple team, distribution signing, Push Notifications capability, APNs credentials, and production Dart defines.
 
-## 8. Deployment Guide
+## Deploy the AWS backend
 
-### Option 1: Local Backend Server
-```bash
-# Install backend dependencies
-pip install -r requirements.txt uvicorn python-dotenv
+The SAM template creates isolated resources for each environment. Always use `EnvironmentName=staging` first and a separate `EnvironmentName=production` deployment later.
 
-# Run FastAPI server
-python aws/server.py
-# Server runs on http://127.0.0.1:8000
+```powershell
+sam validate --lint --template-file aws/template.yaml
+sam build --template-file aws/template.yaml
+sam deploy --guided --region ap-south-1
 ```
 
-### Option 2: Deploy to AWS SAM (Serverless)
-```bash
-cd aws
-sam validate --lint --template-file template.yaml
-sam build --template-file template.yaml
-sam deploy --guided
-```
+The deployment prompts for:
 
-The SAM template is the only supported infrastructure definition. See
-`docs/AWS_DEPLOYMENT_RUNBOOK.md` for push, SMS, Bedrock, responder enrollment,
-and staging instructions.
+| Parameter | Purpose |
+| --- | --- |
+| `EnvironmentName` | Resource isolation, for example `staging` or `production` |
+| `FcmPlatformApplicationArn` | Existing SNS platform application for Android FCM |
+| `ApnsPlatformApplicationArn` | Existing SNS APNs sandbox or production application |
 
-### Option 3: Build Mobile Android APK
-```bash
-# Build production APK pointing to your backend endpoint
-flutter build apk --release --dart-define=AWS_API_ENDPOINT=https://your-api-endpoint.com
+Never commit AWS credentials, Firebase service-account JSON, APNs keys, Android keystores, Apple signing material, or production tokens.
 
-# Output location:
-# build/app/outputs/flutter-apk/app-release.apk
-```
+## Before real-user distribution
 
----
+Automated builds are green, but production readiness still requires work that cannot be completed with repository code alone:
 
-## 9. License
+1. Deploy isolated staging and production AWS stacks.
+2. Configure FCM HTTP v1, APNs sandbox/production, SMS production access, Cognito, and Bedrock.
+3. Test the complete protected-user and responder journey on physical Android and iOS devices.
+4. Use real Android and Apple distribution identities and controlled store test tracks.
+5. Publish privacy, terms, retention, support, abuse-reporting, and account-deletion policies.
+6. Implement and verify self-service account deletion before unrestricted public-store release.
+7. Keep public responder enrolment disabled until identity review, reporting, suspension, and appeal operations exist.
+8. Monitor notification failures, OTP delivery, incident persistence, authorization denials, and crash/ANR rates during gradual rollout.
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+## Security
+
+Do not report exploitable vulnerabilities in a public issue. Share them privately with the repository owner and include reproduction steps, affected commit, impact, and any proposed mitigation. Never include real phone numbers, location data, tokens, or credentials in a report.
+
+## License
+
+Guardian is available under the [MIT License](LICENSE).
