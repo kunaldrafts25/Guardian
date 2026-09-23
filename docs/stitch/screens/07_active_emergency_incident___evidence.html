@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SafeHaven - Active Incident Response</title>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts: Manrope, Inter, Public Sans -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@600;700;800&amp;family=Public+Sans:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "surface-container-high": "#e9e9e0",
+            "primary-fixed-dim": "#b2dec7",
+            "tertiary-container": "#bbf5fd",
+            "surface-dim": "#dadbd1",
+            "surface-bright": "#fbf9f3",
+            "error-dim": "#67040d",
+            "on-background": "#31332c",
+            "surface-container-highest": "#e3e3d9",
+            "on-secondary": "#fff7f4",
+            "surface-container-lowest": "#ffffff",
+            "secondary-fixed-dim": "#f7ccad",
+            "on-surface": "#31332c",
+            "background": "#fbf9f3",
+            "on-primary-container": "#315a48",
+            "primary": "#3e6755",
+            "on-tertiary-fixed-variant": "#2f6970",
+            "primary-container": "#bfedd5",
+            "on-surface-variant": "#5e6058",
+            "secondary-dim": "#6b4d34",
+            "on-error": "#fff7f6",
+            "surface-tint": "#3e6755",
+            "secondary-container": "#ffdcc3",
+            "outline": "#7a7b73",
+            "error-container": "#fa746f",
+            "secondary": "#79583f",
+            "on-tertiary": "#eafcff",
+            "primary-dim": "#325b49",
+            "primary-fixed": "#bfedd5",
+            "inverse-surface": "#0e0f0b",
+            "inverse-primary": "#d0fee6",
+            "tertiary": "#2d676e",
+            "on-secondary-fixed-variant": "#75553c",
+            "on-tertiary-fixed": "#074c53",
+            "surface": "#fbf9f3",
+            "surface-container": "#efeee6",
+            "on-error-container": "#6e0a12",
+            "on-tertiary-container": "#235f66",
+            "on-primary-fixed": "#1d4736",
+            "error": "#a83836",
+            "outline-variant": "#b2b3a9",
+            "on-primary": "#e5fff0",
+            "secondary-fixed": "#ffdcc3",
+            "tertiary-dim": "#1f5b62",
+            "on-secondary-container": "#6a4b33",
+            "tertiary-fixed": "#bbf5fd",
+            "surface-variant": "#e3e3d9",
+            "surface-container-low": "#f5f4ec",
+            "tertiary-fixed-dim": "#ade7ef",
+            "on-primary-fixed-variant": "#3b6451",
+            "on-secondary-fixed": "#553922",
+            "inverse-on-surface": "#9e9d98"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "fontFamily": {
+            "headline": ["Manrope", "sans-serif"],
+            "display": ["Manrope", "sans-serif"],
+            "body": ["Inter", "sans-serif"],
+            "label": ["Public Sans", "sans-serif"]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    @keyframes pulse-subtle {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(1.15); }
+    }
+    @keyframes radar-ripple {
+      0% { transform: scale(0.9); opacity: 0.8; }
+      100% { transform: scale(2.2); opacity: 0; }
+    }
+    .beacon-pulse {
+      animation: pulse-subtle 1.8s infinite ease-in-out;
+    }
+    .beacon-ring {
+      animation: radar-ripple 2.4s infinite cubic-bezier(0.2, 0.8, 0.4, 1);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body antialiased min-h-screen flex justify-center selection:bg-primary-container selection:text-on-primary-container">
+<!-- Mobile Container Shell -->
+<div class="w-full max-w-md bg-background min-h-screen flex flex-col relative pb-32 shadow-2xl">
+<!-- Top App Bar / Incident Context Header -->
+<header class="sticky top-0 z-40 bg-surface/95 backdrop-blur-md px-4 py-3 border-b border-surface-container-high transition-transform">
+<div class="flex items-center justify-between">
+<!-- Brand + Emergency Live Beacon -->
+<div class="flex items-center gap-2.5">
+<div class="relative flex items-center justify-center w-8 h-8 rounded-full bg-error-dim/10">
+<span class="beacon-ring absolute w-4 h-4 rounded-full bg-error"></span>
+<span class="beacon-pulse relative w-2.5 h-2.5 rounded-full bg-error"></span>
+</div>
+<div>
+<div class="flex items-center gap-1.5">
+<h1 class="font-headline font-bold text-base tracking-tight text-on-surface">Active Incident</h1>
+<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-label font-bold tracking-wide uppercase bg-error/15 text-error">
+                LIVE
+              </span>
+</div>
+<p class="font-label text-xs text-on-surface-variant font-medium">#INC-8821 • Live 04:18 elapsed</p>
+</div>
+</div>
+<!-- Quick Top Utility Actions -->
+<div class="flex items-center gap-1">
+<button aria-label="Mute Sirens" class="p-2 rounded-full text-on-surface-variant hover:bg-surface-container active:scale-95 transition-all" id="muteBtn" title="Mute Alarm">
+<span class="material-symbols-outlined text-[20px]" data-icon="volume_off">volume_off</span>
+</button>
+<button aria-label="Lock Screen" class="p-2 rounded-full text-on-surface-variant hover:bg-surface-container active:scale-95 transition-all" id="lockBtn" title="Lock Screen">
+<span class="material-symbols-outlined text-[20px]" data-icon="lock">lock</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-1 px-4 pt-4 space-y-4">
+<!-- Critical Incident Alert Card -->
+<section class="relative overflow-hidden rounded-xl bg-surface-container-lowest p-5 border-2 border-error shadow-sm">
+<!-- Soft urgent accent background sheen -->
+<div class="absolute -right-12 -top-12 w-36 h-36 bg-error/10 rounded-full blur-2xl pointer-events-none"></div>
+<div class="relative flex flex-col gap-3">
+<div class="flex items-start gap-3">
+<div class="w-10 h-10 rounded-xl bg-error/10 flex items-center justify-center shrink-0 text-error">
+<span class="material-symbols-outlined text-2xl" data-icon="e911_emergency" style="font-variation-settings: 'FILL' 1;">e911_emergency</span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<span class="text-xs font-label font-bold text-error uppercase tracking-wider">Protocol Guardian Escalated</span>
+</div>
+<h2 class="font-headline font-bold text-lg leading-snug text-on-surface mt-0.5">
+                Guardian is continuing emergency actions - 3 of 3 contact dispatches accepted
+              </h2>
+</div>
+</div>
+<p class="text-xs font-body text-on-surface-variant leading-relaxed">
+            Automated cellular dispatch initiated. Encrypted GPS telemetry streaming continuously to verified circle and local emergency dispatch routing.
+          </p>
+<!-- Core Call-To-Action Cluster -->
+<div class="pt-2 flex flex-col gap-2.5">
+<!-- Priority 1 Call Emergency CTA -->
+<a class="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-xl font-headline font-bold text-base bg-error text-on-error hover:opacity-95 active:scale-[0.98] transition-all shadow-sm" href="tel:112">
+<span class="material-symbols-outlined text-xl" data-icon="call" style="font-variation-settings: 'FILL' 1;">call</span>
+<span>Call 112 Emergency</span>
+</a>
+<!-- Secondary High-Contrast Action -->
+<button class="w-full flex items-center justify-between py-2.5 px-3.5 rounded-xl border border-surface-container-highest bg-surface-container-low hover:bg-surface-container text-on-surface active:scale-[0.99] transition-all">
+<div class="flex items-center gap-2.5 text-left">
+<span class="material-symbols-outlined text-primary text-xl" data-icon="share_location">share_location</span>
+<div>
+<span class="block font-label font-semibold text-xs text-on-surface">Share current location</span>
+<span class="block font-mono text-[11px] text-on-surface-variant font-medium">37.7749° N, 122.4194° W • Pine St &amp; 4th Ave</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant text-base" data-icon="content_copy">content_copy</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Contact Dispatch Evidence List -->
+<section class="rounded-xl bg-surface-container-low p-4 border border-surface-container-high space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-lg" data-icon="verified_user">verified_user</span>
+<h3 class="font-headline font-bold text-sm text-on-surface">Contact dispatch evidence</h3>
+</div>
+<span class="px-2 py-0.5 rounded text-[11px] font-label font-bold bg-primary-container text-on-primary-container">
+            Audit Verified
+          </span>
+</div>
+<div class="space-y-2.5">
+<!-- Contact 1 -->
+<div class="bg-surface-container-lowest rounded-xl p-3 border border-surface-container-high flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2.5">
+<div class="w-9 h-9 rounded-full bg-primary-container text-on-primary-container font-headline font-bold text-xs flex items-center justify-center">
+                  ML
+                </div>
+<div>
+<div class="flex items-center gap-1.5">
+<span class="font-headline font-bold text-sm text-on-surface">Maya Lin</span>
+<span class="text-[10px] font-label font-semibold px-1.5 py-0.2 rounded bg-surface-container text-on-surface-variant">Priority 1 • Partner</span>
+</div>
+<p class="font-body text-[11px] text-on-surface-variant mt-0.5">Delivered 09:41:12 AM • Carrier Ack OK</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-primary text-lg" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<div class="flex items-center justify-between bg-surface-container-low px-2.5 py-1.5 rounded-lg text-[11px]">
+<div class="flex items-center gap-1.5 text-primary font-medium">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+<span>Dispatch accepted - awaiting carrier confirmation</span>
+</div>
+<span class="font-mono text-[10px] text-on-surface-variant">SMS+Data</span>
+</div>
+</div>
+<!-- Contact 2 -->
+<div class="bg-surface-container-lowest rounded-xl p-3 border border-surface-container-high flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2.5">
+<div class="w-9 h-9 rounded-full bg-secondary-container text-on-secondary-container font-headline font-bold text-xs flex items-center justify-center">
+                  DM
+                </div>
+<div>
+<div class="flex items-center gap-1.5">
+<span class="font-headline font-bold text-sm text-on-surface">David Miller</span>
+<span class="text-[10px] font-label font-semibold px-1.5 py-0.2 rounded bg-surface-container text-on-surface-variant">Priority 2 • Brother</span>
+</div>
+<p class="font-body text-[11px] text-on-surface-variant mt-0.5">Delivered 09:41:18 AM • Direct Handshake</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-primary text-lg" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<div class="flex items-center justify-between bg-surface-container-low px-2.5 py-1.5 rounded-lg text-[11px]">
+<div class="flex items-center gap-1.5 text-primary font-medium">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+<span>Dispatch accepted - awaiting carrier confirmation</span>
+</div>
+<span class="font-mono text-[10px] text-on-surface-variant">Push+RCS</span>
+</div>
+</div>
+<!-- Contact 3 -->
+<div class="bg-surface-container-lowest rounded-xl p-3 border border-surface-container-high flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2.5">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest text-on-surface font-headline font-bold text-xs flex items-center justify-center">
+                  MS
+                </div>
+<div>
+<div class="flex items-center gap-1.5">
+<span class="font-headline font-bold text-sm text-on-surface">Mom / Sarah</span>
+<span class="text-[10px] font-label font-semibold px-1.5 py-0.2 rounded bg-surface-container text-on-surface-variant">Priority 3</span>
+</div>
+<p class="font-body text-[11px] text-on-surface-variant mt-0.5">Delivered 09:41:25 AM • Auto Voice+SMS</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-primary text-lg" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<div class="flex items-center justify-between bg-surface-container-low px-2.5 py-1.5 rounded-lg text-[11px]">
+<div class="flex items-center gap-1.5 text-primary font-medium">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+<span>Dispatch accepted - awaiting carrier confirmation</span>
+</div>
+<span class="font-mono text-[10px] text-on-surface-variant">Auto-Call</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Evidence Timeline & Sensor Log Card -->
+<section class="rounded-xl bg-surface-container-lowest p-4 border border-surface-container-high space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-lg" data-icon="pin_drop">pin_drop</span>
+<h3 class="font-headline font-bold text-sm text-on-surface">Location evidence captured</h3>
+</div>
+<span class="font-mono text-[11px] text-primary font-semibold flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+            Syncing Live
+          </span>
+</div>
+<!-- Simulated Stylized Map & GPS Breadcrumb Container -->
+<div class="relative w-full h-36 rounded-lg bg-surface-container overflow-hidden border border-surface-container-high flex items-center justify-center">
+<img class="absolute inset-0 w-full h-full object-cover opacity-85" data-alt="A clean, minimalist high-contrast city map of downtown San Francisco showing street gridlines, intersection markers, and subtle route breadcrumbs in earthy sage and forest green tones. Soft daylight illumination, professional graphic cartography, warm ivory and muted slate tones without neon glare, perfect emergency system map design." data-location="San Francisco" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBra12VQQyDYXIw4HxzQZDzqh8I5XiCL0Q6yRJLozeRNRNprGBbGru8bWsGV1hHphA7XM0vtVDwWyJkwAZQIn0sNTQqDqJ0gwLctKuo6M1VDqs7_jCoWlRJdlxQPBdThAauxJ_Ob_u1S4-8ZQeJKCbuJGxGhkLCKYn6Y0o8S45t09rxOLYIcF3fp7f0F2j2g5fQ-3E2gGcK-S9zGCOpNZxx54NUfcTiyHzn1KGev-kgWfyui3j25QLk-lkfjBv_vuZTF9Rcu-TPz_M"/>
+<!-- Live Breadcrumb Route Overlay -->
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest/80 via-transparent to-transparent"></div>
+<!-- Beacon Pin Marker -->
+<div class="relative z-10 flex flex-col items-center">
+<div class="relative flex items-center justify-center">
+<span class="beacon-ring absolute w-10 h-10 rounded-full bg-error/30"></span>
+<span class="w-4 h-4 rounded-full bg-error border-2 border-surface-container-lowest shadow-md"></span>
+</div>
+<div class="mt-1 px-2 py-0.5 rounded bg-surface/90 backdrop-blur-sm border border-surface-container-high shadow-xs">
+<span class="font-label text-[10px] font-bold text-on-surface">You (Pinpoint ±3m)</span>
+</div>
+</div>
+<!-- Bottom Left Map Stamp -->
+<div class="absolute bottom-2 left-2 z-10 px-2 py-0.5 rounded bg-surface/85 backdrop-blur-sm text-[10px] font-mono text-on-surface-variant border border-surface-container-high">
+            Breadcrumb trail #TRK-882
+          </div>
+</div>
+<!-- Key Telemetry Sensor Chips -->
+<div class="grid grid-cols-2 gap-2 pt-1">
+<div class="flex items-center gap-2 p-2 rounded-lg bg-surface-container-low border border-surface-container-high">
+<span class="material-symbols-outlined text-primary text-base" data-icon="my_location">my_location</span>
+<span class="font-label text-xs font-semibold text-on-surface">GPS 3m accuracy</span>
+</div>
+<div class="flex items-center gap-2 p-2 rounded-lg bg-surface-container-low border border-surface-container-high">
+<span class="material-symbols-outlined text-error text-base" data-icon="mic" style="font-variation-settings: 'FILL' 1;">mic</span>
+<span class="font-label text-xs font-semibold text-on-surface">Audio beacon (04:12)</span>
+</div>
+<div class="flex items-center gap-2 p-2 rounded-lg bg-surface-container-low border border-surface-container-high">
+<span class="material-symbols-outlined text-primary text-base" data-icon="battery_full">battery_full</span>
+<span class="font-label text-xs font-semibold text-on-surface">Battery 84%</span>
+</div>
+<div class="flex items-center gap-2 p-2 rounded-lg bg-surface-container-low border border-surface-container-high">
+<span class="material-symbols-outlined text-primary text-base" data-icon="cell_tower">cell_tower</span>
+<span class="font-label text-xs font-semibold text-on-surface truncate">Cell Handshake OK</span>
+</div>
+</div>
+</section>
+</main>
+<!-- Bottom Resolution Fixed Safety Dock -->
+<div class="fixed bottom-0 left-0 right-0 z-50 bg-surface/95 backdrop-blur-lg border-t border-surface-container-high px-4 py-3.5 max-w-md mx-auto shadow-lg">
+<div class="flex flex-col gap-2">
+<button class="w-full flex items-center justify-center gap-2.5 py-3.5 px-4 rounded-xl font-headline font-bold text-base bg-primary text-on-primary hover:bg-primary-dim active:scale-[0.98] transition-all shadow-md" id="safeBtn">
+<span class="material-symbols-outlined text-2xl font-bold" data-icon="check_circle">check_circle</span>
+<span>I am safe</span>
+</button>
+<p class="text-center font-label text-[11px] text-on-surface-variant font-medium">
+          Entering PIN or biometric scan cancels emergency escalation
+        </p>
+</div>
+</div>
+</div>
+<!-- Inline Logic for Subtle Micro-interactions -->
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const safeButton = document.getElementById('safeBtn');
+      const muteButton = document.getElementById('muteBtn');
+      let muted = false;
+
+      safeButton?.addEventListener('click', () => {
+        const confirmed = confirm('Confirm that you are safe and want to notify your contacts that the incident is resolved?');
+        if (confirmed) {
+          safeButton.innerHTML = '<span class="material-symbols-outlined text-2xl">verified</span><span>Incident Resolved</span>';
+          safeButton.classList.remove('bg-primary');
+          safeButton.classList.add('bg-primary-container', 'text-on-primary-container');
+        }
+      });
+
+      muteButton?.addEventListener('click', () => {
+        muted = !muted;
+        const iconSpan = muteButton.querySelector('.material-symbols-outlined');
+        if (iconSpan) {
+          iconSpan.textContent = muted ? 'volume_up' : 'volume_off';
+          muteButton.setAttribute('title', muted ? 'Unmute Alarm' : 'Mute Alarm');
+        }
+      });
+    });
+  </script>
+</body></html>

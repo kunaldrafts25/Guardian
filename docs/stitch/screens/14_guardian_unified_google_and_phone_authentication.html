@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Guardian — Unified Authentication</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@500;600;700;800&amp;family=Public+Sans:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "surface-container-low": "#f5f4ec",
+            "error-container": "#fa746f",
+            "tertiary-fixed": "#bbf5fd",
+            "on-secondary-container": "#6a4b33",
+            "error-dim": "#67040d",
+            "surface-tint": "#3e6755",
+            "surface": "#fbf9f3",
+            "outline-variant": "#b2b3a9",
+            "on-primary-container": "#315a48",
+            "primary-fixed-dim": "#b2dec7",
+            "primary-container": "#bfedd5",
+            "on-surface-variant": "#5e6058",
+            "surface-bright": "#fbf9f3",
+            "surface-container-highest": "#e3e3d9",
+            "on-tertiary-fixed-variant": "#2f6970",
+            "tertiary-fixed-dim": "#ade7ef",
+            "surface-variant": "#e3e3d9",
+            "on-tertiary": "#eafcff",
+            "on-primary-fixed": "#1d4736",
+            "surface-dim": "#dadbd1",
+            "on-error-container": "#6e0a12",
+            "on-background": "#31332c",
+            "surface-container": "#efeee6",
+            "outline": "#7a7b73",
+            "on-tertiary-fixed": "#074c53",
+            "on-secondary-fixed": "#553922",
+            "background": "#fbf9f3",
+            "inverse-surface": "#0e0f0b",
+            "surface-container-lowest": "#ffffff",
+            "secondary-fixed-dim": "#f7ccad",
+            "secondary-fixed": "#ffdcc3",
+            "tertiary-dim": "#1f5b62",
+            "secondary": "#79583f",
+            "inverse-primary": "#d0fee6",
+            "tertiary-container": "#bbf5fd",
+            "error": "#a83836",
+            "on-primary": "#e5fff0",
+            "secondary-container": "#ffdcc3",
+            "primary-fixed": "#bfedd5",
+            "primary-dim": "#325b49",
+            "on-tertiary-container": "#235f66",
+            "inverse-on-surface": "#9e9d98",
+            "on-error": "#fff7f6",
+            "on-secondary": "#fff7f4",
+            "surface-container-high": "#e9e9e0",
+            "on-surface": "#31332c",
+            "on-secondary-fixed-variant": "#75553c",
+            "on-primary-fixed-variant": "#3b6451",
+            "secondary-dim": "#6b4d34",
+            "tertiary": "#2d676e",
+            "primary": "#3e6755",
+            /* Warm Guardian Brand Anchor Tokens */
+            "guardian-forest": "#244D3C",
+            "guardian-porcelain": "#F7F5EF",
+            "guardian-stone": "#D7DDD8"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "2xl": "1rem",
+            "3xl": "1.5rem",
+            "full": "9999px"
+          },
+          "fontFamily": {
+            "headline": ["Manrope", "sans-serif"],
+            "display": ["Manrope", "sans-serif"],
+            "body": ["Inter", "sans-serif"],
+            "label": ["Public Sans", "sans-serif"]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface-container-high text-on-surface font-body antialiased min-h-screen flex items-center justify-center p-0 md:p-6 select-none">
+<!-- Mobile Canvas Frame: 430px iPhone 15 Pro / Max profile -->
+<div class="relative w-full max-w-[430px] min-h-[920px] bg-guardian-porcelain shadow-2xl overflow-hidden flex flex-col justify-between md:rounded-[2.5rem] border border-guardian-stone/70">
+<!-- Ambient Subtle Safety Geometry (Zero Blue, Warm Moss Glow) -->
+<div class="absolute -top-32 -right-32 w-80 h-80 rounded-full bg-primary-container/20 blur-3xl pointer-events-none"></div>
+<div class="absolute top-1/3 -left-36 w-72 h-72 rounded-full bg-secondary-container/15 blur-3xl pointer-events-none"></div>
+<!-- MAIN INTERACTIVE CANVAS -->
+<div class="relative z-10 flex flex-col flex-1 px-6 pt-3 pb-8">
+<!-- 1. STATUS BAR (iOS System Native Proportions) -->
+<div class="w-full flex justify-between items-center text-xs font-semibold text-on-surface pt-1 pb-3 px-1 tracking-tight">
+<span class="font-headline font-bold text-sm">9:41</span>
+<div class="flex items-center gap-1.5 text-on-surface">
+<span class="material-symbols-outlined text-[17px]" data-icon="signal_cellular_alt">signal_cellular_alt</span>
+<span class="material-symbols-outlined text-[17px]" data-icon="wifi">wifi</span>
+<div class="w-5 h-2.5 rounded-[3px] border border-on-surface p-[1px] flex items-center">
+<div class="w-full h-full bg-on-surface rounded-[1.5px]"></div>
+</div>
+</div>
+</div>
+<!-- TOP APP BAR / SECURITY BADGE CLUSTER -->
+<!-- Following Destination / Linear Suppression rule: no bottom nav on authentication pages -->
+<div class="flex items-center justify-between mt-2 mb-6">
+<!-- Telemetry Security Pill -->
+<div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container border border-guardian-stone text-primary text-xs font-label font-semibold shadow-xs">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-guardian-forest"></span>
+</span>
+<span class="tracking-wide uppercase text-[10px] text-guardian-forest">256-Bit Telemetry Verified</span>
+</div>
+<!-- Help Action -->
+<button aria-label="Support &amp; Help" class="w-8 h-8 rounded-full flex items-center justify-center bg-surface-container border border-guardian-stone text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors active:scale-95" type="button">
+<span class="material-symbols-outlined text-base" data-icon="help_outline">help_outline</span>
+</button>
+</div>
+<!-- 2. BRAND IDENTITY HEADER -->
+<div class="flex flex-col items-center text-center mt-1 mb-8">
+<!-- Abstract Guardian Arch & Shield Token -->
+<div class="relative w-20 h-20 mb-5 flex items-center justify-center">
+<!-- Outer subtle aura ring -->
+<div class="absolute inset-0 rounded-3xl bg-primary-container/40 rotate-6 transition-transform"></div>
+<!-- Inner core badge container -->
+<div class="relative w-full h-full rounded-2xl bg-guardian-forest border-2 border-primary-container/30 flex flex-col items-center justify-center shadow-md">
+<!-- Shield & Arch Icon Combination -->
+<span class="material-symbols-outlined text-on-primary text-3xl" data-icon="shield" style="font-variation-settings: 'FILL' 1;">shield</span>
+<!-- Embedded subtle telemetry lock notch -->
+<div class="absolute bottom-2.5 flex items-center justify-center px-1.5 py-0.5 rounded-full bg-primary-container/90 border border-guardian-forest/30">
+<span class="material-symbols-outlined text-guardian-forest text-[11px]" data-icon="lock" style="font-variation-settings: 'FILL' 1;">lock</span>
+</div>
+</div>
+</div>
+<h1 class="font-headline font-extrabold text-[28px] leading-tight text-on-surface tracking-tight mb-2">
+          Welcome to Guardian
+        </h1>
+<p class="font-body text-on-surface-variant text-sm max-w-[300px] leading-relaxed">
+          Durable personal safety, verifiable circle tracking, and direct emergency telemetry.
+        </p>
+</div>
+<!-- 3. PRIMARY SOCIAL AUTH ACTION -->
+<div class="flex flex-col gap-2.5 w-full mb-6">
+<button class="w-full h-[52px] bg-surface-container-lowest border border-guardian-stone rounded-xl px-4 flex items-center justify-between text-on-surface font-headline font-semibold text-sm shadow-sm hover:bg-surface hover:border-outline-variant active:scale-[0.99] transition-all duration-150" type="button">
+<!-- Authentic Custom Monogram Google G Token (Vector-based) -->
+<div class="w-6 h-6 flex items-center justify-center">
+<svg class="w-5 h-5" fill="none" viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"></path>
+<path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"></path>
+<path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"></path>
+<path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"></path>
+</svg>
+</div>
+<span class="flex-1 text-center font-headline font-bold text-on-surface">Continue with Google</span>
+<span class="material-symbols-outlined text-outline text-lg" data-icon="chevron_right">chevron_right</span>
+</button>
+<!-- Fast & Secure Passkey Ready Indicator -->
+<div class="flex items-center justify-center gap-1.5 py-1 text-xs font-label text-on-surface-variant">
+<span class="material-symbols-outlined text-primary text-sm" data-icon="passkey" style="font-variation-settings: 'FILL' 1;">passkey</span>
+<span class="font-medium text-[11px] tracking-wide">Fast &amp; Secure Passkey Ready</span>
+</div>
+</div>
+<!-- 4. WARM STONE DIVIDER -->
+<div class="relative flex items-center justify-center my-3 w-full">
+<div class="w-full border-t border-guardian-stone"></div>
+<span class="absolute px-3 bg-guardian-porcelain font-label text-[10px] font-bold tracking-wider text-on-surface-variant uppercase">
+          OR CONTINUE WITH PHONE NUMBER
+        </span>
+</div>
+<!-- 5. MOBILE PHONE NUMBER & OTP SECTION -->
+<div class="flex flex-col gap-3 mt-4">
+<!-- Dual Phone Input Field Container -->
+<div class="flex items-center w-full h-[52px] rounded-xl bg-surface-container-lowest border border-guardian-stone focus-within:border-guardian-forest focus-within:ring-2 focus-within:ring-primary-container transition-all shadow-xs overflow-hidden">
+<!-- Country Code Selector Dropdown Trigger -->
+<button class="h-full px-3.5 flex items-center gap-1.5 bg-surface-container-low border-r border-guardian-stone text-on-surface hover:bg-surface-container transition-colors" type="button">
+<span class="text-base leading-none">🇺🇸</span>
+<span class="font-headline font-semibold text-xs text-on-surface">+1</span>
+<span class="material-symbols-outlined text-outline text-sm" data-icon="arrow_drop_down">arrow_drop_down</span>
+</button>
+<!-- Raw Input field -->
+<div class="relative flex-1 h-full flex items-center px-3.5">
+<input autocomplete="tel" class="w-full h-full bg-transparent border-none text-on-surface font-headline font-semibold text-sm placeholder:text-outline-variant focus:outline-none focus:ring-0 p-0 tracking-wide" id="phone-input" inputmode="tel" placeholder="(555) 000-0000" type="tel"/>
+<span class="material-symbols-outlined text-outline-variant text-lg" data-icon="phone_iphone">phone_iphone</span>
+</div>
+</div>
+<!-- Verification CTA Button -->
+<button class="w-full h-[52px] bg-guardian-forest hover:bg-primary-dim text-on-primary rounded-xl font-headline font-bold text-sm tracking-wide flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] transition-all duration-150 group" id="send-code-btn" type="button">
+<span>Send Verification Code</span>
+<span class="material-symbols-outlined text-lg group-hover:translate-x-0.5 transition-transform" data-icon="arrow_forward">arrow_forward</span>
+</button>
+<!-- Carrier & Security Helper Note -->
+<p class="text-center font-body text-[11px] text-on-surface-variant leading-tight px-2">
+          We will send a 6-digit one-time code via SMS. Carrier rates may apply.
+        </p>
+</div>
+</div>
+<!-- 6. TRUST & TRANSPARENCY FOOTNOTE / ATTESTATION -->
+<div class="relative z-10 w-full px-6 pt-4 pb-7 bg-surface-container/60 border-t border-guardian-stone flex flex-col items-center text-center gap-2.5">
+<!-- Security Badges Strip -->
+<div class="inline-flex items-center justify-center gap-2 text-[10px] font-label font-bold text-on-surface-variant uppercase tracking-wider">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-guardian-forest text-xs" data-icon="verified_user" style="font-variation-settings: 'FILL' 1;">verified_user</span>
+          ISO 27001 Certified
+        </span>
+<span class="text-outline-variant">•</span>
+<span>Zero Location Selling</span>
+<span class="text-outline-variant">•</span>
+<span>E2E Encrypted Protocol</span>
+</div>
+<!-- Mandatory Regulatory Dispatch Disclaimer (Verbatim) -->
+<p class="font-body text-[10.5px] text-on-surface-variant leading-relaxed max-w-[340px]">
+        Guardian provides durable telemetry and does not guarantee municipal police dispatch.
+      </p>
+<!-- Legal Hyperlinks -->
+<div class="flex items-center justify-center gap-3 text-[11px] font-headline font-semibold text-primary">
+<a class="hover:underline hover:text-guardian-forest transition-colors" href="#terms">Terms of Service</a>
+<span class="text-outline-variant text-[9px]">•</span>
+<a class="hover:underline hover:text-guardian-forest transition-colors" href="#privacy">Privacy Policy</a>
+<span class="text-outline-variant text-[9px]">•</span>
+<a class="hover:underline hover:text-guardian-forest transition-colors" href="#operational-scope">Operational Scope</a>
+</div>
+<!-- Home Indicator bar (iOS native styling) -->
+<div class="w-32 h-1 bg-on-surface/20 rounded-full mt-2"></div>
+</div>
+</div>
+<!-- Micro-interactions JavaScript for real-time formatting & visual feedback -->
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const phoneInput = document.getElementById('phone-input');
+      const sendCodeBtn = document.getElementById('send-code-btn');
+
+      // Light auto-formatting mask for North American numbers
+      phoneInput.addEventListener('input', (e) => {
+        let value = e.target.value.replace(/\D/g, '');
+        if (value.length > 10) value = value.substring(0, 10);
+        
+        let formatted = '';
+        if (value.length > 0) {
+          formatted = '(' + value.substring(0, 3);
+        }
+        if (value.length >= 3) {
+          formatted += ') ' + value.substring(3, 6);
+        }
+        if (value.length >= 6) {
+          formatted += '-' + value.substring(6, 10);
+        }
+        e.target.value = formatted;
+      });
+
+      // Quick visual haptic tap simulation
+      sendCodeBtn.addEventListener('click', () => {
+        const originalText = sendCodeBtn.innerHTML;
+        sendCodeBtn.innerHTML = `
+          <span class="material-symbols-outlined animate-spin text-lg" data-icon="sync">sync</span>
+          <span>Transmitting Telemetry...</span>
+        `;
+        setTimeout(() => {
+          sendCodeBtn.innerHTML = originalText;
+        }, 1200);
+      });
+    });
+  </script>
+</body></html>

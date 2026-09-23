@@ -108,7 +108,7 @@ object CheckInScheduler {
         manager.notify(
             NOTIFICATION_ID,
             NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setSmallIcon(R.drawable.ic_notification_guardian)
                 .setContentTitle("Safety check-in due")
                 .setContentText("Confirm you are safe or request help now.")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)

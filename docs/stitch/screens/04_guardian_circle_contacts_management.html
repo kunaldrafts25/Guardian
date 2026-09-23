@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Guardian Circle - SafeHaven</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@500;600;700;800&amp;family=Public+Sans:wght@500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "primary-dim": "#325b49",
+            "on-secondary-container": "#6a4b33",
+            "on-tertiary-fixed-variant": "#2f6970",
+            "on-primary": "#e5fff0",
+            "on-primary-fixed": "#1d4736",
+            "surface-bright": "#fbf9f3",
+            "on-error": "#fff7f6",
+            "surface-container-low": "#f5f4ec",
+            "on-secondary-fixed": "#553922",
+            "primary-container": "#bfedd5",
+            "surface": "#fbf9f3",
+            "secondary-fixed-dim": "#f7ccad",
+            "on-error-container": "#6e0a12",
+            "primary-fixed": "#bfedd5",
+            "on-secondary": "#fff7f4",
+            "on-surface-variant": "#5e6058",
+            "outline": "#7a7b73",
+            "surface-variant": "#e3e3d9",
+            "on-surface": "#31332c",
+            "primary-fixed-dim": "#b2dec7",
+            "tertiary-fixed": "#bbf5fd",
+            "tertiary": "#2d676e",
+            "inverse-primary": "#d0fee6",
+            "tertiary-dim": "#1f5b62",
+            "outline-variant": "#b2b3a9",
+            "surface-dim": "#dadbd1",
+            "secondary-container": "#ffdcc3",
+            "surface-container-high": "#e9e9e0",
+            "surface-container": "#efeee6",
+            "on-tertiary-fixed": "#074c53",
+            "error": "#a83836",
+            "on-tertiary-container": "#235f66",
+            "on-primary-container": "#315a48",
+            "secondary": "#79583f",
+            "secondary-fixed": "#ffdcc3",
+            "background": "#fbf9f3",
+            "on-background": "#31332c",
+            "tertiary-fixed-dim": "#ade7ef",
+            "error-container": "#fa746f",
+            "on-secondary-fixed-variant": "#75553c",
+            "surface-tint": "#3e6755",
+            "secondary-dim": "#6b4d34",
+            "surface-container-lowest": "#ffffff",
+            "surface-container-highest": "#e3e3d9",
+            "on-tertiary": "#eafcff",
+            "inverse-on-surface": "#9e9d98",
+            "tertiary-container": "#bbf5fd",
+            "on-primary-fixed-variant": "#3b6451",
+            "inverse-surface": "#0e0f0b",
+            "error-dim": "#67040d",
+            "primary": "#3e6755"
+          },
+          borderRadius: {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "2xl": "1rem",
+            "full": "9999px"
+          },
+          fontFamily: {
+            headline: ["Manrope", "sans-serif"],
+            display: ["Manrope", "sans-serif"],
+            body: ["Inter", "sans-serif"],
+            label: ["Public Sans", "sans-serif"]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .material-symbols-outlined.filled {
+      font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body antialiased min-h-screen pb-28 selection:bg-primary-container selection:text-on-primary-container">
+<!-- Main Container -->
+<div class="max-w-md mx-auto flex flex-col min-h-screen relative bg-surface shadow-xl">
+<!-- TopAppBar (Shared Component Implementation) -->
+<header class="bg-surface sticky top-0 z-40 w-full px-4 py-3 max-w-md mx-auto flex justify-between items-center bg-surface-container-low/80 backdrop-blur-md">
+<div class="flex items-center gap-3">
+<button aria-label="Shield Security Status" class="w-10 h-10 rounded-full flex items-center justify-center text-primary hover:bg-surface-container active:scale-95 transition-transform duration-150">
+<span class="material-symbols-outlined filled text-primary" data-icon="shield">shield</span>
+</button>
+<span class="font-headline font-bold text-xl tracking-tight text-primary">SafeHaven</span>
+</div>
+<button aria-label="Notifications" class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container active:scale-95 transition-transform duration-150 relative">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 rounded-full bg-secondary ring-2 ring-surface"></span>
+</button>
+</header>
+<!-- Content Canvas -->
+<main class="flex-1 px-4 pt-3 pb-8 flex flex-col gap-4">
+<!-- Header & Capacity Indicator -->
+<section class="flex flex-col gap-2">
+<div class="flex items-start justify-between">
+<div>
+<h1 class="font-headline font-extrabold text-2xl tracking-tight text-on-surface">Guardian Circle</h1>
+<p class="font-body text-xs text-on-surface-variant mt-0.5">3 of 5 emergency contacts configured</p>
+</div>
+<!-- Capacity Pill -->
+<div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary-container text-on-secondary-container font-label text-xs font-semibold shadow-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+<span>2 slots remaining</span>
+</div>
+</div>
+<!-- Priority Dispatch Protocol Banner -->
+<div class="mt-2 p-3.5 rounded-2xl bg-surface-container-low border border-surface-container-high/60 flex items-start gap-3">
+<div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container shrink-0 mt-0.5">
+<span class="material-symbols-outlined text-primary-dim filled" data-icon="sync_saved_locally">sync_saved_locally</span>
+</div>
+<div class="flex-1">
+<h2 class="font-headline font-semibold text-xs text-primary-dim">Priority Dispatch Order</h2>
+<p class="font-body text-xs text-on-surface-variant mt-0.5 leading-relaxed">
+              In an SOS event, SafeHaven contacts Maya Lin first. If unanswered in 45s, alerts cascade automatically to David and Sarah.
+            </p>
+</div>
+</div>
+</section>
+<!-- Contacts List -->
+<section class="flex flex-col gap-3">
+<!-- Contact 1: Maya Lin (Priority 1) -->
+<article class="bg-surface-container-lowest rounded-2xl p-4 border-2 border-primary/20 shadow-sm relative overflow-hidden transition-all duration-200">
+<div class="flex items-start justify-between gap-2">
+<div class="flex items-center gap-3">
+<!-- Avatar or Initials -->
+<div class="w-12 h-12 rounded-full bg-primary-container text-on-primary-container font-headline font-bold text-base flex items-center justify-center ring-2 ring-primary/20">
+                ML
+              </div>
+<div>
+<div class="flex items-center gap-2">
+<h3 class="font-headline font-bold text-base text-on-surface">Maya Lin</h3>
+<span class="font-body text-xs text-on-surface-variant font-medium">(Partner)</span>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant text-xs mt-0.5">
+<span class="material-symbols-outlined text-[16px]" data-icon="call">call</span>
+<span class="font-body">+1 (555) 234-5678</span>
+</div>
+</div>
+</div>
+<!-- Drag Handle & Edit -->
+<div class="flex items-center gap-1 text-on-surface-variant">
+<button aria-label="Edit Contact" class="p-1.5 rounded-lg hover:bg-surface-container-low active:scale-95 transition-all text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]" data-icon="edit">edit</span>
+</button>
+<button aria-label="Reorder priority" class="p-1.5 rounded-lg hover:bg-surface-container-low cursor-grab active:cursor-grabbing text-outline">
+<span class="material-symbols-outlined text-[20px]" data-icon="drag_indicator">drag_indicator</span>
+</button>
+</div>
+</div>
+<!-- Badges / Status row -->
+<div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-surface-container-high/40">
+<!-- Primary Contact Badge -->
+<div class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary text-on-primary font-label text-xs font-semibold">
+<span class="material-symbols-outlined text-[14px] filled" data-icon="verified">verified</span>
+<span>Primary Contact</span>
+</div>
+<!-- Status Pill -->
+<div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container text-on-surface-variant font-label text-xs">
+<span class="w-2 h-2 rounded-full bg-primary ring-2 ring-primary-container"></span>
+<span>Verified • SMS &amp; Push active</span>
+</div>
+</div>
+<!-- Quick Action: Non-Emergency Test SMS -->
+<div class="mt-3">
+<button class="w-full py-2 px-3 rounded-xl bg-surface-container-low hover:bg-surface-container text-primary-dim font-headline font-semibold text-xs flex items-center justify-center gap-1.5 border border-primary/10 active:scale-98 transition-all">
+<span class="material-symbols-outlined text-[16px]" data-icon="sms">sms</span>
+<span>Send Non-Emergency Test SMS</span>
+</button>
+</div>
+</article>
+<!-- Contact 2: David Miller (Priority 2) -->
+<article class="bg-surface-container-lowest rounded-2xl p-4 border border-surface-container-high shadow-sm relative transition-all duration-200">
+<div class="flex items-start justify-between gap-2">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-full bg-secondary-fixed text-on-secondary-fixed font-headline font-bold text-base flex items-center justify-center">
+                DM
+              </div>
+<div>
+<div class="flex items-center gap-2">
+<h3 class="font-headline font-bold text-base text-on-surface">David Miller</h3>
+<span class="font-body text-xs text-on-surface-variant font-medium">(Brother)</span>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant text-xs mt-0.5">
+<span class="material-symbols-outlined text-[16px]" data-icon="call">call</span>
+<span class="font-body">+1 (555) 876-5432</span>
+</div>
+</div>
+</div>
+<!-- Drag Handle & Edit -->
+<div class="flex items-center gap-1 text-on-surface-variant">
+<button aria-label="Edit Contact" class="p-1.5 rounded-lg hover:bg-surface-container-low active:scale-95 transition-all text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]" data-icon="edit">edit</span>
+</button>
+<button aria-label="Reorder priority" class="p-1.5 rounded-lg hover:bg-surface-container-low cursor-grab active:cursor-grabbing text-outline">
+<span class="material-symbols-outlined text-[20px]" data-icon="drag_indicator">drag_indicator</span>
+</button>
+</div>
+</div>
+<!-- Badges / Status row -->
+<div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-surface-container-high/40">
+<!-- Priority 2 Tag -->
+<div class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-container-high text-on-surface font-label text-xs font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+<span>Priority 2</span>
+</div>
+<!-- Status Pill -->
+<div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container text-on-surface-variant font-label text-xs">
+<span class="w-2 h-2 rounded-full bg-primary ring-2 ring-primary-container"></span>
+<span>Verified • SMS active</span>
+</div>
+</div>
+<!-- Quick Action -->
+<div class="mt-3">
+<button class="w-full py-2 px-3 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface-variant font-headline font-semibold text-xs flex items-center justify-center gap-1.5 border border-surface-container-high active:scale-98 transition-all">
+<span class="material-symbols-outlined text-[16px]" data-icon="sms">sms</span>
+<span>Send Non-Emergency Test SMS</span>
+</button>
+</div>
+</article>
+<!-- Contact 3: Sarah Jenkins (Priority 3) -->
+<article class="bg-surface-container-lowest rounded-2xl p-4 border border-surface-container-high shadow-sm relative transition-all duration-200">
+<div class="flex items-start justify-between gap-2">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-full bg-secondary-fixed text-on-secondary-fixed font-headline font-bold text-base flex items-center justify-center">
+                SJ
+              </div>
+<div>
+<div class="flex items-center gap-2">
+<h3 class="font-headline font-bold text-base text-on-surface">Sarah Jenkins</h3>
+<span class="font-body text-xs text-on-surface-variant font-medium">(Mother)</span>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant text-xs mt-0.5">
+<span class="material-symbols-outlined text-[16px]" data-icon="call">call</span>
+<span class="font-body">+1 (555) 345-6789</span>
+</div>
+</div>
+</div>
+<!-- Drag Handle & Edit -->
+<div class="flex items-center gap-1 text-on-surface-variant">
+<button aria-label="Edit Contact" class="p-1.5 rounded-lg hover:bg-surface-container-low active:scale-95 transition-all text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]" data-icon="edit">edit</span>
+</button>
+<button aria-label="Reorder priority" class="p-1.5 rounded-lg hover:bg-surface-container-low cursor-grab active:cursor-grabbing text-outline">
+<span class="material-symbols-outlined text-[20px]" data-icon="drag_indicator">drag_indicator</span>
+</button>
+</div>
+</div>
+<!-- Badges / Status row -->
+<div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-surface-container-high/40">
+<!-- Priority 3 Tag -->
+<div class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-container-high text-on-surface font-label text-xs font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+<span>Priority 3</span>
+</div>
+<!-- Status Pill -->
+<div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container text-on-surface-variant font-label text-xs">
+<span class="w-2 h-2 rounded-full bg-primary ring-2 ring-primary-container"></span>
+<span>Verified • SMS active</span>
+</div>
+</div>
+<!-- Quick Action -->
+<div class="mt-3">
+<button class="w-full py-2 px-3 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface-variant font-headline font-semibold text-xs flex items-center justify-center gap-1.5 border border-surface-container-high active:scale-98 transition-all">
+<span class="material-symbols-outlined text-[16px]" data-icon="sms">sms</span>
+<span>Send Non-Emergency Test SMS</span>
+</button>
+</div>
+</article>
+</section>
+<!-- Add Contact Empty Slots Preview -->
+<section class="flex flex-col gap-2.5 mt-1">
+<div class="rounded-2xl border-2 border-dashed border-outline-variant/60 bg-surface-container-low/50 p-4 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full border border-dashed border-outline-variant flex items-center justify-center text-outline">
+<span class="font-headline font-semibold text-xs">#4</span>
+</div>
+<div>
+<p class="font-headline font-semibold text-xs text-on-surface">Slot 4 Available</p>
+<p class="font-body text-xs text-on-surface-variant">Recommended for neighborhood contact</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline text-[20px]" data-icon="add_circle">add_circle</span>
+</div>
+<div class="rounded-2xl border-2 border-dashed border-outline-variant/60 bg-surface-container-low/50 p-4 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full border border-dashed border-outline-variant flex items-center justify-center text-outline">
+<span class="font-headline font-semibold text-xs">#5</span>
+</div>
+<div>
+<p class="font-headline font-semibold text-xs text-on-surface">Slot 5 Available</p>
+<p class="font-body text-xs text-on-surface-variant">Recommended for medical or emergency service</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline text-[20px]" data-icon="add_circle">add_circle</span>
+</div>
+</section>
+<!-- Bottom Actions Area -->
+<section class="mt-2 flex flex-col gap-3">
+<!-- Prominent Primary Button -->
+<button class="h-[52px] w-full rounded-2xl bg-primary text-on-primary hover:bg-primary-dim active:scale-98 transition-transform font-headline font-semibold text-base shadow-sm flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[22px]" data-icon="person_add">person_add</span>
+<span>+ Add Trusted Contact</span>
+</button>
+<!-- Informational Security Note -->
+<div class="flex items-center justify-center gap-2 px-3 text-center">
+<span class="material-symbols-outlined text-[18px] text-primary" data-icon="lock">lock</span>
+<p class="font-body text-xs text-on-surface-variant">
+            Contacts receive immediate SMS alerts with live GPS coordinates upon SOS activation.
+          </p>
+</div>
+</section>
+</main>
+<!-- BottomNavBar (Shared Component Implementation) -->
+<!-- Active Destination: "Circle" as defined by Contextual State & Intent Lock -->
+<nav class="fixed bottom-0 left-0 right-0 w-full z-50 flex justify-around items-center px-4 py-2 max-w-md mx-auto bg-surface-container-lowest shadow-sm">
+<!-- Tab 1: Home -->
+<button class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:text-primary transition-colors active:scale-95 duration-150">
+<span class="material-symbols-outlined" data-icon="home">home</span>
+<span class="font-label text-xs font-medium mt-0.5">Home</span>
+</button>
+<!-- Tab 2: Map -->
+<button class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:text-primary transition-colors active:scale-95 duration-150">
+<span class="material-symbols-outlined" data-icon="explore">explore</span>
+<span class="font-label text-xs font-medium mt-0.5">Map</span>
+</button>
+<!-- Tab 3: Circle (ACTIVE DESTINATION) -->
+<button class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-4 py-1.5 font-semibold active:scale-95 transition-transform duration-150">
+<span class="material-symbols-outlined filled" data-icon="group">group</span>
+<span class="font-label text-xs font-medium mt-0.5">Circle</span>
+</button>
+<!-- Tab 4: Settings -->
+<button class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:text-primary transition-colors active:scale-95 duration-150">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label text-xs font-medium mt-0.5">Settings</span>
+</button>
+</nav>
+</div>
+<!-- Micro-interactions Script -->
+<script>
+    document.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        if (btn.innerText.includes('Send Non-Emergency Test SMS')) {
+          const originalText = btn.innerHTML;
+          btn.innerHTML = '<span class="material-symbols-outlined text-[16px] animate-spin">refresh</span><span>Sending Test Ping...</span>';
+          setTimeout(() => {
+            btn.innerHTML = '<span class="material-symbols-outlined text-[16px] text-primary">done</span><span class="text-primary">Test Delivered (Just Now)</span>';
+            setTimeout(() => {
+              btn.innerHTML = originalText;
+            }, 3000);
+          }, 900);
+        }
+      });
+    });
+  </script>
+</body></html>

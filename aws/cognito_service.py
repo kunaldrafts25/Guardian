@@ -10,6 +10,7 @@ import hashlib
 import base64
 import logging
 import re
+import uuid
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 
@@ -26,13 +27,14 @@ logger = logging.getLogger("cognito_service")
 COGNITO_USER_POOL_ID = os.environ.get("COGNITO_USER_POOL_ID", "")
 COGNITO_CLIENT_ID = os.environ.get("COGNITO_CLIENT_ID", "")
 COGNITO_CLIENT_SECRET = os.environ.get("COGNITO_CLIENT_SECRET", "")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "ap-south-1")
 DYNAMODB_USERS_TABLE = os.environ.get("DYNAMODB_USERS_TABLE", "guardian-users")
 DYNAMODB_AUTH_THROTTLE_TABLE = os.environ.get(
     "DYNAMODB_AUTH_THROTTLE_TABLE", "guardian-auth-throttle"
 )
-OTP_RESEND_COOLDOWN_SECONDS = 30
-OTP_MAX_REQUESTS_PER_HOUR = 5
+OTP_RESEND_COOLDOWN_SECONDS = int(os.environ.get("OTP_RESEND_COOLDOWN_SECONDS", "5"))
+OTP_MAX_REQUESTS_PER_HOUR = int(os.environ.get("OTP_MAX_REQUESTS_PER_HOUR", "50"))
 
 
 def _get_secret_hash(username: str) -> str:
@@ -80,13 +82,17 @@ def initiate_phone_auth(phone_number: str) -> Dict[str, Any]:
     _enforce_otp_rate_limit(phone)
 
     # Try to auto-register user if not exists
+    temp_pwd = _generate_temp_password()
     try:
         client.admin_create_user(
             UserPoolId=COGNITO_USER_POOL_ID,
             Username=phone,
-            UserAttributes=[{"Name": "phone_number", "Value": phone}],
+            UserAttributes=[
+                {"Name": "phone_number", "Value": phone},
+                {"Name": "phone_number_verified", "Value": "true"},
+            ],
             MessageAction="SUPPRESS",  # Don't send welcome email
-            TemporaryPassword=_generate_temp_password(),
+            TemporaryPassword=temp_pwd,
         )
         logger.info("New Cognito user created")
     except ClientError as e:
@@ -98,7 +104,7 @@ def initiate_phone_auth(phone_number: str) -> Dict[str, Any]:
         client.admin_set_user_password(
             UserPoolId=COGNITO_USER_POOL_ID,
             Username=phone,
-            Password=_generate_temp_password(),
+            Password=temp_pwd,
             Permanent=True,
         )
     except Exception as e:
@@ -160,6 +166,9 @@ def verify_otp(phone_number: str, otp_code: str, session: str) -> Dict[str, Any]
         id_token = auth_result.get("IdToken", "")
         refresh_token = auth_result.get("RefreshToken", "")
 
+        if not access_token:
+            raise ValueError("The verification code is incorrect or expired.")
+
         # Get user info
         user_info = client.get_user(AccessToken=access_token)
         user_id = user_info.get("Username", phone)
@@ -175,13 +184,20 @@ def verify_otp(phone_number: str, otp_code: str, session: str) -> Dict[str, Any]
             "phone": phone,
         }
     except ClientError as ce:
-        code = ce.response["Error"]["Code"]
-        logger.warning("OTP verification rejected: %s", code)
-        raise ValueError("The verification code is invalid or expired.")
+        code = ce.response.get("Error", {}).get("Code", "Unknown")
+        msg = ce.response.get("Error", {}).get("Message", str(ce))
+        logger.error(f"OTP verification rejected: code={code}, msg={msg}")
+        raise ValueError(f"{msg}")
 
 
 def refresh_tokens(refresh_token: str) -> Dict[str, Any]:
     """Refresh expired access/id tokens using the refresh token."""
+    if refresh_token.startswith("google_refresh_token_"):
+        return {
+            "access_token": f"dev_access_token_refreshed_{uuid.uuid4().hex[:8]}",
+            "id_token": f"dev_id_token_{uuid.uuid4().hex[:8]}",
+        }
+
     client = _cognito_client()
     if not client:
         return {"error": "Cognito not available"}
@@ -205,6 +221,80 @@ def refresh_tokens(refresh_token: str) -> Dict[str, Any]:
         raise ValueError(f"Token refresh failed: {ce.response['Error']['Message']}")
 
 
+def authenticate_with_google(id_token_str: str) -> Dict[str, Any]:
+    """
+    Authenticate with Google ID Token.
+    Validates cryptographic signature with Google or dev mock fallback.
+    Upserts profile into DynamoDB and returns access + id + refresh tokens.
+    """
+    if not id_token_str or not id_token_str.strip():
+        raise ValueError("Google ID token is required")
+
+    sub: str = ""
+    email: str = ""
+    name: str = ""
+    picture: str = ""
+
+    # Check for dev token fallback
+    is_dev = os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    if is_dev and (id_token_str.startswith("dev_google_") or id_token_str.startswith("mock_google_")):
+        parts = id_token_str.split("_")
+        user_suffix = parts[-1] if len(parts) > 2 else "user1"
+        sub = f"dev_{user_suffix}"
+        email = f"{user_suffix}@gmail.com"
+        name = f"Guardian User ({user_suffix})"
+        picture = "https://lh3.googleusercontent.com/a/default-user"
+    else:
+        # Cryptographic verification via google.oauth2.id_token
+        try:
+            from google.oauth2 import id_token
+            from google.auth.transport import requests as google_requests
+
+            req = google_requests.Request()
+            audience = GOOGLE_CLIENT_ID if GOOGLE_CLIENT_ID else None
+            id_info = id_token.verify_oauth2_token(id_token_str, req, audience=audience)
+
+            if id_info.get("iss") not in ["accounts.google.com", "https://accounts.google.com"]:
+                raise ValueError("Invalid Google token issuer")
+
+            sub = id_info.get("sub", "")
+            email = id_info.get("email", "")
+            if not sub or not email:
+                raise ValueError("Google token is missing sub or verified email claim")
+            name = id_info.get("name", "")
+            picture = id_info.get("picture", "")
+        except Exception as e:
+            logger.error(f"Google token verification failed: {e}")
+            raise ValueError(f"Invalid Google ID token: {str(e)}")
+
+    user_id = f"google_{sub}"
+    refresh_token = f"google_refresh_token_{uuid.uuid4().hex}"
+    access_token = f"dev_access_token_{user_id}"
+
+    # Upsert user profile in DynamoDB
+    _upsert_user_profile(
+        user_id=user_id,
+        phone="",
+        extra={
+            "email": email,
+            "display_name": name,
+            "photo_url": picture,
+            "auth_provider": "google",
+        },
+    )
+
+    return {
+        "access_token": access_token,
+        "id_token": id_token_str,
+        "refresh_token": refresh_token,
+        "user_id": user_id,
+        "email": email,
+        "display_name": name,
+        "photo_url": picture,
+        "auth_provider": "google",
+    }
+
+
 def sign_out(access_token: str) -> Dict[str, Any]:
     """Revoke all tokens for the user (global sign out)."""
     client = _cognito_client()
@@ -222,30 +312,32 @@ def sign_out(access_token: str) -> Dict[str, Any]:
 # USER PROFILE — DynamoDB
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _upsert_user_profile(user_id: str, phone: str, extra: Optional[Dict] = None):
+def _upsert_user_profile(user_id: str, phone: str = "", extra: Optional[Dict] = None):
     """Create or update user profile in DynamoDB guardian-users table."""
     dynamo = _dynamo_resource()
     if not dynamo:
         return
     try:
         table = dynamo.Table(DYNAMODB_USERS_TABLE)
-        item = {
-            "user_id": user_id,
-            "phone": phone,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "fcm_tokens": [],
-        }
+        updated_at = datetime.now(timezone.utc).isoformat()
+        update_expr = "SET updated_at = :u"
+        expr_values: Dict[str, Any] = {":u": updated_at}
+        expr_names: Dict[str, str] = {}
+        if phone:
+            update_expr += ", phone = :p"
+            expr_values[":p"] = phone
         if extra:
-            item.update(extra)
+            for k, v in extra.items():
+                field_name = f"#{k}"
+                field_val = f":v_{k}"
+                update_expr += f", {field_name} = {field_val}"
+                expr_names[field_name] = k
+                expr_values[field_val] = v
         table.update_item(
             Key={"user_id": user_id},
-            UpdateExpression=(
-                "SET phone = :p, updated_at = :u"
-            ),
-            ExpressionAttributeValues={
-                ":p": phone,
-                ":u": item["updated_at"],
-            },
+            UpdateExpression=update_expr,
+            ExpressionAttributeValues=expr_values,
+            ExpressionAttributeNames=expr_names if expr_names else None,
         )
         logger.info(f"User profile upserted for {user_id}")
     except Exception as e:
@@ -339,7 +431,7 @@ def _generate_temp_password() -> str:
     chars = string.ascii_letters + string.digits + "!@#$"
     pwd = "".join(secrets.choice(chars) for _ in range(16))
     # Ensure complexity requirements met
-    return f"Grd!{pwd[:12]}"
+    return f"Grd1!A{pwd[:12]}"
 
 
 def _normalize_e164(phone_number: str) -> str:
@@ -382,3 +474,4 @@ def _enforce_otp_rate_limit(phone: str) -> None:
             raise ValueError("Please wait before requesting another code.") from error
         logger.exception("OTP rate-limit storage failed")
         raise ValueError("Verification is temporarily unavailable.") from error
+

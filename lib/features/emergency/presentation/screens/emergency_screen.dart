@@ -321,6 +321,9 @@ class _HoldControl extends StatelessWidget {
                               ?.copyWith(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w700,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures()
+                                ],
                               ),
                         )
                       else ...[
@@ -420,6 +423,10 @@ class _ActiveIncident extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
       children: [
         Card(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: const BorderSide(color: AppColors.emergency, width: 1.5),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -508,10 +515,18 @@ class _ActiveIncident extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 28),
-        OutlinedButton.icon(
+        ElevatedButton.icon(
           onPressed: onSafe,
           icon: const Icon(Icons.check_circle_outline_rounded),
-          label: const Text('I am safe'),
+          label: const Text('I am safe — End incident'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.brand,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 54),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
         ),
       ],
     );

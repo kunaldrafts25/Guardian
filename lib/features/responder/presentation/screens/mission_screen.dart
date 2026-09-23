@@ -131,8 +131,14 @@ class _MissionScreenState extends State<MissionScreen> {
           'geo:${location.latitude},${location.longitude}?q=${location.latitude},${location.longitude}(Guardian%20assistance)',
         );
       }
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        final webUri = Uri.parse(
+          'https://www.google.com/maps/dir/?api=1&destination=${location.latitude},${location.longitude}',
+        );
+        if (!await launchUrl(webUri, mode: LaunchMode.externalApplication)) {
         throw StateError('No navigation application is available.');
+        }
       }
     });
   }

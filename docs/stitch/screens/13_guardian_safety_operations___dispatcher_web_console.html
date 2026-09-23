@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>GuardianOps Command: Guardian Safety Operations &amp; Community Dispatcher Console</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@500;600;700;800&amp;family=Public+Sans:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration strictly enforcing Theme and NO BLUE tokens -->
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "on-error": "#fff7f6",
+            "on-surface": "#31332c",
+            "error": "#a83836",
+            "surface-container-lowest": "#ffffff",
+            "surface-tint": "#3e6755",
+            "on-tertiary-container": "#235f66",
+            "background": "#fbf9f3",
+            "secondary": "#79583f",
+            "primary-container": "#bfedd5",
+            "surface-variant": "#e3e3d9",
+            "surface-dim": "#dadbd1",
+            "surface-container": "#efeee6",
+            "secondary-dim": "#6b4d34",
+            "tertiary-fixed": "#bbf5fd",
+            "on-background": "#31332c",
+            "inverse-primary": "#d0fee6",
+            "primary-dim": "#325b49",
+            "on-secondary-fixed": "#553922",
+            "inverse-on-surface": "#9e9d98",
+            "error-dim": "#67040d",
+            "error-container": "#fa746f",
+            "on-error-container": "#6e0a12",
+            "tertiary": "#2d676e",
+            "primary-fixed": "#bfedd5",
+            "on-tertiary-fixed-variant": "#2f6970",
+            "tertiary-fixed-dim": "#ade7ef",
+            "surface-container-low": "#f5f4ec",
+            "tertiary-container": "#bbf5fd",
+            "secondary-fixed": "#ffdcc3",
+            "primary": "#3e6755",
+            "on-primary": "#e5fff0",
+            "on-surface-variant": "#5e6058",
+            "on-secondary": "#fff7f4",
+            "tertiary-dim": "#1f5b62",
+            "secondary-container": "#ffdcc3",
+            "primary-fixed-dim": "#b2dec7",
+            "surface-container-high": "#e9e9e0",
+            "on-secondary-fixed-variant": "#75553c",
+            "surface": "#fbf9f3",
+            "outline-variant": "#b2b3a9",
+            "on-tertiary-fixed": "#074c53",
+            "on-primary-container": "#315a48",
+            "surface-container-highest": "#e3e3d9",
+            "inverse-surface": "#0e0f0b",
+            "on-primary-fixed": "#1d4736",
+            "on-tertiary": "#eafcff",
+            "on-primary-fixed-variant": "#3b6451",
+            "secondary-fixed-dim": "#f7ccad",
+            "outline": "#7a7b73",
+            "on-secondary-container": "#6a4b33",
+            "surface-bright": "#fbf9f3"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "fontFamily": {
+            "headline": ["Manrope", "sans-serif"],
+            "display": ["Manrope", "sans-serif"],
+            "body": ["Inter", "sans-serif"],
+            "label": ["Public Sans", "sans-serif"]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    /* Custom radar and pulse animations for telemetry */
+    @keyframes radar-sweep {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes beacon-ping {
+      0% { transform: scale(0.9); opacity: 0.9; }
+      70% { transform: scale(2.4); opacity: 0; }
+      100% { transform: scale(2.4); opacity: 0; }
+    }
+    .radar-beam {
+      animation: radar-sweep 5s linear infinite;
+      transform-origin: center center;
+    }
+    .beacon-pulse {
+      animation: beacon-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+    }
+    /* Scrollbar styling for dense telemetry panels */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f5f4ec;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #b2b3a9;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="bg-background text-on-surface font-body h-screen w-screen overflow-hidden flex flex-col select-none antialiased">
+<!-- ================= TOP APP BAR (Shared Component Anchor) ================= -->
+<header class="w-full px-6 py-2.5 flex items-center justify-between border-b border-outline-variant dark:border-outline bg-surface-container-lowest dark:bg-inverse-surface docked full-width top-0 z-50 shadow-sm shrink-0">
+<!-- Brand Anchor & Sector Selector -->
+<div class="flex items-center gap-5">
+<div class="font-headline font-extrabold text-lg tracking-tight text-primary dark:text-inverse-primary flex items-center gap-2">
+<span class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-on-primary shadow-sm">
+<span class="material-symbols-outlined text-xl">shield_person</span>
+</span>
+<span>GuardianOps Command</span>
+</div>
+<div class="h-5 w-px bg-outline-variant"></div>
+<!-- Sector Selector Dropdown -->
+<div class="flex items-center gap-2 bg-surface-container px-3 py-1.5 rounded-lg border border-outline-variant hover:border-primary transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-primary text-base">near_me</span>
+<div class="flex flex-col text-left">
+<span class="font-label text-[10px] uppercase font-bold text-on-surface-variant leading-none">Command Sector</span>
+<span class="font-headline text-xs font-bold text-on-surface">Metro Core Sector 01</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant text-sm ml-1">expand_more</span>
+</div>
+<!-- CAD Sync Live Badge -->
+<div class="flex items-center gap-2 px-2.5 py-1 bg-primary-container text-on-primary-container rounded-full text-xs font-semibold">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+<span>CAD Gateway Synchronized (12ms)</span>
+</div>
+</div>
+<!-- Navigation Links (Active mapping: Live Incidents) -->
+<nav class="hidden md:flex items-center gap-7">
+<a class="text-primary dark:text-inverse-primary font-bold border-b-2 border-primary dark:border-inverse-primary pb-1 font-headline text-sm flex items-center gap-1.5" href="#incidents">
+<span class="material-symbols-outlined text-base">warning</span>
+<span>Live Incidents</span>
+<span class="ml-1 px-1.5 py-0.2 bg-error text-on-error font-bold text-[10px] rounded-full">3</span>
+</a>
+<a class="text-on-surface-variant dark:text-outline-variant font-medium hover:text-on-surface transition-colors font-headline text-sm flex items-center gap-1.5" href="#tactical-map">
+<span class="material-symbols-outlined text-base">map</span>
+<span>Tactical Map</span>
+</a>
+<a class="text-on-surface-variant dark:text-outline-variant font-medium hover:text-on-surface transition-colors font-headline text-sm flex items-center gap-1.5" href="#telemetry">
+<span class="material-symbols-outlined text-base">vital_signs</span>
+<span>Telemetry</span>
+</a>
+<a class="text-on-surface-variant dark:text-outline-variant font-medium hover:text-on-surface transition-colors font-headline text-sm flex items-center gap-1.5" href="#vault">
+<span class="material-symbols-outlined text-base">lock</span>
+<span>Evidence Vault</span>
+</a>
+<a class="text-on-surface-variant dark:text-outline-variant font-medium hover:text-on-surface transition-colors font-headline text-sm flex items-center gap-1.5" href="#dispatch">
+<span class="material-symbols-outlined text-base">switch_access_shortcut</span>
+<span>Dispatch Hand-off</span>
+</a>
+</nav>
+<!-- Operational Controls & Trailing Actions -->
+<div class="flex items-center gap-3">
+<!-- Icon Actions -->
+<div class="flex items-center gap-1 border-r border-outline-variant pr-3">
+<button class="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors relative" title="Active Notifications">
+<span class="material-symbols-outlined text-lg">notifications_active</span>
+<span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-error"></span>
+</button>
+<button class="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" title="Emergency Broadcast Sharing">
+<span class="material-symbols-outlined text-lg">emergency_share</span>
+</button>
+<button class="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" title="System Settings">
+<span class="material-symbols-outlined text-lg">settings</span>
+</button>
+</div>
+<!-- Secondary Trailing Action -->
+<button class="px-3.5 py-1.5 rounded-lg border border-outline font-headline font-semibold text-xs text-on-surface hover:bg-surface-container-high transition-colors flex items-center gap-1.5">
+<span class="material-symbols-outlined text-base text-secondary">wifi_tethering</span>
+<span>Broadcast Beacon</span>
+</button>
+<!-- Primary Trailing Action (Urgent Escalation) -->
+<button class="px-3.5 py-1.5 rounded-lg bg-error hover:bg-error-dim text-on-error font-headline font-bold text-xs shadow-sm transition-transform active:scale-95 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-base">emergency_home</span>
+<span>Escalate Emergency</span>
+</button>
+<!-- Operator Avatar Badge -->
+<div class="flex items-center gap-2 pl-2">
+<div class="w-8 h-8 rounded-full bg-primary-container border border-primary flex items-center justify-center text-on-primary-container font-headline font-bold text-xs" title="Lead Dispatcher Operator Badge">
+          OP-9
+        </div>
+</div>
+</div>
+</header>
+<!-- ================= MAIN WORKSPACE (Bento Command Center Grid) ================= -->
+<main class="flex-1 w-full grid grid-cols-12 gap-0 overflow-hidden bg-surface-container-low">
+<!-- ================= LEFT PANEL: TRIAGE & INCIDENT QUEUE ================= -->
+<aside class="col-span-3 border-r border-outline-variant bg-surface flex flex-col justify-between overflow-hidden">
+<!-- Incident Header & Stats -->
+<div class="p-3.5 border-b border-outline-variant bg-surface-container-low shrink-0">
+<div class="flex items-center justify-between mb-2.5">
+<div class="flex items-center gap-2">
+<span class="font-headline font-bold text-sm text-on-surface">Active Incident Triage</span>
+<span class="px-2 py-0.5 rounded-full bg-error-container text-on-error-container font-label text-[11px] font-bold">Priority Grid</span>
+</div>
+<button class="text-xs text-primary font-bold hover:underline flex items-center gap-0.5">
+<span class="material-symbols-outlined text-sm">tune</span>
+<span>Filters</span>
+</button>
+</div>
+<!-- Segmented Filter Tabs -->
+<div class="grid grid-cols-3 gap-1 bg-surface-container p-1 rounded-lg border border-outline-variant text-center font-label text-xs">
+<button class="bg-surface-container-lowest font-bold text-primary py-1.5 rounded shadow-sm flex items-center justify-center gap-1">
+<span>Active</span>
+<span class="w-4 h-4 rounded-full bg-error text-on-error text-[10px] flex items-center justify-center font-bold">3</span>
+</button>
+<button class="text-on-surface-variant font-medium py-1.5 rounded hover:bg-surface-container-high transition-colors">
+            Pending (2)
+          </button>
+<button class="text-on-surface-variant font-medium py-1.5 rounded hover:bg-surface-container-high transition-colors">
+            Resolved (48)
+          </button>
+</div>
+</div>
+<!-- Incident Cards Feed (High Density) -->
+<div class="flex-1 overflow-y-auto p-3 space-y-3">
+<!-- CARD 1: CRITICAL SOS (ACTIVE SELECTED INCIDENT) -->
+<div class="relative bg-surface-container-lowest rounded-xl border-2 border-error p-3.5 shadow-sm transition-all hover:shadow-md cursor-pointer">
+<div class="absolute -top-2.5 right-3 px-2 py-0.5 bg-error text-on-error rounded-full font-label text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1 animate-pulse">
+<span class="w-1.5 h-1.5 rounded-full bg-on-error"></span>
+<span>CRITICAL SOS</span>
+</div>
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-2">
+<div class="w-9 h-9 rounded-full bg-error-container/40 border border-error flex items-center justify-center text-error font-headline font-bold text-sm">
+                ML
+              </div>
+<div>
+<h4 class="font-headline font-bold text-sm text-on-surface leading-tight">Maya Lin (she/her)</h4>
+<p class="font-body text-xs text-on-surface-variant">Pine St &amp; 4th Ave Corridor</p>
+</div>
+</div>
+<span class="font-mono text-xs font-semibold text-error">04:12</span>
+</div>
+<!-- Micro Metas -->
+<div class="mt-3 grid grid-cols-2 gap-2 text-xs bg-surface-container-low p-2 rounded-lg border border-outline-variant">
+<div class="flex items-center gap-1.5 text-on-surface-variant">
+<span class="material-symbols-outlined text-error text-sm">record_voice_over</span>
+<span class="font-medium">Voice Safe-Word</span>
+</div>
+<div class="flex items-center gap-1.5 text-on-surface-variant">
+<span class="material-symbols-outlined text-primary text-sm">battery_charging_90</span>
+<span class="font-medium">Wearable 84%</span>
+</div>
+<div class="flex items-center gap-1.5 text-on-surface-variant">
+<span class="material-symbols-outlined text-tertiary text-sm">satellite_alt</span>
+<span class="font-medium">GPS Lock ±2.8m</span>
+</div>
+<div class="flex items-center gap-1.5 text-on-surface-variant">
+<span class="material-symbols-outlined text-primary text-sm">directions_car</span>
+<span class="font-semibold text-primary">Unit 402 En Route</span>
+</div>
+</div>
+<!-- Quick Action Row -->
+<div class="mt-3 pt-2.5 border-t border-surface-variant flex items-center justify-between">
+<span class="font-label text-[11px] text-secondary font-bold">CAD #8821-ALPHA</span>
+<div class="flex items-center gap-1.5">
+<button class="px-2.5 py-1 bg-primary text-on-primary rounded text-xs font-headline font-semibold hover:bg-primary-dim transition-colors flex items-center gap-1">
+<span class="material-symbols-outlined text-xs">headset_mic</span>
+<span>Intercept</span>
+</button>
+</div>
+</div>
+</div>
+<!-- CARD 2: ROUTE DEVIATION WARNING -->
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant p-3.5 hover:border-secondary transition-all cursor-pointer">
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-2">
+<div class="w-8 h-8 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-headline font-bold text-xs">
+                DK
+              </div>
+<div>
+<h4 class="font-headline font-bold text-xs text-on-surface">David K.</h4>
+<p class="font-body text-[11px] text-on-surface-variant">West Quad Pathway</p>
+</div>
+</div>
+<span class="px-1.5 py-0.5 rounded bg-secondary-container text-on-secondary-container font-label text-[10px] font-bold">Deviation</span>
+</div>
+<p class="mt-2 text-xs text-on-surface-variant">
+            Off planned corridor by 240m. Automated safe check-in prompt expired 2m ago.
+          </p>
+<div class="mt-2.5 flex items-center justify-between text-[11px] text-on-surface-variant pt-2 border-t border-surface-variant">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-xs">timer</span>
+<span>Prompt 2/3 sent</span>
+</span>
+<button class="text-primary font-bold hover:underline">Ping Wearable</button>
+</div>
+</div>
+<!-- CARD 3: MISSED CHECK-IN -->
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant p-3.5 hover:border-outline transition-all cursor-pointer opacity-90">
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-2">
+<div class="w-8 h-8 rounded-full bg-surface-container-high text-on-surface-variant flex items-center justify-center font-headline font-bold text-xs">
+                ER
+              </div>
+<div>
+<h4 class="font-headline font-bold text-xs text-on-surface">Elena R.</h4>
+<p class="font-body text-[11px] text-on-surface-variant">Transit Hub Platform 07</p>
+</div>
+</div>
+<span class="px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface font-label text-[10px] font-bold">Check-in</span>
+</div>
+<div class="mt-2 flex items-center justify-between text-[11px] text-on-surface-variant">
+<span>SafeWalk auto-timer expired</span>
+<span class="font-mono text-error font-semibold">01:45 ago</span>
+</div>
+</div>
+</div>
+<!-- SLA & Guardian Circle Ack Metrics (Panel Footer) -->
+<div class="p-3 bg-surface-container-low border-t border-outline-variant space-y-2 shrink-0">
+<div class="flex items-center justify-between text-xs">
+<span class="font-label uppercase tracking-wider text-on-surface-variant text-[10px] font-bold">Sector Response SLA</span>
+<span class="font-mono font-bold text-primary">01:14 avg (Optimal)</span>
+</div>
+<div class="w-full bg-surface-variant h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[88%] rounded-full"></div>
+</div>
+<div class="flex items-center justify-between text-[11px] text-on-surface-variant pt-1">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-primary text-xs">groups</span>
+<span>Circle Ack Rate: <strong class="text-on-surface">94.2%</strong></span>
+</span>
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-secondary text-xs">shield</span>
+<span>14 Responders Ready</span>
+</span>
+</div>
+</div>
+</aside>
+<!-- ================= CENTER VIEWPORT: TACTICAL LIVE MAP & CCTV FEED ================= -->
+<section class="col-span-6 bg-surface-container flex flex-col justify-between relative border-r border-outline-variant overflow-hidden">
+<!-- Tactical Vector Canvas Container -->
+<div class="relative w-full h-[62%] bg-[#eae8df] overflow-hidden">
+<!-- Synthetic Vector Tactical Grid -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none opacity-40" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<pattern height="40" id="tactical-grid" patternunits="userSpaceOnUse" width="40">
+<path d="M 40 0 L 0 0 0 40" fill="none" stroke="#7a7b73" stroke-dasharray="2,2" stroke-width="0.5"></path>
+</pattern>
+</defs>
+<rect fill="url(#tactical-grid)" height="100%" width="100%"></rect>
+</svg>
+<!-- Street Network & Verified Safe Corridors (SVG Map Geometry) -->
+<svg class="absolute inset-0 w-full h-full" viewbox="0 0 800 500" xmlns="http://www.w3.org/2000/svg">
+<!-- Background Road Meshes -->
+<path d="M 0 120 Q 300 130 500 100 T 800 80" fill="none" stroke="#dadbd1" stroke-width="26"></path>
+<path d="M 120 0 L 160 500" fill="none" stroke="#dadbd1" stroke-width="24"></path>
+<path d="M 420 0 L 400 500" fill="none" stroke="#dadbd1" stroke-width="32"></path>
+<path d="M 0 340 L 800 320" fill="none" stroke="#dadbd1" stroke-width="28"></path>
+<path d="M 640 0 L 610 500" fill="none" stroke="#dadbd1" stroke-width="20"></path>
+<!-- Street Names -->
+<text fill="#7a7b73" font-family="Manrope" font-size="10" font-weight="600" letter-spacing="1" x="30" y="115">W OAK STREET</text>
+<text fill="#7a7b73" font-family="Manrope" font-size="10" font-weight="600" letter-spacing="1" x="435" y="40">4TH AVENUE CORRIDOR</text>
+<text fill="#7a7b73" font-family="Manrope" font-size="10" font-weight="600" letter-spacing="1" x="30" y="335">PINE STREET</text>
+<!-- Verified Safe Corridor Layer (Deep Forest Green Glow) -->
+<path d="M 420 40 L 405 480" fill="none" stroke="#3e6755" stroke-linecap="round" stroke-opacity="0.35" stroke-width="12"></path>
+<path d="M 420 40 L 405 480" fill="none" stroke="#3e6755" stroke-dasharray="6,4" stroke-width="2"></path>
+<!-- Streetlight Coverage Nodes -->
+<circle cx="418" cy="120" fill="#3e6755" r="3"></circle>
+<circle cx="415" cy="180" fill="#3e6755" r="3"></circle>
+<circle cx="412" cy="240" fill="#3e6755" r="3"></circle>
+<circle cx="409" cy="310" fill="#3e6755" r="3"></circle>
+<circle cx="406" cy="380" fill="#3e6755" r="3"></circle>
+<circle cx="403" cy="440" fill="#3e6755" r="3"></circle>
+<!-- CCTV Field of View Cones -->
+<!-- CAM #402 Cone -->
+<path d="M 330 290 L 390 320 L 430 310 Z" fill="#2d676e" fill-opacity="0.18" stroke="#2d676e" stroke-dasharray="3,2" stroke-width="1"></path>
+<!-- CAM #403 Cone -->
+<path d="M 470 380 L 410 350 L 395 385 Z" fill="#2d676e" fill-opacity="0.18" stroke="#2d676e" stroke-dasharray="3,2" stroke-width="1"></path>
+<!-- Unit 402 Intercept Trajectory Vector -->
+<line stroke="#3e6755" stroke-dasharray="5,5" stroke-linecap="round" stroke-width="3" x1="418" x2="410" y1="180" y2="310"></line>
+</svg>
+<!-- Dynamic Overlay Elements (DOM Pins) -->
+<!-- Victim Distress Beacon Pin (Pine St & 4th Ave Intersection ~ (51%, 64%)) -->
+<div class="absolute top-[62%] left-[51%] -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center">
+<div class="relative flex items-center justify-center">
+<span class="beacon-pulse absolute w-10 h-10 rounded-full bg-error/40 border border-error"></span>
+<span class="beacon-pulse absolute w-16 h-16 rounded-full bg-error/20 delay-500"></span>
+<div class="w-6 h-6 rounded-full bg-error border-2 border-white flex items-center justify-center shadow-lg text-on-error">
+<span class="material-symbols-outlined text-sm font-bold">person_pin_circle</span>
+</div>
+</div>
+<!-- Victim Callout Card -->
+<div class="mt-1 px-2 py-1 bg-surface-container-lowest/95 backdrop-blur border border-error rounded shadow-md text-center">
+<p class="font-headline text-[11px] font-extrabold text-error leading-tight">Maya Lin (Victim)</p>
+<p class="font-mono text-[9px] text-on-surface-variant font-semibold">Voice Trigger • SOS Active</p>
+</div>
+</div>
+<!-- Municipal Camera Node #402 -->
+<div class="absolute top-[57%] left-[41%] -translate-x-1/2 -translate-y-1/2 z-10">
+<div class="flex items-center gap-1 bg-surface-container-lowest/90 px-1.5 py-0.5 rounded border border-tertiary shadow-sm">
+<span class="material-symbols-outlined text-xs text-tertiary">videocam</span>
+<span class="font-mono text-[10px] font-bold text-tertiary">CAM-402</span>
+</div>
+</div>
+<!-- Municipal Camera Node #403 -->
+<div class="absolute top-[75%] left-[58%] -translate-x-1/2 -translate-y-1/2 z-10">
+<div class="flex items-center gap-1 bg-surface-container-lowest/90 px-1.5 py-0.5 rounded border border-tertiary shadow-sm">
+<span class="material-symbols-outlined text-xs text-tertiary">videocam</span>
+<span class="font-mono text-[10px] font-bold text-tertiary">CAM-403</span>
+</div>
+</div>
+<!-- Responder Vehicle Node (Unit 402, Officer Jordan K.) -->
+<div class="absolute top-[36%] left-[52%] -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center">
+<div class="flex items-center gap-1.5 bg-primary text-on-primary px-2 py-1 rounded-full shadow-md border border-primary-fixed">
+<span class="material-symbols-outlined text-xs">local_police</span>
+<span class="font-headline text-xs font-bold">Unit 402</span>
+<span class="bg-primary-container text-on-primary-container px-1 rounded text-[9px] font-mono font-bold">ETA 2m</span>
+</div>
+</div>
+<!-- Floating Tactical Heads-Up Overlay Widget (Top Left of Map) -->
+<div class="absolute top-3 left-3 bg-surface-container-lowest/90 backdrop-blur-md p-2.5 rounded-xl border border-outline-variant shadow-md text-xs space-y-1.5 max-w-xs z-30">
+<div class="flex items-center justify-between border-b border-surface-variant pb-1">
+<span class="font-headline font-bold text-on-surface flex items-center gap-1">
+<span class="material-symbols-outlined text-sm text-primary">navigation</span>
+<span>Pine &amp; 4th Sector Grid</span>
+</span>
+<span class="font-mono text-[10px] text-primary font-bold">RTK FIXED</span>
+</div>
+<div class="grid grid-cols-2 gap-2 text-[11px] pt-0.5">
+<div>
+<p class="text-on-surface-variant text-[10px]">Coordinates</p>
+<p class="font-mono font-semibold text-on-surface">37.7749° N, 122.4194° W</p>
+</div>
+<div>
+<p class="text-on-surface-variant text-[10px]">Streetlight Density</p>
+<p class="font-semibold text-primary flex items-center gap-1">
+<span>96% Optimal</span>
+<span class="material-symbols-outlined text-xs">light_mode</span>
+</p>
+</div>
+</div>
+<div class="flex items-center gap-1.5 pt-1 text-[10px] text-on-surface-variant">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+<span>Municipal Corridor Safe Index: <strong>High (Grade A)</strong></span>
+</div>
+</div>
+<!-- Map Layer Controls (Top Right of Map) -->
+<div class="absolute top-3 right-3 bg-surface-container-lowest/90 backdrop-blur-md rounded-lg border border-outline-variant p-1 flex flex-col gap-1 shadow-sm z-30">
+<button class="w-7 h-7 rounded hover:bg-surface-container flex items-center justify-center text-primary" title="Toggle Safe Corridors">
+<span class="material-symbols-outlined text-base">route</span>
+</button>
+<button class="w-7 h-7 rounded hover:bg-surface-container flex items-center justify-center text-on-surface-variant" title="Toggle Smart Streetlights">
+<span class="material-symbols-outlined text-base">wb_incandescent</span>
+</button>
+<button class="w-7 h-7 rounded hover:bg-surface-container flex items-center justify-center text-on-surface-variant" title="Toggle Municipal CCTV Footprint">
+<span class="material-symbols-outlined text-base">camera_outdoor</span>
+</button>
+<div class="h-px bg-outline-variant my-0.5"></div>
+<button class="w-7 h-7 rounded hover:bg-surface-container flex items-center justify-center text-on-surface-variant" title="Recenter on Incident">
+<span class="material-symbols-outlined text-base">my_location</span>
+</button>
+</div>
+</div>
+<!-- Live CCTV Surveillance Split Dock -->
+<div class="h-[38%] bg-surface-container-low border-t border-outline-variant p-3 flex flex-col justify-between">
+<div class="flex items-center justify-between pb-1.5 shrink-0">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-base text-primary">videocam</span>
+<span class="font-headline font-bold text-xs text-on-surface">Municipal CCTV Live Grid (Corridor Stream)</span>
+</div>
+<div class="flex items-center gap-3 text-xs">
+<span class="text-on-surface-variant flex items-center gap-1 font-mono text-[11px]">
+<span class="w-1.5 h-1.5 rounded-full bg-error animate-ping"></span>
+              LIVE FEED 30 FPS
+            </span>
+<button class="text-primary font-bold hover:underline flex items-center gap-0.5 text-xs">
+<span class="material-symbols-outlined text-sm">fullscreen</span>
+<span>Expand Grid</span>
+</button>
+</div>
+</div>
+<!-- 2 Split Feeds Side by Side -->
+<div class="grid grid-cols-2 gap-3 flex-1 h-full min-h-0">
+<!-- Feed 1: CAM #402 -->
+<div class="relative bg-inverse-surface rounded-lg overflow-hidden border border-outline-variant flex flex-col justify-between p-2">
+<!-- Simulated CCTV Overlay -->
+<div class="flex items-center justify-between text-surface-container-lowest text-[10px] font-mono z-10 bg-black/40 px-2 py-0.5 rounded">
+<span class="font-bold flex items-center gap-1 text-on-primary">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                CAM #402 - Pine St Corridor
+              </span>
+<span>1080p • 2024-05-18 22:41:09</span>
+</div>
+<!-- Subject Target Bounding Box -->
+<div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+<div class="w-24 h-32 border-2 border-error/90 rounded-sm relative flex flex-col justify-between p-1 bg-error/10">
+<div class="flex justify-between items-start">
+<span class="bg-error text-on-error font-mono text-[8px] px-1 font-bold">TARGET 01</span>
+<span class="text-on-error text-[8px] font-mono">98% ID</span>
+</div>
+<div class="text-center">
+<span class="text-[9px] font-mono text-on-error bg-black/60 px-1 rounded">Maya Lin (Match)</span>
+</div>
+</div>
+</div>
+<!-- Feed Status Bar -->
+<div class="flex items-center justify-between text-[10px] text-surface-dim font-mono z-10 bg-black/40 px-2 py-0.5 rounded">
+<span>LAT: 37.77491 • LNG: -122.41940</span>
+<span class="text-primary font-bold">SECURE RTSP</span>
+</div>
+</div>
+<!-- Feed 2: CAM #403 -->
+<div class="relative bg-inverse-surface rounded-lg overflow-hidden border border-outline-variant flex flex-col justify-between p-2">
+<!-- Simulated CCTV Overlay -->
+<div class="flex items-center justify-between text-surface-container-lowest text-[10px] font-mono z-10 bg-black/40 px-2 py-0.5 rounded">
+<span class="font-bold flex items-center gap-1 text-on-primary">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                CAM #403 - Crosswalk 4th Ave
+              </span>
+<span>1080p • 2024-05-18 22:41:09</span>
+</div>
+<!-- Unit 402 Vehicle Bounding Box -->
+<div class="absolute inset-0 flex items-center justify-end pr-10 pointer-events-none">
+<div class="w-28 h-20 border-2 border-primary rounded-sm relative flex flex-col justify-between p-1 bg-primary/10">
+<div class="flex justify-between items-start">
+<span class="bg-primary text-on-primary font-mono text-[8px] px-1 font-bold">PATROL 402</span>
+<span class="text-primary font-mono text-[8px]">APPROACH</span>
+</div>
+<span class="text-[8px] font-mono text-on-primary bg-black/60 px-1 rounded">Speed: 24 mph</span>
+</div>
+</div>
+<!-- Feed Status Bar -->
+<div class="flex items-center justify-between text-[10px] text-surface-dim font-mono z-10 bg-black/40 px-2 py-0.5 rounded">
+<span>FOV: North Approach</span>
+<span class="text-primary font-bold">SECURE RTSP</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- ================= RIGHT PANEL: OPERATIONS, AUDIO & CHAIN OF CUSTODY ================= -->
+<aside class="col-span-3 bg-surface flex flex-col justify-between overflow-hidden">
+<!-- Upper Section: Unit Dispatch & Mission Control -->
+<div class="p-3.5 border-b border-outline-variant space-y-3 shrink-0 bg-surface">
+<div class="flex items-center justify-between">
+<span class="font-headline font-bold text-xs uppercase tracking-wider text-on-surface-variant">Responder Command</span>
+<span class="text-[10px] font-label font-bold text-primary px-1.5 py-0.5 bg-primary-container rounded">UNIT ACTIVE</span>
+</div>
+<!-- Active Unit Card -->
+<div class="bg-surface-container-low p-3 rounded-xl border border-outline-variant">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2.5">
+<div class="w-9 h-9 rounded-lg bg-primary text-on-primary flex items-center justify-center font-bold">
+<span class="material-symbols-outlined text-lg">local_police</span>
+</div>
+<div>
+<h4 class="font-headline font-bold text-sm text-on-surface">Unit 402 (Patrol)</h4>
+<p class="font-body text-xs text-on-surface-variant">Officer Jordan K. • Badge #1142</p>
+</div>
+</div>
+<div class="text-right">
+<span class="font-mono text-xs font-bold text-primary">0.3 mi away</span>
+<p class="font-mono text-[10px] text-on-surface-variant font-semibold">ETA: ~2 min</p>
+</div>
+</div>
+<!-- Unit Control Actions -->
+<div class="mt-3 grid grid-cols-2 gap-2">
+<button class="px-2.5 py-1.5 rounded-lg bg-surface-container-lowest border border-outline-variant hover:border-primary text-on-surface font-headline font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors">
+<span class="material-symbols-outlined text-sm text-primary">settings_voice</span>
+<span>Direct Radio</span>
+</button>
+<button class="px-2.5 py-1.5 rounded-lg bg-primary text-on-primary font-headline font-semibold text-xs flex items-center justify-center gap-1.5 hover:bg-primary-dim transition-colors shadow-sm">
+<span class="material-symbols-outlined text-sm">send_to_mobile</span>
+<span>Push Handoff</span>
+</button>
+</div>
+</div>
+<!-- Backup Secondary Unit Queue -->
+<div class="flex items-center justify-between text-xs px-1">
+<span class="text-on-surface-variant">Secondary Backup:</span>
+<span class="font-bold text-on-surface flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+            Unit 108 (SafeWalk Escort, 4m)
+          </span>
+</div>
+</div>
+<!-- Middle Section: Encrypted Audio Intercept Player -->
+<div class="p-3.5 border-b border-outline-variant space-y-2.5 shrink-0 bg-surface-container-low">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-base text-primary">graphic_eq</span>
+<span class="font-headline font-bold text-xs text-on-surface">Audio Intercept (Encrypted Stream)</span>
+</div>
+<span class="px-2 py-0.5 bg-primary-container text-on-primary-container font-mono text-[9px] font-bold rounded">256-BIT AES</span>
+</div>
+<!-- Waveform Simulation Container -->
+<div class="bg-surface-container-lowest p-2.5 rounded-xl border border-outline-variant space-y-2">
+<div class="flex items-center justify-between text-[11px] font-mono text-on-surface-variant">
+<span class="text-error font-bold flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-error animate-pulse"></span>
+              SAFE-WORD DETECTED
+            </span>
+<span>-14.2 dB Floor</span>
+</div>
+<!-- Synthetic Audio Waveform Bars -->
+<div class="h-10 flex items-center justify-between gap-0.5 px-1 py-1 bg-surface-container-low rounded-lg">
+<div class="w-1 bg-outline-variant h-2 rounded-full"></div>
+<div class="w-1 bg-outline-variant h-3 rounded-full"></div>
+<div class="w-1 bg-primary h-6 rounded-full"></div>
+<div class="w-1 bg-primary h-8 rounded-full"></div>
+<div class="w-1 bg-primary h-4 rounded-full"></div>
+<div class="w-1 bg-error h-9 rounded-full animate-pulse"></div>
+<div class="w-1 bg-error h-10 rounded-full animate-pulse"></div>
+<div class="w-1 bg-error h-7 rounded-full"></div>
+<div class="w-1 bg-primary h-5 rounded-full"></div>
+<div class="w-1 bg-primary h-8 rounded-full"></div>
+<div class="w-1 bg-primary h-6 rounded-full"></div>
+<div class="w-1 bg-primary h-4 rounded-full"></div>
+<div class="w-1 bg-primary h-7 rounded-full"></div>
+<div class="w-1 bg-outline-variant h-3 rounded-full"></div>
+<div class="w-1 bg-outline-variant h-2 rounded-full"></div>
+<div class="w-1 bg-outline-variant h-4 rounded-full"></div>
+<div class="w-1 bg-primary h-5 rounded-full"></div>
+<div class="w-1 bg-primary h-8 rounded-full"></div>
+<div class="w-1 bg-primary h-4 rounded-full"></div>
+<div class="w-1 bg-outline-variant h-2 rounded-full"></div>
+</div>
+<!-- Player Controls & Scrub Bar -->
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-1">
+<button class="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center hover:bg-primary-dim transition-colors">
+<span class="material-symbols-outlined text-sm">play_arrow</span>
+</button>
+<button class="w-7 h-7 rounded-full text-on-surface-variant hover:bg-surface-container flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">replay_5</span>
+</button>
+</div>
+<span class="font-mono text-xs text-on-surface font-semibold">00:18 / 04:12</span>
+<button class="px-2 py-1 bg-surface-container rounded text-[11px] font-bold text-primary flex items-center gap-1 border border-outline-variant">
+<span class="material-symbols-outlined text-xs">hearing</span>
+<span>Listen In Live</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Lower Section: Guardian Circle & Chain of Custody Audit Log -->
+<div class="p-3.5 flex-1 flex flex-col justify-between min-h-0 bg-surface">
+<div class="space-y-2 overflow-y-auto pr-1">
+<div class="flex items-center justify-between">
+<span class="font-headline font-bold text-xs uppercase tracking-wider text-on-surface-variant">Guardian Circle &amp; Trail</span>
+<span class="font-mono text-[10px] text-tertiary font-bold">SHA-256 AUDIT LOG</span>
+</div>
+<!-- Audit Timeline Log -->
+<div class="space-y-2 text-xs">
+<div class="flex items-start gap-2">
+<span class="material-symbols-outlined text-primary text-sm mt-0.5">check_circle</span>
+<div class="flex-1">
+<p class="font-semibold text-on-surface text-[11px]">Primary Circle Notified</p>
+<p class="text-[10px] text-on-surface-variant">Partner (Leo M.) acknowledged via SMS at 22:38:12</p>
+</div>
+<span class="font-mono text-[9px] text-on-surface-variant">22:38</span>
+</div>
+<div class="flex items-start gap-2">
+<span class="material-symbols-outlined text-primary text-sm mt-0.5">verified_user</span>
+<div class="flex-1">
+<p class="font-semibold text-on-surface text-[11px]">Wearable Sensor Lock Verified</p>
+<p class="text-[10px] text-on-surface-variant">Heart rate delta spiked: 138 BPM. GPS accuracy &lt; 3m</p>
+</div>
+<span class="font-mono text-[9px] text-on-surface-variant">22:39</span>
+</div>
+<div class="flex items-start gap-2">
+<span class="material-symbols-outlined text-secondary text-sm mt-0.5">account_tree</span>
+<div class="flex-1">
+<p class="font-semibold text-on-surface text-[11px]">Municipal CAD Packet Prepared</p>
+<p class="text-[10px] text-on-surface-variant">NENA i3 emergency data schema verified for dispatch</p>
+</div>
+<span class="font-mono text-[9px] text-on-surface-variant">22:40</span>
+</div>
+</div>
+</div>
+<!-- Chain of Custody Hash & Final Dispatch Actions -->
+<div class="pt-3 border-t border-outline-variant space-y-2 shrink-0">
+<div class="bg-surface-container p-2 rounded-lg text-[10px] font-mono text-on-surface-variant break-all flex items-center justify-between">
+<span>HASH: 8f9b2d...49c1a</span>
+<button class="text-primary hover:underline font-bold font-sans text-[10px] flex items-center gap-0.5">
+<span class="material-symbols-outlined text-xs">content_copy</span>
+<span>Export</span>
+</button>
+</div>
+<!-- Bottom Action Buttons -->
+<div class="grid grid-cols-2 gap-2">
+<button class="px-3 py-2 bg-surface-container-high hover:bg-surface-variant rounded-lg font-headline font-bold text-xs text-on-surface border border-outline-variant transition-colors flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-sm">archive</span>
+<span>Vault Packet</span>
+</button>
+<button class="px-3 py-2 bg-error hover:bg-error-dim rounded-lg font-headline font-bold text-xs text-on-error shadow-sm transition-transform active:scale-95 flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-sm">crisis_alert</span>
+<span>Hand-off 911 CAD</span>
+</button>
+</div>
+</div>
+</div>
+</aside>
+</main>
+<!-- ================= CONSOLE STATUS & TELEMETRY FOOTER ================= -->
+<footer class="w-full bg-surface-container-lowest border-t border-outline-variant px-6 py-1.5 flex items-center justify-between text-xs text-on-surface-variant font-label shrink-0 z-40">
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+<span class="font-medium text-on-surface">CAD Gateway: <strong class="text-primary">Connected</strong></span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-secondary">security</span>
+<span>End-to-End Cryptography: <strong>FIPS 140-3 Validated</strong></span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-tertiary">dns</span>
+<span>Primary Node: <strong class="text-on-surface">us-west-corridor-01</strong></span>
+</div>
+</div>
+<div class="flex items-center gap-5 text-[11px]">
+<span class="font-mono">Console Time: <span class="text-on-surface font-semibold" id="clock">22:41:14 PST</span></span>
+<span class="flex items-center gap-1 text-primary font-bold">
+<span class="material-symbols-outlined text-xs">verified</span>
+<span>SOC-2 Type II Active Audit</span>
+</span>
+</div>
+</footer>
+<!-- Micro-interaction clock script -->
+<script>
+    function updateClock() {
+      const now = new Date();
+      const timeStr = now.toTimeString().split(' ')[0] + ' PST';
+      const el = document.getElementById('clock');
+      if (el) el.textContent = timeStr;
+    }
+    setInterval(updateClock, 1000);
+  </script>
+</body></html>

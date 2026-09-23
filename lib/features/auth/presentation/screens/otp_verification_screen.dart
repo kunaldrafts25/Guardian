@@ -104,7 +104,7 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
               Text(
                 'Enter verification code',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w700,
                     ),
                 textAlign: TextAlign.center,
               ),
@@ -112,12 +112,12 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
               Text(
                 'We sent a 6-digit code to\n${widget.phoneNumber}',
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Colors.grey,
+                      color: AppColors.textSecondary,
                     ),
                 textAlign: TextAlign.center,
               ),
 
-              const SizedBox(height: 40),
+              const SizedBox(height: 36),
 
               // OTP Input Fields
               Row(
@@ -134,13 +134,28 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
                         textAlign: TextAlign.center,
                         keyboardType: TextInputType.number,
                         maxLength: 1,
-                        style: Theme.of(context).textTheme.headlineSmall,
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineSmall
+                            ?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures()
+                              ],
+                            ),
                         decoration: InputDecoration(
                           counterText: '',
                           contentPadding:
                               const EdgeInsets.symmetric(vertical: 16),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide:
+                                const BorderSide(color: AppColors.border),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: const BorderSide(
+                                color: AppColors.brand, width: 2),
                           ),
                         ),
                         inputFormatters: [
@@ -160,7 +175,10 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
                   padding: const EdgeInsets.only(top: 16),
                   child: Text(
                     errorMessage,
-                    style: TextStyle(color: AppColors.error),
+                    style: const TextStyle(
+                      color: AppColors.emergency,
+                      fontWeight: FontWeight.w600,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -174,13 +192,24 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
                             _otp.length < 6
                         ? null
                         : _verifyOtp,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.brand,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 52),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
                 child: verificationState == PhoneVerificationState.verifying
                     ? const SizedBox(
                         height: 20,
                         width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
-                    : const Text('Verify'),
+                    : const Text('Verify & Continue'),
               ),
 
               const SizedBox(height: 24),
@@ -191,11 +220,13 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
                 children: [
                   Text(
                     "Didn't receive the code? ",
-                    style: Theme.of(context).textTheme.bodyMedium,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
                   ),
                   TextButton(
                     onPressed: _resendOtp,
-                    child: const Text('Resend'),
+                    child: const Text('Resend Code'),
                   ),
                 ],
               ),

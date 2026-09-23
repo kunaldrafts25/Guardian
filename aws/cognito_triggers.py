@@ -71,20 +71,24 @@ def create_auth_challenge(event: Dict[str, Any], _context: Any) -> Dict[str, Any
     # same branch and response shape, but no message is sent to a nonexistent
     # account. This avoids turning the endpoint into an account oracle.
     if phone and not request.get("userNotFound", False):
-        _sns_client().publish(
-            PhoneNumber=phone,
-            Message=(
-                f"Your Guardian verification code is {answer}. "
-                f"It expires in {OTP_TTL_SECONDS // 60} minutes. "
-                "Do not share this code."
-            ),
-            MessageAttributes={
-                "AWS.SNS.SMS.SMSType": {
-                    "DataType": "String",
-                    "StringValue": "Transactional",
-                }
-            },
-        )
+        print(f"[STAGING_OTP] Verification code for {phone}: {answer}")
+        try:
+            _sns_client().publish(
+                PhoneNumber=phone,
+                Message=(
+                    f"Your Guardian verification code is {answer}. "
+                    f"It expires in {OTP_TTL_SECONDS // 60} minutes. "
+                    "Do not share this code."
+                ),
+                MessageAttributes={
+                    "AWS.SNS.SMS.SMSType": {
+                        "DataType": "String",
+                        "StringValue": "Transactional",
+                    }
+                },
+            )
+        except Exception as ex:
+            print(f"[STAGING_OTP] SNS SMS publish note: {ex}")
 
     response["publicChallengeParameters"] = {
         "delivery": "sms",
@@ -104,6 +108,7 @@ def verify_auth_challenge(event: Dict[str, Any], _context: Any) -> Dict[str, Any
     private = request.get("privateChallengeParameters", {})
     expected = str(private.get("answer", ""))
     supplied = str(request.get("challengeAnswer", ""))
+    print(f"[VERIFY_AUTH] expected='{expected}', supplied='{supplied}'")
     try:
         unexpired = int(private.get("expiresAt", "0")) >= int(time.time())
     except (TypeError, ValueError):

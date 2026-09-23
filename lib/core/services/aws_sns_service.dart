@@ -57,7 +57,7 @@ class AwsSnsService {
 
   static Future<void> _setupLocalNotifications() async {
     const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('@drawable/ic_notification_guardian');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: false,
       requestBadgePermission: false,
@@ -105,7 +105,7 @@ class AwsSnsService {
             channelDescription: 'Emergency SOS and safety notifications',
             importance: Importance.max,
             priority: Priority.high,
-            icon: '@mipmap/ic_launcher',
+            icon: '@drawable/ic_notification_guardian',
           ),
           iOS: DarwinNotificationDetails(
             presentAlert: true,

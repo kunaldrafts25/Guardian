@@ -25,6 +25,13 @@ try:
 except ImportError:
     pass
 
+import types
+if "aws" not in sys.modules:
+    _base_dir = Path(__file__).resolve().parent.parent
+    _pkg = types.ModuleType("aws")
+    _pkg.__path__ = [str(_base_dir)]
+    sys.modules["aws"] = _pkg
+
 from aws.agent.tools import (
     get_incident_context,
     assess_risk,
@@ -298,9 +305,18 @@ def execute_agent_reasoning(
     # 3. Live Amazon Bedrock LLM Reasoning (with resilient fallback)
     bedrock_result = _query_bedrock_llm(context, risk_info)
 
+    effective_risk_level = str(risk_info.get("level", "MEDIUM"))
+    if bedrock_result:
+        bedrock_threat = bedrock_result.get("threat_level", "MEDIUM")
+        confidence = float(bedrock_result.get("confidence_score", 0.0))
+        if bedrock_threat == "CRITICAL" and confidence >= 0.85:
+            effective_risk_level = "CRITICAL"
+        elif bedrock_threat == "HIGH" and effective_risk_level not in ("CRITICAL", "HIGH") and confidence >= 0.80:
+            effective_risk_level = "HIGH"
+
     policy = evaluate_safety_policy(
         event_type=str(context.get("event_type", "")),
-        risk_level=str(risk_info.get("level", "MEDIUM")),
+        risk_level=effective_risk_level,
         incident_state=str(context.get("state", "")),
         is_isolated=bool((context.get("location") or {}).get("is_isolated", False)),
     )

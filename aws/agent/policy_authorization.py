@@ -51,6 +51,9 @@ def _b64decode(value: str) -> bytes:
 @lru_cache(maxsize=1)
 def _signing_key() -> bytes:
     if _dev_mode():
+        dev_env_key = os.environ.get("GUARDIAN_DEV_SIGNING_KEY")
+        if dev_env_key:
+            return dev_env_key.encode("utf-8")
         return _DEV_KEY
     secret_arn = os.environ.get("AGENT_POLICY_SECRET_ARN", "")
     if not secret_arn or boto3 is None:

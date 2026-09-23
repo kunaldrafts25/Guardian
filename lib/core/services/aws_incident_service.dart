@@ -22,7 +22,7 @@ class AwsIncidentService {
   /// Can be set via --dart-define=AWS_API_ENDPOINT=https://...
   static const String _configuredEndpoint = String.fromEnvironment(
     'AWS_API_ENDPOINT',
-    defaultValue: '',
+    defaultValue: 'https://3v1rfjbkq1.execute-api.ap-south-1.amazonaws.com/Prod',
   );
 
   String get baseUrl {
@@ -44,7 +44,7 @@ class AwsIncidentService {
     }
     if (Platform.isAndroid) {
       // Host machine Wi-Fi IP for physical multi-device live testing
-      return 'http://192.168.0.103:8000';
+      return 'http://192.168.0.100:8000';
     }
     return 'http://127.0.0.1:8000';
   }

@@ -9,6 +9,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:guardian/core/utils/logger.dart';
 
@@ -18,6 +19,10 @@ const _kAccessToken = 'aws_access_token';
 const _kIdToken = 'aws_id_token';
 const _kRefreshToken = 'aws_refresh_token';
 const _kPhone = 'aws_user_phone';
+const _kEmail = 'aws_user_email';
+const _kDisplayName = 'aws_user_display_name';
+const _kPhotoUrl = 'aws_user_photo_url';
+const _kAuthProvider = 'aws_auth_provider';
 const _kSessionId = 'guardian_session_id';
 
 class AwsAuthUser {
@@ -25,19 +30,31 @@ class AwsAuthUser {
   final String? phoneNumber;
   final String? displayName;
   final String? photoURL;
+  final String? email;
+  final String? authProvider;
 
   const AwsAuthUser({
     required this.uid,
     this.phoneNumber,
     this.displayName,
     this.photoURL,
+    this.email,
+    this.authProvider,
   });
 
-  AwsAuthUser copyWith({String? displayName, String? photoURL}) => AwsAuthUser(
+  AwsAuthUser copyWith({
+    String? displayName,
+    String? photoURL,
+    String? email,
+    String? authProvider,
+  }) =>
+      AwsAuthUser(
         uid: uid,
         phoneNumber: phoneNumber,
         displayName: displayName ?? this.displayName,
         photoURL: photoURL ?? this.photoURL,
+        email: email ?? this.email,
+        authProvider: authProvider ?? this.authProvider,
       );
 }
 
@@ -88,7 +105,7 @@ class AwsAuthService {
   /// The backend API base URL — injected at build time via --dart-define
   static const String _apiBase = String.fromEnvironment(
     'AWS_API_ENDPOINT',
-    defaultValue: '',
+    defaultValue: 'https://3v1rfjbkq1.execute-api.ap-south-1.amazonaws.com/Prod',
   );
 
   String get _baseUrl {
@@ -104,7 +121,7 @@ class AwsAuthService {
     }
     if (kIsWeb) return 'http://localhost:8000';
     // Physical Android device — use Wi-Fi IP of dev machine
-    return 'http://192.168.0.103:8000';
+    return 'http://192.168.0.100:8000';
   }
 
   // ─── Cached state ───────────────────────────────────────────────────────
@@ -164,6 +181,11 @@ class AwsAuthService {
       _accessToken = await _storage.read(key: _kAccessToken);
       _phone = await _storage.read(key: _kPhone);
       _sessionId = await _storage.read(key: _kSessionId);
+      final email = await _storage.read(key: _kEmail);
+      final displayName = await _storage.read(key: _kDisplayName);
+      final photoUrl = await _storage.read(key: _kPhotoUrl);
+      final authProvider = await _storage.read(key: _kAuthProvider);
+
       if (_userId != null &&
           _userId!.isNotEmpty &&
           _accessToken != null &&
@@ -178,7 +200,14 @@ class AwsAuthService {
             return;
           }
         }
-        _currentUser = AwsAuthUser(uid: _userId!, phoneNumber: _phone);
+        _currentUser = AwsAuthUser(
+          uid: _userId!,
+          phoneNumber: _phone,
+          email: email,
+          displayName: displayName,
+          photoURL: photoUrl,
+          authProvider: authProvider,
+        );
       } else if (_userId != null || _accessToken != null) {
         await _clearLocalSession();
       }
@@ -187,6 +216,53 @@ class AwsAuthService {
     } catch (e) {
       Logger.warning('AwsAuthService: could not restore session: $e');
     }
+  }
+
+  // ─── Google Sign-In Flow ──────────────────────────────────────────────────
+
+  /// Sign in with Google (Gmail) credentials.
+  /// Launches native Google sign-in dialog and sends the verified ID token to the backend.
+  Future<AwsAuthUser?> signInWithGoogle({
+    GoogleSignIn? customGoogleSignIn,
+    String? mockIdToken,
+  }) async {
+    Logger.info('AwsAuthService: initiating Google sign-in');
+    String? idToken = mockIdToken;
+
+    if (idToken == null) {
+      final googleSignIn = customGoogleSignIn ??
+          GoogleSignIn(
+            scopes: ['email', 'profile'],
+            serverClientId:
+                '530178096868-v6q66826igipjpc2jlq7q95ipfu2bnev.apps.googleusercontent.com',
+          );
+
+      final account = await googleSignIn.signIn();
+      if (account == null) {
+        Logger.info('AwsAuthService: Google sign-in was cancelled by user');
+        return null;
+      }
+
+      final auth = await account.authentication;
+      idToken = auth.idToken;
+    }
+
+    if (idToken == null || idToken.isEmpty) {
+      throw Exception('Failed to obtain Google verification token.');
+    }
+
+    final resp = await _post('/auth/google', {
+      'id_token': idToken,
+      'device_label':
+          'Guardian ${kIsWeb ? 'web' : defaultTargetPlatform.name} device',
+      'platform': kIsWeb ? 'web' : defaultTargetPlatform.name,
+    });
+
+    if (resp['user_id'] != null) {
+      await _persistSession(resp);
+    }
+
+    return _currentUser;
   }
 
   // ─── Phone OTP Flow ─────────────────────────────────────────────────────
@@ -269,6 +345,11 @@ class AwsAuthService {
 
   /// Sign out — revokes tokens and clears local storage.
   Future<void> signOut() async {
+    if (_currentUser?.authProvider == 'google') {
+      try {
+        await GoogleSignIn().signOut();
+      } catch (_) {}
+    }
     if (_accessToken != null) {
       try {
         await _post('/auth/sign-out', const {});
@@ -327,6 +408,10 @@ class AwsAuthService {
       _kIdToken,
       _kRefreshToken,
       _kPhone,
+      _kEmail,
+      _kDisplayName,
+      _kPhotoUrl,
+      _kAuthProvider,
       _kSessionId,
     ]) {
       await _storage.delete(key: key);
@@ -490,6 +575,7 @@ class AwsAuthService {
   bool _isPublicAuthPath(String path) =>
       path == '/auth/send-otp' ||
       path == '/auth/verify-otp' ||
+      path == '/auth/google' ||
       path == '/auth/refresh';
 
   Future<void> _persistSession(Map<String, dynamic> resp) async {
@@ -497,7 +583,20 @@ class AwsAuthService {
     _accessToken = resp['access_token'] as String?;
     _sessionId = resp['session_id'] as String?;
     _phone = resp['phone'] as String? ?? _phone;
-    _currentUser = AwsAuthUser(uid: _userId!, phoneNumber: _phone);
+    final email = resp['email'] as String?;
+    final displayName = resp['display_name'] as String?;
+    final photoUrl = resp['photo_url'] as String?;
+    final authProvider = resp['auth_provider'] as String? ??
+        (_phone != null && _phone!.isNotEmpty ? 'phone' : 'cognito');
+
+    _currentUser = AwsAuthUser(
+      uid: _userId!,
+      phoneNumber: _phone,
+      email: email,
+      displayName: displayName,
+      photoURL: photoUrl,
+      authProvider: authProvider,
+    );
 
     await _storage.write(key: _kUserId, value: _userId);
     await _storage.write(key: _kAccessToken, value: _accessToken ?? '');
@@ -506,8 +605,15 @@ class AwsAuthService {
         key: _kRefreshToken, value: resp['refresh_token'] ?? '');
     await _storage.write(key: _kPhone, value: _phone ?? '');
     await _storage.write(key: _kSessionId, value: _sessionId ?? '');
+    if (email != null) await _storage.write(key: _kEmail, value: email);
+    if (displayName != null) {
+      await _storage.write(key: _kDisplayName, value: displayName);
+    }
+    if (photoUrl != null) await _storage.write(key: _kPhotoUrl, value: photoUrl);
+    await _storage.write(key: _kAuthProvider, value: authProvider);
 
-    Logger.info('AwsAuthService: session persisted for user=$_userId');
+    Logger.info(
+        'AwsAuthService: session persisted for user=$_userId ($authProvider)');
     _authStateController.add(_currentUser);
   }
 }

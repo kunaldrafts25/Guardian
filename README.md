@@ -139,7 +139,9 @@ Install packages:
 flutter pub get
 ```
 
-Guardian uses build-time configuration, not a runtime `.env` loader. Run a configured development build with:
+Guardian does not use a runtime `.env` loader. For Android, download the real `google-services.json` for package `com.company.guardian` from Firebase and place it at `android/app/google-services.json`. The file is intentionally ignored by Git, and Gradle applies the Google Services plug-in automatically when it is present.
+
+Firebase can alternatively be configured with build-time values. This is useful for CI and environment-specific builds:
 
 ```powershell
 flutter run `
@@ -150,7 +152,7 @@ flutter run `
   --dart-define=FIREBASE_ANDROID_APP_ID=YOUR_ANDROID_APP_ID
 ```
 
-For iOS, replace `FIREBASE_ANDROID_APP_ID` with these values:
+For iOS, use a real `GoogleService-Info.plist` in the Runner target or replace `FIREBASE_ANDROID_APP_ID` with these build-time values:
 
 ```text
 FIREBASE_IOS_APP_ID

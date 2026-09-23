@@ -1,15 +1,14 @@
 /*
- * Guardian 2.0 - Women's Safety App
- * © 2025 All Rights Reserved - Kunal Singh
- * 
- * Onboarding Screen
+ * Guardian - Mobile Safety App
+ * Onboarding Screen - Truthful Safety Capabilities & Boundaries
  */
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:guardian/app/routes.dart';
+import 'package:guardian/app/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../../app/routes.dart';
-import '../../../../app/theme/app_theme.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -24,24 +23,45 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   final List<OnboardingPage> _pages = [
     OnboardingPage(
-      title: 'Stay Safe',
+      title: 'Welcome to Guardian',
       description:
-          'Guardian helps you feel safe with one-tap emergency alerts that notify your trusted contacts instantly.',
-      icon: Icons.shield,
-      color: AppColors.primary,
+          'A reliable personal safety companion built for durable SOS alerts, trusted contact escalation, and verified evidence capture.',
+      svgAsset: 'assets/icons/guardian_symbol.svg',
+      color: AppColors.brand,
     ),
     OnboardingPage(
-      title: 'Community Protection',
+      title: 'Durable SOS & Telemetry',
       description:
-          'Nearby Guardians can respond to your emergencies. You\'re never truly alone.',
-      icon: Icons.people,
-      color: AppColors.secondary,
+          'When activated, Guardian captures high-accuracy GPS coordinates, sensor evidence, and initiates multi-channel contact notification.',
+      icon: Icons.emergency_rounded,
+      color: AppColors.emergency,
     ),
     OnboardingPage(
-      title: 'Privacy First',
+      title: 'Truthful Boundaries',
       description:
-          'Your location is OFF by default. We only track when you need us to.',
-      icon: Icons.lock,
+          'Guardian does not guarantee municipal police response. Telemetry delivery depends on cellular reception, battery levels, and carrier networks.',
+      icon: Icons.fact_check_outlined,
+      color: AppColors.warning,
+    ),
+    OnboardingPage(
+      title: 'Location Privacy by Default',
+      description:
+          'Your location is never broadcast in the background. Coordinates are only shared when you deliberately trigger an emergency SOS.',
+      icon: Icons.lock_outline_rounded,
+      color: AppColors.brand,
+    ),
+    OnboardingPage(
+      title: 'Your Trusted Circle',
+      description:
+          'Set up to 5 trusted emergency contacts. Guardian alerts your primary contact first and keeps a durable evidence audit trail.',
+      icon: Icons.people_outline_rounded,
+      color: AppColors.secondaryAccent,
+    ),
+    OnboardingPage(
+      title: 'Continuous Readiness',
+      description:
+          'On-device diagnostics actively monitor your permissions, foreground safety service, and battery settings for uninterrupted protection.',
+      icon: Icons.verified_user_outlined,
       color: AppColors.success,
     ),
   ];
@@ -95,39 +115,56 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 itemBuilder: (context, index) {
                   final page = _pages[index];
                   return Padding(
-                    padding: const EdgeInsets.all(32),
+                    padding: const EdgeInsets.symmetric(horizontal: 28),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(32),
+                          width: 120,
+                          height: 120,
                           decoration: BoxDecoration(
-                            color: page.color.withOpacity(0.1),
+                            color: page.color.withValues(alpha: 0.12),
                             shape: BoxShape.circle,
+                            border: Border.all(
+                              color: page.color.withValues(alpha: 0.25),
+                              width: 2,
+                            ),
                           ),
-                          child: Icon(
-                            page.icon,
-                            size: 80,
-                            color: page.color,
-                          ),
+                          child: page.svgAsset != null
+                              ? Padding(
+                                  padding: const EdgeInsets.all(22.0),
+                                  child: SvgPicture.asset(
+                                    Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? 'assets/icons/guardian_symbol_dark.svg'
+                                        : page.svgAsset!,
+                                    fit: BoxFit.contain,
+                                  ),
+                                )
+                              : Icon(
+                                  page.icon,
+                                  size: 56,
+                                  color: page.color,
+                                ),
                         ),
-                        const SizedBox(height: 48),
+                        const SizedBox(height: 36),
                         Text(
                           page.title,
                           style: Theme.of(context)
                               .textTheme
-                              .headlineMedium
+                              .headlineSmall
                               ?.copyWith(
-                                fontWeight: FontWeight.bold,
+                                fontWeight: FontWeight.w700,
                               ),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 14),
                         Text(
                           page.description,
                           style:
-                              Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                    color: Colors.grey,
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: AppColors.textSecondary,
+                                    height: 1.45,
                                   ),
                           textAlign: TextAlign.center,
                         ),
@@ -142,37 +179,48 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(_pages.length, (index) {
-                return Container(
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
                   margin: const EdgeInsets.symmetric(horizontal: 4),
                   width: _currentPage == index ? 24 : 8,
                   height: 8,
                   decoration: BoxDecoration(
                     color: _currentPage == index
-                        ? AppColors.primary
-                        : Colors.grey[300],
+                        ? AppColors.brand
+                        : AppColors.border,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 );
               }),
             ),
 
-            const SizedBox(height: 32),
+            const SizedBox(height: 28),
 
-            // Next/Get Started Button
+            // Next / Get Started Button
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
+              padding: const EdgeInsets.symmetric(horizontal: 24),
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: _nextPage,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.brand,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 52),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
                   child: Text(
-                    _currentPage == _pages.length - 1 ? 'Get Started' : 'Next',
+                    _currentPage == _pages.length - 1
+                        ? 'Get Started'
+                        : 'Continue',
                   ),
                 ),
               ),
             ),
 
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
           ],
         ),
       ),
@@ -183,13 +231,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 class OnboardingPage {
   final String title;
   final String description;
-  final IconData icon;
+  final IconData? icon;
+  final String? svgAsset;
   final Color color;
 
   OnboardingPage({
     required this.title,
     required this.description,
-    required this.icon,
+    this.icon,
+    this.svgAsset,
     required this.color,
   });
 }

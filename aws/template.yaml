@@ -8,6 +8,10 @@ Globals:
     Timeout: 30
     MemorySize: 512
   Api:
+    Cors:
+      AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
+      AllowHeaders: "'Content-Type,Authorization,X-Correlation-ID,X-Guardian-Session-ID,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+      AllowOrigin: "'*'"
     Auth:
       DefaultAuthorizer: CognitoAuthorizer
       AddDefaultAuthorizerToCorsPreflight: false
@@ -36,14 +40,14 @@ Resources:
   DefineAuthChallengeFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../
-      Handler: aws.cognito_triggers.define_auth_challenge
+      CodeUri: .
+      Handler: cognito_triggers.define_auth_challenge
 
   CreateAuthChallengeFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../
-      Handler: aws.cognito_triggers.create_auth_challenge
+      CodeUri: .
+      Handler: cognito_triggers.create_auth_challenge
       Environment:
         Variables:
           OTP_TTL_SECONDS: '300'
@@ -57,8 +61,8 @@ Resources:
   VerifyAuthChallengeFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../
-      Handler: aws.cognito_triggers.verify_auth_challenge
+      CodeUri: .
+      Handler: cognito_triggers.verify_auth_challenge
 
   AllowCognitoDefineChallenge:
     Type: AWS::Lambda::Permission
@@ -82,12 +86,34 @@ Resources:
       Principal: cognito-idp.amazonaws.com
       SourceArn: !GetAtt GuardianUserPool.Arn
 
+  CognitoSmsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub guardian-${EnvironmentName}-cognito-sms-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cognito-idp.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CognitoSmsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: '*'
+
   GuardianUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
       UserPoolName: !Sub guardian-${EnvironmentName}-users
       UsernameAttributes: [phone_number]
       AutoVerifiedAttributes: [phone_number]
+      SmsConfiguration:
+        SnsCallerArn: !GetAtt CognitoSmsRole.Arn
       AccountRecoverySetting:
         RecoveryMechanisms:
           - Name: verified_phone_number
@@ -116,7 +142,7 @@ Resources:
       EnableTokenRevocation: true
       PreventUserExistenceErrors: ENABLED
 
-      ExplicitAuthFlows: [ALLOW_CUSTOM_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      ExplicitAuthFlows: [ALLOW_CUSTOM_AUTH, ALLOW_REFRESH_TOKEN_AUTH, ALLOW_ADMIN_USER_PASSWORD_AUTH]
       AccessTokenValidity: 15
       IdTokenValidity: 15
       RefreshTokenValidity: 30
@@ -276,8 +302,8 @@ Resources:
   GuardianApiFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../
-      Handler: aws.lambda_handler.handler
+      CodeUri: .
+      Handler: lambda_handler.handler
       Environment:
         Variables: &ApiEnvironment
           COGNITO_USER_POOL_ID: !Ref GuardianUserPool
@@ -312,6 +338,7 @@ Resources:
               Action:
                 - cognito-idp:AdminCreateUser
                 - cognito-idp:AdminSetUserPassword
+                - cognito-idp:AdminInitiateAuth
                 - cognito-idp:GetUser
                 - cognito-idp:GlobalSignOut
                 - cognito-idp:AdminListGroupsForUser
@@ -350,8 +377,8 @@ Resources:
   GuardianAgentFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../
-      Handler: aws.agent.guardian_agent.lambda_handler
+      CodeUri: .
+      Handler: agent.guardian_agent.lambda_handler
       Environment:
         Variables: *ApiEnvironment
       Policies:

@@ -25,6 +25,14 @@ abstract final class FirebaseRuntimeOptions {
         appId.isNotEmpty;
   }
 
+  /// Initializes Firebase from explicit build-time values when supplied.
+  /// Otherwise, it uses the native Android/iOS Firebase configuration.
+  static Future<FirebaseApp> initialize() {
+    return isConfigured
+        ? Firebase.initializeApp(options: current)
+        : Firebase.initializeApp();
+  }
+
   static FirebaseOptions get current {
     if (!isConfigured) {
       throw StateError('Firebase push configuration is not available.');

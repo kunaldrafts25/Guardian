@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:guardian/app/routes.dart';
@@ -95,22 +96,24 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(24),
+                            width: 108,
+                            height: 108,
+                            padding: const EdgeInsets.all(20),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: AppColors.background,
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.2),
-                                  blurRadius: 20,
-                                  spreadRadius: 5,
+                                  color: Colors.black.withValues(alpha: 0.25),
+                                  blurRadius: 24,
+                                  spreadRadius: 4,
+                                  offset: const Offset(0, 8),
                                 ),
                               ],
                             ),
-                            child: Icon(
-                              Icons.shield,
-                              size: 60,
-                              color: AppColors.primary,
+                            child: SvgPicture.asset(
+                              'assets/icons/guardian_symbol.svg',
+                              fit: BoxFit.contain,
                             ),
                           ),
                           const SizedBox(height: 24),
@@ -122,14 +125,17 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                                 ?.copyWith(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
+                                  letterSpacing: -0.5,
                                 ),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Your safety, our priority',
+                            'Warm Safety System',
                             style:
                                 Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                      color: Colors.white70,
+                                      color: Colors.white.withValues(alpha: 0.8),
+                                      fontWeight: FontWeight.w500,
+                                      letterSpacing: 0.5,
                                     ),
                           ),
                         ],

@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:guardian/app/theme/app_theme.dart';
 import 'package:guardian/app/routes.dart';
@@ -177,6 +178,23 @@ class SettingsScreen extends ConsumerWidget {
                     context: context,
                     applicationName: 'Guardian',
                     applicationVersion: '2.0.0',
+                    applicationIcon: Container(
+                      width: 48,
+                      height: 48,
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? AppColors.brandContainerDark
+                            : AppColors.brandContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: SvgPicture.asset(
+                        Theme.of(context).brightness == Brightness.dark
+                            ? 'assets/icons/guardian_symbol_dark.svg'
+                            : 'assets/icons/guardian_symbol.svg',
+                        fit: BoxFit.contain,
+                      ),
+                    ),
                     applicationLegalese:
                         'Guardian records and shares safety evidence through configured services. It does not guarantee delivery or replace emergency services.',
                   ),

@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SafeHaven - Guardian Mobile Safety App</title>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts: Manrope & Inter & Public Sans -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@500;600;700;800&amp;family=Public+Sans:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "tertiary-container": "#bbf5fd",
+            "tertiary-fixed-dim": "#ade7ef",
+            "surface-container-lowest": "#ffffff",
+            "surface-container-highest": "#e3e3d9",
+            "primary-fixed": "#bfedd5",
+            "surface-bright": "#fbf9f3",
+            "tertiary-dim": "#1f5b62",
+            "on-tertiary-fixed": "#074c53",
+            "surface-variant": "#e3e3d9",
+            "on-error-container": "#6e0a12",
+            "surface-dim": "#dadbd1",
+            "error-dim": "#67040d",
+            "secondary-fixed": "#ffdcc3",
+            "surface-container": "#efeee6",
+            "primary-container": "#bfedd5",
+            "error": "#a83836",
+            "on-surface": "#31332c",
+            "surface-container-low": "#f5f4ec",
+            "error-container": "#fa746f",
+            "on-tertiary": "#eafcff",
+            "on-tertiary-container": "#235f66",
+            "on-primary-container": "#315a48",
+            "on-secondary-fixed-variant": "#75553c",
+            "secondary": "#79583f",
+            "primary-dim": "#325b49",
+            "outline": "#7a7b73",
+            "primary-fixed-dim": "#b2dec7",
+            "secondary-fixed-dim": "#f7ccad",
+            "surface-container-high": "#e9e9e0",
+            "on-secondary-fixed": "#553922",
+            "on-error": "#fff7f6",
+            "on-primary": "#e5fff0",
+            "surface-tint": "#3e6755",
+            "on-primary-fixed": "#1d4736",
+            "secondary-container": "#ffdcc3",
+            "on-tertiary-fixed-variant": "#2f6970",
+            "background": "#fbf9f3",
+            "on-background": "#31332c",
+            "tertiary": "#2d676e",
+            "primary": "#3e6755",
+            "inverse-on-surface": "#9e9d98",
+            "secondary-dim": "#6b4d34",
+            "inverse-primary": "#d0fee6",
+            "outline-variant": "#b2b3a9",
+            "tertiary-fixed": "#bbf5fd",
+            "inverse-surface": "#0e0f0b",
+            "on-primary-fixed-variant": "#3b6451",
+            "on-secondary": "#fff7f4",
+            "on-surface-variant": "#5e6058",
+            "on-secondary-container": "#6a4b33",
+            "surface": "#fbf9f3"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "2xl": "1rem",
+            "3xl": "1.5rem",
+            "full": "9999px"
+          },
+          "fontFamily": {
+            "headline": ["Manrope", "sans-serif"],
+            "display": ["Manrope", "sans-serif"],
+            "body": ["Inter", "sans-serif"],
+            "label": ["Public Sans", "sans-serif"]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+    @keyframes gentle-pulse {
+      0%, 100% {
+        transform: scale(1);
+        opacity: 0.28;
+      }
+      50% {
+        transform: scale(1.12);
+        opacity: 0.12;
+      }
+    }
+    .animate-gentle-pulse {
+      animation: gentle-pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body antialiased min-h-screen flex justify-center selection:bg-primary-container selection:text-on-primary-container">
+<!-- Main Mobile App Frame Canvas -->
+<div class="w-full max-w-md bg-background min-h-screen flex flex-col pb-24 relative shadow-2xl">
+<!-- Mobile OS Status Bar -->
+<header class="w-full px-7 pt-3 pb-1 flex justify-between items-center text-xs font-headline font-semibold text-on-surface-variant select-none">
+<span>9:41</span>
+<div class="flex items-center space-x-2">
+<span class="material-symbols-outlined text-[15px]" data-icon="signal_cellular_alt">signal_cellular_alt</span>
+<span class="material-symbols-outlined text-[15px]" data-icon="wifi">wifi</span>
+<span class="material-symbols-outlined text-[17px]" data-icon="battery_full" style="font-variation-settings: 'FILL' 1;">battery_full</span>
+</div>
+</header>
+<!-- TopAppBar Shared Component Anchor -->
+<div class="bg-surface dark:bg-surface flex justify-between items-center w-full px-4 py-3 max-w-md mx-auto">
+<div class="flex items-center space-x-2.5">
+<div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container">
+<span class="material-symbols-outlined text-xl" data-icon="shield" style="font-variation-settings: 'FILL' 1;">shield</span>
+</div>
+<span class="font-headline font-bold text-xl tracking-tight text-primary dark:text-inverse-primary">SafeHaven</span>
+</div>
+<button aria-label="Notifications" class="w-9 h-9 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container hover:text-on-surface active:scale-95 transition-transform duration-150 relative">
+<span class="material-symbols-outlined text-2xl" data-icon="notifications">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary border-2 border-surface"></span>
+</button>
+</div>
+<!-- Main Content Container (Bento & Glass-tinted Calm Atmosphere) -->
+<main class="flex-1 px-4 space-y-4 pt-1">
+<!-- Greeting Header & Protection Status Pill -->
+<section class="flex items-center justify-between pt-2 px-1">
+<div class="space-y-1">
+<h1 class="font-headline font-extrabold text-2xl tracking-tight text-on-surface">Hi, Alex</h1>
+<p class="font-body text-xs text-on-surface-variant flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-primary inline-block"></span>
+            You're in a monitored safe zone
+          </p>
+</div>
+<div class="relative group cursor-pointer">
+<div class="w-12 h-12 rounded-full ring-2 ring-surface-container-highest overflow-hidden p-0.5 bg-surface-container-lowest shadow-sm">
+<img class="w-full h-full object-cover rounded-full" data-alt="Close-up portrait of a thoughtful young adult with warm natural daylight, gentle serene expression, muted neutral organic tones in the background, high resolution editorial style, soft studio warmth." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAWcFckkiU-g8xAsCUPXhfM4M9H85_gk7JH9r8JeM-BYihIQE32KQpSFn7e0F8ynb6zFghVzjt5MUFZYYrPanjf2W2mXFci8YrM0iV33-J2zzoiV-Ndm6AX5sHmho-ILaSg67TlHRbvPADvDB2NEJzhUIo-3aseC1Q7VhxSgCZckO24ZQ4YEe6ZMCf1CAKMjyBTIpCTA2XhwHthQUuzlYREgozXdNG1ztyLngQVnsTETsLGof2POsqHbOea1rYftLtLW5WTB0KLfQM"/>
+</div>
+<span class="absolute bottom-0 right-0 w-3.5 h-3.5 bg-primary rounded-full ring-2 ring-surface-container-lowest"></span>
+</div>
+</section>
+<!-- Reassuring Protection Status Banner -->
+<div class="bg-primary-container/40 border border-primary-container rounded-2xl px-3.5 py-2.5 flex items-center justify-between">
+<div class="flex items-center space-x-2.5">
+<div class="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-on-primary">
+<span class="material-symbols-outlined text-sm" data-icon="check" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+<span class="font-headline font-semibold text-xs text-on-primary-container tracking-wide">Protection ready &amp; active</span>
+</div>
+<span class="font-label text-[11px] text-primary font-bold tracking-tight bg-surface-container-lowest/80 px-2.5 py-0.5 rounded-full shadow-xs">Zone 1 Secure</span>
+</div>
+<!-- Prominent Centered SOS Emergency Card -->
+<section class="bg-surface-container-lowest rounded-3xl p-6 shadow-sm border border-surface-container-high/60 relative overflow-hidden text-center">
+<!-- Reassuring subtle background geometry -->
+<div class="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-surface-container-low pointer-events-none opacity-50"></div>
+<div class="flex justify-between items-center mb-4">
+<span class="font-label text-[11px] tracking-wider text-on-surface-variant font-semibold">EMERGENCY ASSISTANCE</span>
+<div class="flex items-center space-x-1 text-on-surface-variant bg-surface-container-low px-2 py-0.5 rounded-full text-[11px]">
+<span class="material-symbols-outlined text-xs" data-icon="lock" style="font-variation-settings: 'FILL' 1;">lock</span>
+<span>Pin Lock</span>
+</div>
+</div>
+<!-- Concentric Pulsing SOS Affordance -->
+<div class="my-4 relative flex items-center justify-center">
+<!-- Pulse rings -->
+<div class="absolute w-44 h-44 rounded-full bg-error-container animate-gentle-pulse"></div>
+<div class="absolute w-36 h-36 rounded-full bg-error-container/40"></div>
+<!-- Centered Trigger Button -->
+<button aria-label="Press and hold for SOS emergency activation" class="relative z-10 w-28 h-28 rounded-full bg-error text-on-error flex flex-col items-center justify-center shadow-lg active:scale-95 transition-all duration-200 select-none group border-4 border-surface-container-lowest cursor-pointer" id="sosButton">
+<span class="material-symbols-outlined text-3xl mb-0.5 group-hover:scale-105 transition-transform" data-icon="crisis_alert" style="font-variation-settings: 'FILL' 1;">crisis_alert</span>
+<span class="font-headline font-extrabold text-xl tracking-tight leading-none">SOS</span>
+</button>
+</div>
+<!-- Guidance text & cancel reassurance -->
+<div class="space-y-1 mt-3">
+<h2 class="font-headline font-bold text-base text-on-surface">Press and hold for SOS</h2>
+<p class="font-body text-xs text-on-surface-variant max-w-[260px] mx-auto leading-relaxed">
+            Hold 3s to alert emergency contacts &amp; dispatch with real-time location.
+          </p>
+</div>
+<div class="mt-4 pt-3 border-t border-surface-container-low flex items-center justify-center gap-1.5 text-[11px] font-label text-outline">
+<span class="material-symbols-outlined text-xs" data-icon="verified_user">verified_user</span>
+<span>Accidental tap safety delay enabled</span>
+</div>
+</section>
+<!-- Quick Action Cards: Asymmetric Bento Pair -->
+<section class="grid grid-cols-2 gap-3">
+<!-- Safety Check-In Card -->
+<div class="bg-surface-container-lowest p-4 rounded-2xl border border-surface-container-high/60 shadow-sm flex flex-col justify-between hover:border-primary-container transition-all cursor-pointer">
+<div>
+<div class="w-9 h-9 rounded-xl bg-surface-container-low flex items-center justify-center text-primary mb-3">
+<span class="material-symbols-outlined text-xl" data-icon="timer">timer</span>
+</div>
+<h3 class="font-headline font-bold text-sm text-on-surface mb-1 leading-snug">Safety check-in</h3>
+<p class="font-body text-xs text-on-surface-variant leading-relaxed">Automated timer for your walk or evening transit commute.</p>
+</div>
+<div class="mt-4 pt-2 flex items-center justify-between text-xs font-headline font-semibold text-primary">
+<span>Set timer</span>
+<span class="material-symbols-outlined text-base" data-icon="arrow_forward">arrow_forward</span>
+</div>
+</div>
+<!-- Circle Card -->
+<div class="bg-surface-container-lowest p-4 rounded-2xl border border-surface-container-high/60 shadow-sm flex flex-col justify-between hover:border-primary-container transition-all cursor-pointer">
+<div>
+<div class="flex items-center justify-between mb-3">
+<div class="w-9 h-9 rounded-xl bg-secondary-container/50 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-xl" data-icon="group" style="font-variation-settings: 'FILL' 1;">group</span>
+</div>
+<span class="font-label text-[10px] font-bold text-primary bg-primary-container/40 px-2 py-0.5 rounded-full">3 Ready</span>
+</div>
+<h3 class="font-headline font-bold text-sm text-on-surface mb-1 leading-snug">View circle</h3>
+<p class="font-body text-xs text-on-surface-variant leading-relaxed">Trusted guardians alerted if threshold is reached.</p>
+</div>
+<div class="mt-4 flex items-center -space-x-1.5 pt-1">
+<div class="w-6 h-6 rounded-full ring-2 ring-surface-container-lowest overflow-hidden bg-surface-container">
+<img class="w-full h-full object-cover" data-alt="Warm natural portrait shot of a smiling friend with outdoor daylight, natural gentle greenery in background, cohesive earthy and sage tones, editorial safety app profile photo." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA0M1UMWKhbbH8mjGtoywJXyXgJItgiv3goCZh4osRjtLMIHwrimV_Ejq1kfC8nOel3tN2jEl_mtqOgSUyE5crbltccHI02fkRDn1ynqE0A32qtgwuNhZrWXSDxaaHg_1E2uWAf1Bg4wSXxiPwNePsANNhTEB-WT0MgVWvtLAyOOvbytFHnzz1Ci0pBZD2Uq-bIjrg70xtr347iqpOD5gBaXpMFxV1LkOoNpMd6lLaS5Xwy8gUBjC6KpGlHMqJgRP4dEhZgHst2GpA"/>
+</div>
+<div class="w-6 h-6 rounded-full ring-2 ring-surface-container-lowest overflow-hidden bg-surface-container">
+<img class="w-full h-full object-cover" data-alt="Portrait of a trusted guardian family member in warm sunlight, soft neutral and cream aesthetic, confident reassuring smile, calm modern photography." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCt5u9dSMKDqQd26akC0VTcnIBULBbdJ4BJHZB5nrgx-9ZIjUF-sufiJ0Twg2WIEBDgAh_FwYW6OcHQPpZ_lW6HEiY_Y3knfY6XergU_BfvNGeVpI2VBGloxcL84xbMa7zyDghgu64I4MxjnbJr1s269vT054_2wkSxZK7hHF8Rv5jrmMt7p_Va7wLV00uSyzchWgd6SRRJaXkTSdsVOIvrQWEGz1BRmzfdseFqN5YuiuJvsplmyVAAyUX5EJs9_KXgNV7g9c6wC7A"/>
+</div>
+<div class="w-6 h-6 rounded-full ring-2 ring-surface-container-lowest overflow-hidden bg-surface-container">
+<img class="w-full h-full object-cover" data-alt="Natural candid portrait of an older mother figure with gentle reassuring gaze, soft muted tones, organic indoor morning light, warm comforting demeanor." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAhKFHOqb1MLUgCGox7_4lGY4tgc1L4CP1YsZ00O1bZ4yZGyl3GjlKB5wuXYuaRCG_MdRxqrGaVZxaZd4ey04bCkYl5rHv6ME0WjMDXwWuPn9xOqK8HiAl8M1LIoeLHCxK4UXp9Jy4-HuGTEHtDMpH1Lw-8itq1ETq0K6VEF0w77PqcMCO3PRSqi1dhzNFLXYve0HRZCR0zXV7JBfs9pR_2i3s6yH-ihFm11iYWN_wud0BE7_GfpZ5lOFE_a-AtuB3KgpevLRIzzHI"/>
+</div>
+<span class="text-[10px] font-label font-medium text-on-surface-variant pl-3">Maya, David, Mom</span>
+</div>
+</div>
+</section>
+<!-- Safety Readiness Checklist Section -->
+<section class="bg-surface-container-lowest rounded-2xl p-4 border border-surface-container-high/60 shadow-sm">
+<div class="flex items-center justify-between mb-3">
+<div class="flex items-center space-x-2">
+<span class="material-symbols-outlined text-primary text-lg" data-icon="health_and_safety" style="font-variation-settings: 'FILL' 1;">health_and_safety</span>
+<h3 class="font-headline font-bold text-sm text-on-surface">Safety Readiness</h3>
+</div>
+<span class="font-label text-[11px] font-semibold text-primary">All systems nominal</span>
+</div>
+<div class="space-y-2.5">
+<!-- Item 1 -->
+<div class="flex items-center justify-between p-2 rounded-xl bg-surface-container-low/60">
+<div class="flex items-center space-x-2.5">
+<div class="w-6 h-6 rounded-full bg-primary-container flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-sm" data-icon="location_on" style="font-variation-settings: 'FILL' 1;">location_on</span>
+</div>
+<div>
+<p class="font-headline font-semibold text-xs text-on-surface">Location sharing active</p>
+<p class="font-body text-[11px] text-on-surface-variant">High accuracy GPS tracking</p>
+</div>
+</div>
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+</div>
+<!-- Item 2 -->
+<div class="flex items-center justify-between p-2 rounded-xl bg-surface-container-low/60">
+<div class="flex items-center space-x-2.5">
+<div class="w-6 h-6 rounded-full bg-primary-container flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-sm" data-icon="emergency" style="font-variation-settings: 'FILL' 1;">emergency</span>
+</div>
+<div>
+<p class="font-headline font-semibold text-xs text-on-surface">Emergency dispatch linked</p>
+<p class="font-body text-[11px] text-on-surface-variant">Local authorities &amp; prioritized SMS</p>
+</div>
+</div>
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+</div>
+<!-- Item 3 -->
+<div class="flex items-center justify-between p-2 rounded-xl bg-surface-container-low/60">
+<div class="flex items-center space-x-2.5">
+<div class="w-6 h-6 rounded-full bg-primary-container flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-sm" data-icon="battery_charging_full" style="font-variation-settings: 'FILL' 1;">battery_charging_full</span>
+</div>
+<div>
+<p class="font-headline font-semibold text-xs text-on-surface">Device battery optimal</p>
+<p class="font-body text-[11px] text-on-surface-variant">88% remaining · Low power safe</p>
+</div>
+</div>
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+</div>
+</div>
+</section>
+<!-- Saved Places Quick View -->
+<section class="bg-surface-container-lowest rounded-2xl p-4 border border-surface-container-high/60 shadow-sm mb-2">
+<div class="flex items-center justify-between mb-3">
+<h3 class="font-headline font-bold text-sm text-on-surface">Saved places</h3>
+<button class="font-label text-xs font-semibold text-primary hover:underline">Manage</button>
+</div>
+<div class="grid grid-cols-2 gap-2.5">
+<!-- Home -->
+<div class="p-2.5 rounded-xl border border-surface-container-high bg-surface-container-low/30 hover:border-primary-container transition-all">
+<div class="flex items-center space-x-2 mb-1">
+<span class="material-symbols-outlined text-primary text-base" data-icon="home" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="font-headline font-semibold text-xs text-on-surface">Home</span>
+</div>
+<p class="font-body text-[11px] text-on-surface-variant line-clamp-1">144 Pine St</p>
+<div class="mt-2 flex items-center gap-1 text-[10px] text-primary font-medium">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+<span>Arrival alerts on</span>
+</div>
+</div>
+<!-- Office -->
+<div class="p-2.5 rounded-xl border border-surface-container-high bg-surface-container-low/30 hover:border-primary-container transition-all">
+<div class="flex items-center space-x-2 mb-1">
+<span class="material-symbols-outlined text-secondary text-base" data-icon="business" style="font-variation-settings: 'FILL' 1;">business</span>
+<span class="font-headline font-semibold text-xs text-on-surface">Office</span>
+</div>
+<p class="font-body text-[11px] text-on-surface-variant line-clamp-1">Downtown Hub</p>
+<div class="mt-2 flex items-center gap-1 text-[10px] text-on-surface-variant font-medium">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+<span>Active beacon</span>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar Shared Component Anchor -->
+<nav class="fixed bottom-0 left-0 right-0 w-full z-50 flex justify-around items-center px-4 py-2 max-w-md mx-auto bg-surface-container-lowest dark:bg-surface-container-lowest shadow-sm">
+<!-- Item 1: Home (Active destination matching current intent) -->
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-4 py-1.5 font-semibold active:scale-95 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="home" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="font-label text-xs font-medium mt-0.5">Home</span>
+</a>
+<!-- Item 2: Map -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:text-primary transition-colors active:scale-95 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="explore">explore</span>
+<span class="font-label text-xs font-medium mt-0.5">Map</span>
+</a>
+<!-- Item 3: Circle -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:text-primary transition-colors active:scale-95 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="group">group</span>
+<span class="font-label text-xs font-medium mt-0.5">Circle</span>
+</a>
+<!-- Item 4: Settings -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:text-primary transition-colors active:scale-95 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined text-xl" data-icon="settings">settings</span>
+<span class="font-label text-xs font-medium mt-0.5">Settings</span>
+</a>
+</nav>
+</div>
+<script>
+    // Micro-interaction for SOS button hold feedback
+    const sosBtn = document.getElementById('sosButton');
+    let holdTimer;
+
+    if (sosBtn) {
+      sosBtn.addEventListener('mousedown', () => {
+        sosBtn.classList.add('scale-95');
+        holdTimer = setTimeout(() => {
+          sosBtn.classList.add('ring-8', 'ring-error-container');
+        }, 1000);
+      });
+
+      const cancelHold = () => {
+        clearTimeout(holdTimer);
+        sosBtn.classList.remove('scale-95', 'ring-8', 'ring-error-container');
+      };
+
+      sosBtn.addEventListener('mouseup', cancelHold);
+      sosBtn.addEventListener('mouseleave', cancelHold);
+      sosBtn.addEventListener('touchstart', () => {
+        sosBtn.classList.add('scale-95');
+      }, { passive: true });
+      sosBtn.addEventListener('touchend', cancelHold);
+    }
+  </script>
+</body></html>

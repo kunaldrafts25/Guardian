@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Emergency SOS Countdown - SafeHaven</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;family=Public+Sans:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "error": "#a83836",
+            "secondary-dim": "#6b4d34",
+            "primary-container": "#bfedd5",
+            "outline-variant": "#b2b3a9",
+            "inverse-primary": "#d0fee6",
+            "secondary-fixed": "#ffdcc3",
+            "surface-container-lowest": "#ffffff",
+            "on-background": "#31332c",
+            "on-surface-variant": "#5e6058",
+            "on-secondary-container": "#6a4b33",
+            "surface-variant": "#e3e3d9",
+            "surface-dim": "#dadbd1",
+            "inverse-on-surface": "#9e9d98",
+            "primary-fixed-dim": "#b2dec7",
+            "primary-dim": "#325b49",
+            "on-tertiary": "#eafcff",
+            "error-container": "#fa746f",
+            "surface-container-low": "#f5f4ec",
+            "tertiary-fixed": "#bbf5fd",
+            "on-primary-fixed-variant": "#3b6451",
+            "outline": "#7a7b73",
+            "secondary": "#79583f",
+            "on-primary": "#e5fff0",
+            "tertiary-container": "#bbf5fd",
+            "background": "#fbf9f3",
+            "primary-fixed": "#bfedd5",
+            "on-error-container": "#6e0a12",
+            "on-secondary": "#fff7f4",
+            "tertiary": "#2d676e",
+            "surface-tint": "#3e6755",
+            "on-tertiary-fixed": "#074c53",
+            "primary": "#3e6755",
+            "surface-container": "#efeee6",
+            "inverse-surface": "#0e0f0b",
+            "surface-container-high": "#e9e9e0",
+            "surface-bright": "#fbf9f3",
+            "on-tertiary-container": "#235f66",
+            "on-primary-container": "#315a48",
+            "on-tertiary-fixed-variant": "#2f6970",
+            "surface-container-highest": "#e3e3d9",
+            "on-error": "#fff7f6",
+            "surface": "#fbf9f3",
+            "on-surface": "#31332c",
+            "secondary-fixed-dim": "#f7ccad",
+            "tertiary-dim": "#1f5b62",
+            "error-dim": "#67040d",
+            "on-primary-fixed": "#1d4736",
+            "on-secondary-fixed": "#553922",
+            "secondary-container": "#ffdcc3",
+            "on-secondary-fixed-variant": "#75553c",
+            "tertiary-fixed-dim": "#ade7ef"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "fontFamily": {
+            "headline": ["Manrope", "sans-serif"],
+            "display": ["Manrope", "sans-serif"],
+            "body": ["Inter", "sans-serif"],
+            "label": ["Public Sans", "sans-serif"]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+      display: inline-block;
+      vertical-align: middle;
+      line-height: 1;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.96); opacity: 0.65; }
+      50% { transform: scale(1.08); opacity: 0.25; }
+      100% { transform: scale(0.96); opacity: 0.65; }
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+    .ripple-aura {
+      animation: pulse-ring 2.4s ease-in-out infinite;
+    }
+    .beacon-pulse {
+      animation: pulse-dot 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    /* Circular countdown svg progress stroke */
+    .progress-ring__circle {
+      transition: stroke-dashoffset 0.35s ease;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body antialiased flex justify-center min-h-screen selection:bg-error selection:text-white">
+<!-- Mobile Portrait Shell (Max-w-md matching Shared Component boundaries) -->
+<main class="w-full max-w-md bg-surface flex flex-col justify-between min-h-screen px-4 pt-3 pb-6 relative overflow-hidden shadow-2xl">
+<!-- Top Bar Navigation & Armed Badge -->
+<header class="w-full pt-1 pb-3 flex flex-col gap-2.5">
+<div class="flex items-center justify-between">
+<!-- Close / Cancel back button with 48px target -->
+<a aria-label="Cancel SOS and return" class="w-12 h-12 flex items-center justify-center rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface active:scale-95 transition-transform duration-150" href="#dismiss">
+<span class="material-symbols-outlined text-xl">close</span>
+</a>
+<!-- Armed Status Pill -->
+<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-container border border-surface-container-high">
+<span class="w-2.5 h-2.5 rounded-full bg-error beacon-pulse"></span>
+<span class="font-label text-xs font-semibold text-error tracking-tight">Deterrent mode armed</span>
+</div>
+</div>
+<!-- Header Titles -->
+<div class="px-1 mt-1">
+<h1 class="font-headline font-extrabold text-2xl tracking-tight text-on-background">Emergency SOS</h1>
+<div class="flex items-center gap-1.5 mt-0.5">
+<span class="material-symbols-outlined text-primary text-base" style="font-variation-settings: 'FILL' 1;">shield</span>
+<p class="font-body text-xs font-semibold text-primary uppercase tracking-wider">SafeHaven Protection Active</p>
+</div>
+</div>
+</header>
+<!-- Center Stage Hero Interaction: Large Tactile Hold-to-Activate Ring -->
+<section aria-label="SOS Countdown Trigger" class="flex flex-col items-center justify-center my-auto py-2 relative">
+<!-- Ambient Coral-Red Engagement Glow -->
+<div class="absolute w-72 h-72 rounded-full bg-error-container/30 filter blur-2xl ripple-aura pointer-events-none -z-0"></div>
+<div class="absolute w-56 h-56 rounded-full bg-secondary-container/40 filter blur-xl pointer-events-none -z-0"></div>
+<!-- Circular SVG Ring & Tactile Trigger Card -->
+<div aria-label="Emergency SOS active countdown button. Keep pressed to transmit distress beacon." class="relative w-64 h-64 flex items-center justify-center select-none cursor-pointer group active:scale-95 transition-all duration-200" id="sos-trigger" role="button" tabindex="0">
+<!-- SVG Progress Ring -->
+<svg class="w-full h-full transform -rotate-90 drop-shadow-sm" viewbox="0 0 240 240">
+<!-- Background Track -->
+<circle class="stroke-surface-container-high" cx="120" cy="120" fill="transparent" r="102" stroke="#e9e9e0" stroke-width="12"></circle>
+<!-- Active Coral Progress Arc (3s remaining representation) -->
+<circle class="progress-ring__circle" cx="120" cy="120" fill="transparent" id="countdown-circle" r="102" stroke="#a83836" stroke-dasharray="640.88" stroke-dashoffset="180" stroke-linecap="round" stroke-width="12"></circle>
+</svg>
+<!-- Inner Concentric Center Core -->
+<div class="absolute inset-4 rounded-full bg-surface-container-lowest border-4 border-surface-container-low flex flex-col items-center justify-center p-6 text-center shadow-lg transition-transform group-hover:scale-[1.02]">
+<!-- Pulsing Beacon Siren Icon -->
+<div class="w-12 h-12 rounded-full bg-error/10 text-error flex items-center justify-center mb-1">
+<span class="material-symbols-outlined text-2xl beacon-pulse" style="font-variation-settings: 'FILL' 1;">e911_emergency</span>
+</div>
+<!-- Bold Timer Readout -->
+<div class="font-headline font-black text-4xl tracking-tighter text-on-background leading-none mt-0.5" id="timer-display">
+            03s
+          </div>
+<!-- Tactile Micro-Copy -->
+<span class="mt-1.5 font-label text-[11px] font-bold tracking-widest text-error uppercase bg-error/10 px-2.5 py-0.5 rounded-full">
+            HOLD PRESSED
+          </span>
+</div>
+</div>
+<!-- Instructional & Reassurance Hierarchy -->
+<div class="text-center px-4 mt-5">
+<h2 class="font-headline font-extrabold text-xl text-on-background tracking-tight">
+          Keep holding to send SOS
+        </h2>
+<p class="font-body text-xs text-on-surface-variant mt-1.5 leading-relaxed max-w-xs mx-auto">
+          Release before countdown finishes to cancel safely without alerting anyone or triggering sirens.
+        </p>
+</div>
+</section>
+<!-- Armed Features & Diagnostics Bento Card -->
+<section class="mt-1 mb-3">
+<div class="bg-surface-container-lowest rounded-xl p-3.5 border border-surface-container-high shadow-sm">
+<div class="flex items-center justify-between pb-2 mb-2 border-b border-surface-container">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-primary text-base">emergency_share</span>
+<span class="font-label text-xs font-bold text-on-surface uppercase tracking-wider">Armed Protections</span>
+</div>
+<span class="text-[11px] font-semibold text-primary bg-primary-container px-2 py-0.5 rounded-full">Active Sync</span>
+</div>
+<div class="grid grid-cols-2 gap-2 text-xs">
+<!-- Item 1: Siren -->
+<div class="flex items-start gap-2 p-2 rounded-lg bg-surface-container-low/70">
+<span class="material-symbols-outlined text-error text-lg mt-0.5">volume_up</span>
+<div>
+<p class="font-semibold text-on-surface text-[12px] leading-snug">Audible Siren</p>
+<p class="text-[10px] text-on-surface-variant">Armed &amp; Ready</p>
+</div>
+</div>
+<!-- Item 2: GPS Telemetry -->
+<div class="flex items-start gap-2 p-2 rounded-lg bg-surface-container-low/70">
+<span class="material-symbols-outlined text-primary text-lg mt-0.5">near_me</span>
+<div>
+<p class="font-semibold text-on-surface text-[12px] leading-snug">GPS Beacon</p>
+<p class="text-[10px] text-on-surface-variant">3 Contacts staged</p>
+</div>
+</div>
+<!-- Item 3: Haptics -->
+<div class="flex items-start gap-2 p-2 rounded-lg bg-surface-container-low/70">
+<span class="material-symbols-outlined text-secondary text-lg mt-0.5">vibration</span>
+<div>
+<p class="font-semibold text-on-surface text-[12px] leading-snug">Haptic Cadence</p>
+<p class="text-[10px] text-on-surface-variant">Active feedback</p>
+</div>
+</div>
+<!-- Item 4: SMS Fallback -->
+<div class="flex items-start gap-2 p-2 rounded-lg bg-surface-container-low/70">
+<span class="material-symbols-outlined text-primary text-lg mt-0.5">sms</span>
+<div>
+<p class="font-semibold text-on-surface text-[12px] leading-snug">Direct SMS</p>
+<p class="text-[10px] text-on-surface-variant">Low-power fallback</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Primary Emergency Action Controls -->
+<footer class="flex flex-col gap-2.5 pt-1">
+<!-- High-priority immediate override button -->
+<button class="w-full h-14 bg-error text-on-error rounded-xl font-headline font-bold text-base flex items-center justify-center gap-2 shadow-md active:scale-95 transition-transform duration-150 focus:ring-4 focus:ring-error/20" type="button">
+<span class="material-symbols-outlined text-xl" style="font-variation-settings: 'FILL' 1;">bolt</span>
+<span>Send SOS Now</span>
+</button>
+<!-- Clear secondary cancel action button -->
+<button class="w-full h-12 bg-surface-container-low hover:bg-surface-container border border-surface-container-high text-on-surface rounded-xl font-body font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform duration-150" type="button">
+<span class="material-symbols-outlined text-base">cancel</span>
+<span>Cancel Countdown</span>
+</button>
+<!-- Accidental Activation Protection Reassurance Disclaimer -->
+<p class="text-center font-body text-[11px] text-on-surface-variant tracking-normal pt-1">
+        Accidental activation protection active. Releasing will abort dispatch.
+      </p>
+</footer>
+</main>
+<!-- Interactive hold/timer micro-interaction simulation -->
+<script>
+    (function() {
+      const trigger = document.getElementById('sos-trigger');
+      const timerDisplay = document.getElementById('timer-display');
+      const circle = document.getElementById('countdown-circle');
+      
+      let seconds = 3;
+      let interval = null;
+      const totalCircumference = 640.88;
+
+      function startCountdown() {
+        if (interval) return;
+        interval = setInterval(() => {
+          seconds--;
+          if (seconds >= 0) {
+            timerDisplay.textContent = `0${seconds}s`;
+            const offset = totalCircumference - ((3 - seconds) / 3) * totalCircumference;
+            circle.style.strokeDashoffset = offset;
+          }
+          if (seconds <= 0) {
+            clearInterval(interval);
+            timerDisplay.textContent = 'SOS';
+            timerDisplay.classList.add('text-error');
+          }
+        }, 1000);
+      }
+
+      function resetCountdown() {
+        clearInterval(interval);
+        interval = null;
+        seconds = 3;
+        timerDisplay.textContent = '03s';
+        timerDisplay.classList.remove('text-error');
+        circle.style.strokeDashoffset = '180';
+      }
+
+      // Mouse & touch events for demonstration
+      trigger.addEventListener('mousedown', startCountdown);
+      trigger.addEventListener('touchstart', startCountdown);
+      window.addEventListener('mouseup', resetCountdown);
+      window.addEventListener('touchend', resetCountdown);
+    })();
+  </script>
+</body></html>

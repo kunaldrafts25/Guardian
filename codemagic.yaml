@@ -1,0 +1,147 @@
+# Guardian — Codemagic CI/CD Configuration
+# Docs: https://docs.codemagic.io/yaml/building-a-flutter-app/
+#
+# SETUP:
+# 1. Sign up at https://codemagic.io and connect your Git repo
+# 2. Add these environment variables in Codemagic dashboard:
+#    - APP_STORE_CONNECT_ISSUER_ID
+#    - APP_STORE_CONNECT_KEY_IDENTIFIER
+#    - APP_STORE_CONNECT_PRIVATE_KEY (p8 file contents)
+#    - CERTIFICATE_PRIVATE_KEY (your Apple distribution cert)
+# 3. Push this file and trigger a build
+
+workflows:
+
+  # ─────────────────────────────────────────────────
+  # iOS Debug Build (for TestFlight internal testing)
+  # ─────────────────────────────────────────────────
+  ios-debug:
+    name: Guardian iOS Debug
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      groups:
+        - apple_credentials  # Configure in Codemagic dashboard
+      vars:
+        BUNDLE_ID: "com.company.guardian"
+    scripts:
+      - name: Set up local.properties
+        script: echo "flutter.sdk=$HOME/programs/flutter" > "$CM_BUILD_DIR/android/local.properties"
+
+      - name: Install dependencies
+        script: flutter pub get
+
+      - name: Install CocoaPods
+        script: |
+          cd ios
+          pod install --repo-update
+
+      - name: Set up code signing
+        script: |
+          xcode-project use-profiles
+
+      - name: Build iOS (debug)
+        script: |
+          flutter build ios --debug \
+            --build-name=2.0.0 \
+            --build-number=$(($(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID") + 1))
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+
+  # ─────────────────────────────────────────────────
+  # iOS Release Build (for TestFlight / App Store)
+  # ─────────────────────────────────────────────────
+  ios-release:
+    name: Guardian iOS Release
+    max_build_duration: 45
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      groups:
+        - apple_credentials
+      vars:
+        BUNDLE_ID: "com.company.guardian"
+    scripts:
+      - name: Install dependencies
+        script: flutter pub get
+
+      - name: Install CocoaPods
+        script: |
+          cd ios
+          pod install --repo-update
+
+      - name: Set up code signing
+        script: |
+          xcode-project use-profiles
+
+      - name: Flutter analyze
+        script: flutter analyze --no-fatal-infos
+
+      - name: Run tests
+        script: flutter test
+
+      - name: Build IPA
+        script: |
+          flutter build ipa --release \
+            --build-name=2.0.0 \
+            --build-number=$(($(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID") + 1)) \
+            --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups:
+          - Internal Testers
+
+  # ─────────────────────────────────────────────────
+  # Android Release Build
+  # ─────────────────────────────────────────────────
+  android-release:
+    name: Guardian Android Release
+    max_build_duration: 30
+    instance_type: linux_x2
+    environment:
+      flutter: stable
+      java: 17
+      groups:
+        - android_credentials
+      vars:
+        PACKAGE_NAME: "com.company.guardian"
+    scripts:
+      - name: Install dependencies
+        script: flutter pub get
+
+      - name: Flutter analyze
+        script: flutter analyze --no-fatal-infos
+
+      - name: Run tests
+        script: flutter test
+
+      - name: Build APK
+        script: |
+          flutter build apk --release \
+            --build-name=2.0.0 \
+            --build-number=$BUILD_NUMBER
+
+      - name: Build App Bundle
+        script: |
+          flutter build appbundle --release \
+            --build-name=2.0.0 \
+            --build-number=$BUILD_NUMBER
+
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
+      - build/app/outputs/bundle/**/*.aab

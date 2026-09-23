@@ -36,32 +36,43 @@ class ContactsScreen extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.all(16),
             child: Card(
-              color: AppColors.primary.withOpacity(0.1),
+              color: AppColors.brandContainer.withValues(alpha: 0.35),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: const BorderSide(color: AppColors.border),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Icon(Icons.shield, color: AppColors.primary, size: 40),
-                    const SizedBox(width: 16),
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: AppColors.brand.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.shield_outlined,
+                          color: AppColors.brand),
+                    ),
+                    const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Your Trusted Contacts',
+                            'Your Trusted Circle',
                             style: Theme.of(context)
                                 .textTheme
                                 .titleMedium
                                 ?.copyWith(
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.w700,
                                 ),
                           ),
+                          const SizedBox(height: 2),
                           Text(
-                            '${contacts.length}/${ContactsState.maxContacts} contacts added',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Colors.grey,
-                                    ),
+                            '${contacts.length}/${ContactsState.maxContacts} contacts configured',
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
                       ),
@@ -95,8 +106,10 @@ class ContactsScreen extends ConsumerWidget {
       floatingActionButton: contactsState.canAddMore
           ? FloatingActionButton.extended(
               onPressed: () => _showAddContactDialog(context, ref),
-              icon: const Icon(Icons.person_add),
+              icon: const Icon(Icons.person_add_rounded),
               label: const Text('Add Contact'),
+              backgroundColor: AppColors.brand,
+              foregroundColor: Colors.white,
             )
           : null,
     );
@@ -154,31 +167,36 @@ class ContactsScreen extends ConsumerWidget {
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: contact.isPrimary
-              ? AppColors.primary.withOpacity(0.2)
-              : AppColors.secondary.withOpacity(0.2),
+              ? AppColors.brandContainer
+              : AppColors.surfaceMuted,
           child: Text(
             contact.name[0].toUpperCase(),
             style: TextStyle(
               color:
-                  contact.isPrimary ? AppColors.primary : AppColors.secondary,
+                  contact.isPrimary ? AppColors.brand : AppColors.secondaryAccent,
               fontWeight: FontWeight.bold,
             ),
           ),
         ),
         title: Row(
           children: [
-            Text(contact.name),
+            Flexible(child: Text(contact.name, overflow: TextOverflow.ellipsis)),
             if (contact.isPrimary) ...[
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(4),
+                  color: AppColors.brandContainer,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: AppColors.brand.withValues(alpha: 0.3)),
                 ),
-                child: Text(
+                child: const Text(
                   'Primary',
-                  style: TextStyle(fontSize: 10, color: AppColors.primary),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.brand,
+                  ),
                 ),
               ),
             ],

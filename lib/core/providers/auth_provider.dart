@@ -87,3 +87,44 @@ final authenticatedSessionsProvider =
     FutureProvider.autoDispose<List<AuthenticatedSession>>((ref) {
   return ref.watch(authServiceProvider).listSessions();
 });
+
+enum GoogleSignInState { idle, authenticating, success, error }
+
+final googleSignInStateProvider =
+    StateNotifierProvider<GoogleSignInNotifier, GoogleSignInState>((ref) {
+  return GoogleSignInNotifier(ref.watch(authServiceProvider));
+});
+
+class GoogleSignInNotifier extends StateNotifier<GoogleSignInState> {
+  final AwsAuthService _authService;
+  String? _errorMessage;
+
+  GoogleSignInNotifier(this._authService) : super(GoogleSignInState.idle);
+
+  String? get errorMessage => _errorMessage;
+
+  Future<bool> signIn({String? mockIdToken}) async {
+    state = GoogleSignInState.authenticating;
+    _errorMessage = null;
+    try {
+      final user = await _authService.signInWithGoogle(
+        mockIdToken: mockIdToken,
+      );
+      if (user == null) {
+        state = GoogleSignInState.idle;
+        return false;
+      }
+      state = GoogleSignInState.success;
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      state = GoogleSignInState.error;
+      return false;
+    }
+  }
+
+  void reset() {
+    _errorMessage = null;
+    state = GoogleSignInState.idle;
+  }
+}

@@ -216,6 +216,112 @@ def notify_trusted_contact(
 
 import math
 
+_GEOHASH_BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz"
+
+
+def _encode_geohash(lat: float, lng: float, precision: int = 5) -> str:
+    """Encode latitude and longitude into standard base32 Geohash."""
+    lat_interval = [-90.0, 90.0]
+    lng_interval = [-180.0, 180.0]
+    geohash = []
+    bits = [16, 8, 4, 2, 1]
+    bit = 0
+    ch = 0
+    even = True
+
+    while len(geohash) < precision:
+        if even:
+            mid = (lng_interval[0] + lng_interval[1]) / 2.0
+            if lng > mid:
+                ch |= bits[bit]
+                lng_interval[0] = mid
+            else:
+                lng_interval[1] = mid
+        else:
+            mid = (lat_interval[0] + lat_interval[1]) / 2.0
+            if lat > mid:
+                ch |= bits[bit]
+                lat_interval[0] = mid
+            else:
+                lat_interval[1] = mid
+
+        even = not even
+        if bit < 4:
+            bit += 1
+        else:
+            geohash.append(_GEOHASH_BASE32[ch])
+            bit = 0
+            ch = 0
+
+    return "".join(geohash)
+
+
+def _decode_geohash_bbox(geohash: str):
+    """Decode a geohash into bounding box latitude and longitude intervals."""
+    lat_interval = [-90.0, 90.0]
+    lng_interval = [-180.0, 180.0]
+    even = True
+    for c in geohash:
+        cd = _GEOHASH_BASE32.index(c)
+        for mask in [16, 8, 4, 2, 1]:
+            if even:
+                mid = (lng_interval[0] + lng_interval[1]) / 2.0
+                if cd & mask:
+                    lng_interval[0] = mid
+                else:
+                    lng_interval[1] = mid
+            else:
+                mid = (lat_interval[0] + lat_interval[1]) / 2.0
+                if cd & mask:
+                    lat_interval[0] = mid
+                else:
+                    lat_interval[1] = mid
+            even = not even
+    return lat_interval, lng_interval
+
+
+def _geohash_neighbors(geohash: str) -> List[str]:
+    """Compute 8 adjacent neighbor geohashes to cover boundary crossings."""
+    lat_int, lng_int = _decode_geohash_bbox(geohash)
+    lat_height = lat_int[1] - lat_int[0]
+    lng_width = lng_int[1] - lng_int[0]
+    center_lat = (lat_int[0] + lat_int[1]) / 2.0
+    center_lng = (lng_int[0] + lng_int[1]) / 2.0
+    precision = len(geohash)
+
+    neighbors = []
+    for d_lat in [-1.0, 0.0, 1.0]:
+        for d_lng in [-1.0, 0.0, 1.0]:
+            if d_lat == 0.0 and d_lng == 0.0:
+                continue
+            n_lat = center_lat + d_lat * lat_height
+            n_lng = center_lng + d_lng * lng_width
+            if n_lat > 90.0:
+                n_lat = 90.0
+            elif n_lat < -90.0:
+                n_lat = -90.0
+            if n_lng > 180.0:
+                n_lng = n_lng - 360.0
+            elif n_lng < -180.0:
+                n_lng = n_lng + 360.0
+            neighbors.append(_encode_geohash(n_lat, n_lng, precision))
+    return list(set(neighbors))
+
+
+def _haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Accurate great-circle distance between two GPS coordinates in meters."""
+    r = 6371000.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = (
+        math.sin(delta_phi / 2.0) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0) ** 2
+    )
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1.0 - a)))
+    return r * c
+
 # Explicit development mode may use an in-process store, but it starts empty.
 # Tests seed their own records; production never ships invented responders.
 _LOCAL_RESPONDERS: Dict[str, Dict[str, Any]] = {}
@@ -251,6 +357,7 @@ def register_responder_heartbeat(
         "is_active": is_active,
         "last_seen": datetime.now(timezone.utc).isoformat(),
         "availability_expires_at": int(datetime.now(timezone.utc).timestamp()) + 300,
+        "geohash": _encode_geohash(latitude, longitude, precision=5),
     }
     if name is not None:
         record["name"] = name
@@ -266,7 +373,7 @@ def register_responder_heartbeat(
             Key={"responder_id": responder_id},
             UpdateExpression=(
                 "SET latitude = :lat, longitude = :lng, is_active = :active, "
-                "last_seen = :seen, availability_expires_at = :expiry"
+                "last_seen = :seen, availability_expires_at = :expiry, geohash = :gh"
             ),
             ExpressionAttributeValues={
                 ":lat": latitude,
@@ -274,6 +381,7 @@ def register_responder_heartbeat(
                 ":active": is_active,
                 ":seen": record["last_seen"],
                 ":expiry": record["availability_expires_at"],
+                ":gh": record["geohash"],
             },
         )
         record = {**existing, **record}
@@ -288,12 +396,41 @@ def register_responder_heartbeat(
     return record
 
 
-def _get_responder_records() -> List[Dict[str, Any]]:
+def _get_responder_records(geohash_filter: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     dynamo = get_dynamo_resource()
     if dynamo:
-        return dynamo.Table(DYNAMODB_RESPONDERS_TABLE).scan().get("Items", [])
+        table = dynamo.Table(DYNAMODB_RESPONDERS_TABLE)
+        if geohash_filter:
+            items = []
+            for gh in geohash_filter:
+                try:
+                    resp = table.query(
+                        IndexName="GeohashIndex",
+                        KeyConditionExpression="geohash = :gh",
+                        ExpressionAttributeValues={":gh": gh},
+                    )
+                    items.extend(resp.get("Items", []))
+                except Exception:
+                    pass
+            if items:
+                return items
+            try:
+                fe = "geohash IN (" + ", ".join(f":gh{i}" for i in range(len(geohash_filter))) + ")"
+                eav = {f":gh{i}": gh for i, gh in enumerate(geohash_filter)}
+                return table.scan(FilterExpression=fe, ExpressionAttributeValues=eav).get("Items", [])
+            except Exception:
+                pass
+        return table.scan().get("Items", [])
     if _dev_mode():
-        return list(_LOCAL_RESPONDERS.values())
+        records = list(_LOCAL_RESPONDERS.values())
+        if geohash_filter:
+            return [
+                r for r in records
+                if r.get("geohash") in geohash_filter
+                or "geohash" not in r
+                or not r.get("geohash")
+            ]
+        return records
     raise RuntimeError("Responder registry is unavailable")
 
 
@@ -322,7 +459,11 @@ def find_nearby_responders(incident_id: str, radius_meters: float = 1200.0) -> L
 
     eligible_responders = []
     now_epoch = int(datetime.now(timezone.utc).timestamp())
-    for resp in _get_responder_records():
+    center_geohash = _encode_geohash(float(lat1), float(lng1), precision=5)
+    candidate_geohashes = [center_geohash] + _geohash_neighbors(center_geohash)
+    responder_pool = _get_responder_records(geohash_filter=candidate_geohashes)
+
+    for resp in responder_pool:
         if not resp.get("is_active"):
             continue
 
@@ -343,7 +484,7 @@ def find_nearby_responders(incident_id: str, radius_meters: float = 1200.0) -> L
         # Distance calculation in meters
         d_lat = (lat1 - lat2) * 111320
         d_lng = (lng1 - lng2) * 111320 * math.cos(math.radians(lat1))
-        distance = math.sqrt(d_lat**2 + d_lng**2)
+        distance = _haversine_meters(float(lat1), float(lng1), float(lat2), float(lng2))
 
         if distance <= radius_meters:
             eligible_responders.append({

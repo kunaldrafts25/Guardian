@@ -89,7 +89,7 @@ object NativeEmergencyDispatcher {
         manager.notify(
             4101,
             NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setSmallIcon(R.drawable.ic_notification_guardian)
                 .setContentTitle("Emergency activated")
                 .setContentText(body)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))

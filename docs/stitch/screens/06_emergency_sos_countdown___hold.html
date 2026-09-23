@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Emergency SOS Countdown - SafeHaven</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;family=Public+Sans:wght@500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "on-secondary": "#fff7f4",
+            "surface-container-low": "#f5f4ec",
+            "surface-container-lowest": "#ffffff",
+            "on-tertiary-container": "#235f66",
+            "tertiary-fixed-dim": "#ade7ef",
+            "secondary-fixed-dim": "#f7ccad",
+            "on-surface": "#31332c",
+            "on-secondary-container": "#6a4b33",
+            "surface-bright": "#fbf9f3",
+            "surface-variant": "#e3e3d9",
+            "inverse-primary": "#d0fee6",
+            "on-error-container": "#6e0a12",
+            "surface-container": "#efeee6",
+            "inverse-surface": "#0e0f0b",
+            "tertiary-fixed": "#bbf5fd",
+            "error-container": "#fa746f",
+            "primary-container": "#bfedd5",
+            "on-tertiary": "#eafcff",
+            "error": "#a83836",
+            "outline": "#7a7b73",
+            "on-secondary-fixed": "#553922",
+            "tertiary": "#2d676e",
+            "on-tertiary-fixed": "#074c53",
+            "on-primary-fixed-variant": "#3b6451",
+            "on-secondary-fixed-variant": "#75553c",
+            "primary-fixed-dim": "#b2dec7",
+            "surface-tint": "#3e6755",
+            "on-primary": "#e5fff0",
+            "error-dim": "#67040d",
+            "secondary": "#79583f",
+            "secondary-fixed": "#ffdcc3",
+            "on-primary-container": "#315a48",
+            "on-background": "#31332c",
+            "on-tertiary-fixed-variant": "#2f6970",
+            "secondary-container": "#ffdcc3",
+            "primary-dim": "#325b49",
+            "primary-fixed": "#bfedd5",
+            "on-primary-fixed": "#1d4736",
+            "background": "#fbf9f3",
+            "primary": "#3e6755",
+            "surface-dim": "#dadbd1",
+            "outline-variant": "#b2b3a9",
+            "surface-container-highest": "#e3e3d9",
+            "surface": "#fbf9f3",
+            "tertiary-container": "#bbf5fd",
+            "inverse-on-surface": "#9e9d98",
+            "on-surface-variant": "#5e6058",
+            "secondary-dim": "#6b4d34",
+            "tertiary-dim": "#1f5b62",
+            "on-error": "#fff7f6",
+            "surface-container-high": "#e9e9e0"
+          },
+          "fontFamily": {
+            "headline": ["Manrope", "sans-serif"],
+            "display": ["Manrope", "sans-serif"],
+            "body": ["Inter", "sans-serif"],
+            "label": ["Public Sans", "sans-serif"]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+    }
+    .material-symbols-outlined.fill-icon {
+      font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 24;
+    }
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+    @keyframes pulse-ring {
+      0% {
+        transform: scale(0.96);
+        opacity: 0.8;
+      }
+      50% {
+        transform: scale(1.04);
+        opacity: 0.35;
+      }
+      100% {
+        transform: scale(0.96);
+        opacity: 0.8;
+      }
+    }
+    .pulse-urgent-halo {
+      animation: pulse-ring 1.8s ease-in-out infinite;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface font-body antialiased min-h-screen flex justify-center selection:bg-error selection:text-on-error">
+<!-- Mobile Viewport Container (390px class logic) -->
+<div class="w-full max-w-[390px] min-h-screen bg-surface flex flex-col justify-between p-4 relative overflow-hidden">
+<!-- Ambient Safety Glow Background -->
+<div class="absolute -top-16 left-1/2 -translate-x-1/2 w-80 h-80 rounded-full bg-error-container/20 blur-3xl pointer-events-none -z-0"></div>
+<!-- Top Safe Navigation Bar -->
+<header class="relative z-10 flex items-center justify-between pt-2 pb-3">
+<button aria-label="Dismiss SOS Countdown" class="w-11 h-11 rounded-full bg-surface-container flex items-center justify-center text-on-surface transition-transform active:scale-90 hover:bg-surface-container-high focus:outline-none" id="dismissBtn">
+<span class="material-symbols-outlined text-xl" data-icon="close">close</span>
+</button>
+<div class="flex flex-col items-center text-center">
+<span class="font-headline font-bold text-base tracking-tight text-on-surface">Emergency SOS</span>
+<span class="font-label text-[10px] text-primary font-medium tracking-wide">SafeHaven Active</span>
+</div>
+<div class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container-high text-on-surface font-label text-xs font-semibold shadow-sm">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-error opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-error"></span>
+</span>
+<span class="text-[11px] leading-tight text-on-surface-variant font-medium">Armed</span>
+</div>
+</header>
+<!-- Center Section: Hold & Live Countdown Ring -->
+<main class="relative z-10 flex-1 flex flex-col items-center justify-center my-auto py-2">
+<!-- Interactive Touch/Hold Area -->
+<div class="relative flex items-center justify-center w-[240px] h-[240px] select-none cursor-pointer group active:scale-[0.98] transition-transform" id="countdownTouchZone">
+<!-- Pulsing Urgent Backing Aura -->
+<div class="absolute inset-0 rounded-full bg-error/10 pulse-urgent-halo"></div>
+<div class="absolute inset-4 rounded-full bg-surface-container-low shadow-inner"></div>
+<!-- SVG Circular Progress Indicator -->
+<svg class="w-[230px] h-[230px] -rotate-90 transform relative z-10" viewbox="0 0 100 100">
+<!-- Background track -->
+<circle class="text-surface-variant stroke-current" cx="50" cy="50" fill="none" r="44" stroke-width="5.5"></circle>
+<!-- Active countdown stroke in urgent vibrant coral-red -->
+<circle class="text-error stroke-current transition-all duration-1000 ease-linear" cx="50" cy="50" fill="none" id="countdownRing" r="44" stroke-dasharray="276.46" stroke-dashoffset="69.115" stroke-linecap="round" stroke-width="6.5"></circle>
+</svg>
+<!-- Inner Content: Urgent Numerical Readout & Icon -->
+<div class="absolute inset-0 flex flex-col items-center justify-center text-center z-20 pointer-events-none">
+<div class="w-9 h-9 rounded-full bg-error-container/40 flex items-center justify-center mb-1 text-error">
+<span class="material-symbols-outlined text-2xl fill-icon" data-icon="e911_emergency" style="font-variation-settings: 'FILL' 1;">e911_emergency</span>
+</div>
+<div class="flex items-baseline justify-center">
+<span class="font-headline font-extrabold text-6xl tracking-tighter text-on-surface tabular-nums" id="countdownNumber">03</span>
+<span class="font-headline font-semibold text-2xl text-error ml-0.5">s</span>
+</div>
+<span class="font-label text-[11px] font-semibold text-error uppercase tracking-wider mt-0.5">HOLD PRESSED</span>
+</div>
+</div>
+<!-- Emphatic Instruction & Microcopy -->
+<div class="mt-5 text-center px-4">
+<h2 class="font-headline font-extrabold text-2xl tracking-tight text-on-surface">
+          Keep holding to send SOS
+        </h2>
+<p class="font-body text-xs text-on-surface-variant mt-2 max-w-[290px] mx-auto leading-relaxed">
+          Release before countdown finishes to safely cancel without alerting contacts or authorities.
+        </p>
+</div>
+<!-- Telemetry & Hardware Feedback Module -->
+<div class="w-full mt-6 bg-surface-container-low rounded-xl p-3.5 space-y-2.5 shadow-sm border border-surface-container-high/60">
+<!-- Telemetry 1: Siren state -->
+<div class="flex items-center justify-between text-xs">
+<div class="flex items-center gap-2 text-on-surface font-medium">
+<span class="material-symbols-outlined text-primary text-lg" data-icon="volume_up">volume_up</span>
+<span>Audible deterrent siren</span>
+</div>
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-primary-container text-on-primary-container">
+            Armed &amp; Ready
+          </span>
+</div>
+<div class="h-px bg-surface-container-high w-full"></div>
+<!-- Telemetry 2: GPS broadcast -->
+<div class="flex items-center justify-between text-xs">
+<div class="flex items-center gap-2 text-on-surface font-medium">
+<span class="material-symbols-outlined text-primary text-lg" data-icon="near_me">near_me</span>
+<span>Live GPS coordinates</span>
+</div>
+<span class="font-label text-xs text-on-surface-variant font-medium">
+            3 Contacts staged
+          </span>
+</div>
+<div class="h-px bg-surface-container-high w-full"></div>
+<!-- Telemetry 3: Haptic feedback active -->
+<div class="flex items-center justify-between text-xs">
+<div class="flex items-center gap-2 text-on-surface font-medium">
+<span class="material-symbols-outlined text-primary text-lg" data-icon="vibration">vibration</span>
+<span>Continuous tactile pulse</span>
+</div>
+<div class="flex items-center gap-1 text-[11px] text-on-surface-variant font-medium">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+<span>Active</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Action Stack -->
+<footer class="relative z-10 w-full pt-3 pb-2 space-y-2.5">
+<!-- Instant Send Override Button -->
+<button class="w-full h-14 bg-error text-on-error hover:bg-error-dim active:scale-[0.98] transition-all duration-150 rounded-xl font-headline font-bold text-base flex items-center justify-center gap-2.5 shadow-md shadow-error/20 focus:outline-none focus:ring-2 focus:ring-error focus:ring-offset-2" id="instantSosBtn" type="button">
+<span class="material-symbols-outlined text-2xl fill-icon" data-icon="bolt" style="font-variation-settings: 'FILL' 1;">bolt</span>
+<span>Send SOS Now</span>
+</button>
+<!-- Cancel Countdown Secondary Action -->
+<button class="w-full h-12 bg-surface-container-low text-primary hover:bg-surface-container active:scale-[0.98] transition-all duration-150 rounded-xl font-headline font-semibold text-sm border border-surface-container-high flex items-center justify-center gap-2" id="cancelCountdownBtn" type="button">
+<span class="material-symbols-outlined text-lg" data-icon="cancel">cancel</span>
+<span>Cancel Countdown</span>
+</button>
+<!-- Bottom Micro-Disclaimer -->
+<p class="font-body text-[11px] text-center text-on-surface-variant/80 px-2 leading-tight">
+        Hold anywhere on the ring or tap Send SOS Now to immediately dispatch evidence and notify emergency services.
+      </p>
+</footer>
+</div>
+<script>
+    (function () {
+      let secondsLeft = 3;
+      let totalDuration = 3;
+      let timer = null;
+      let isHolding = false;
+      const circumference = 276.46; // 2 * PI * 44
+
+      const ring = document.getElementById('countdownRing');
+      const numberEl = document.getElementById('countdownNumber');
+      const touchZone = document.getElementById('countdownTouchZone');
+      const cancelBtn = document.getElementById('cancelCountdownBtn');
+      const instantBtn = document.getElementById('instantSosBtn');
+      const dismissBtn = document.getElementById('dismissBtn');
+
+      function updateUI() {
+        if (!numberEl || !ring) return;
+        numberEl.textContent = '0' + Math.max(0, secondsLeft);
+        const fraction = secondsLeft / totalDuration;
+        const offset = circumference * (1 - fraction);
+        ring.style.strokeDashoffset = offset;
+      }
+
+      function startCountdown() {
+        if (timer) clearInterval(timer);
+        timer = setInterval(() => {
+          secondsLeft--;
+          if (secondsLeft <= 0) {
+            secondsLeft = 0;
+            updateUI();
+            clearInterval(timer);
+            triggerSOS();
+          } else {
+            updateUI();
+            triggerHapticFeedback();
+          }
+        }, 1000);
+      }
+
+      function resetCountdown() {
+        if (timer) clearInterval(timer);
+        secondsLeft = totalDuration;
+        updateUI();
+      }
+
+      function triggerSOS() {
+        if (navigator.vibrate) {
+          navigator.vibrate([200, 100, 200, 100, 400]);
+        }
+        numberEl.textContent = 'SOS';
+        ring.style.strokeDashoffset = 0;
+      }
+
+      function triggerHapticFeedback() {
+        if (navigator.vibrate) {
+          navigator.vibrate(60);
+        }
+      }
+
+      // Start default countdown
+      startCountdown();
+
+      // Hold interactions on central target
+      touchZone.addEventListener('pointerdown', (e) => {
+        isHolding = true;
+        triggerHapticFeedback();
+      });
+
+      window.addEventListener('pointerup', () => {
+        if (isHolding) {
+          isHolding = false;
+        }
+      });
+
+      // Cancellation triggers
+      cancelBtn.addEventListener('click', () => {
+        resetCountdown();
+      });
+
+      dismissBtn.addEventListener('click', () => {
+        resetCountdown();
+      });
+
+      // Override instant SOS
+      instantBtn.addEventListener('click', () => {
+        secondsLeft = 0;
+        updateUI();
+        triggerSOS();
+      });
+    })();
+  </script>
+</body></html>

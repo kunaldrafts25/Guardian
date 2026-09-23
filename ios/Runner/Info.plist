@@ -31,6 +31,28 @@
 	<string>16.0</string>
 
 	<!-- ═══════════════════════════════════════════════════
+	     Google Sign-In — OAuth redirect URL scheme
+	     Replace REVERSED_CLIENT_ID with the value from
+	     GoogleService-Info.plist after Firebase iOS setup
+	     ═══════════════════════════════════════════════════ -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.530178096868-90d5lls6prav97gaueu9814dgprlmlm7</string>
+			</array>
+		</dict>
+	</array>
+
+	<!-- Firebase Cloud Messaging -->
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
+
+
+	<!-- ═══════════════════════════════════════════════════
 	     PRIVACY USAGE STRINGS — Required or app crashes
 	     on first permission request on real iOS device
 	     ═══════════════════════════════════════════════════ -->

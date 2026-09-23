@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guardian — Warm Safety System Interactive Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      /* Warm Guardian Light Palette */
+      --app-canvas: #F7F5EF;
+      --surface: #FFFFFF;
+      --surface-secondary: #EEF1EC;
+      --primary-brand: #244D3C;
+      --primary-pressed: #173A2C;
+      --primary-container: #DDE9E1;
+      --secondary-accent: #8A684E;
+      --emergency: #C6424E;
+      --emergency-pressed: #98313A;
+      --emergency-container: #F8E1E3;
+      --warning: #A96624;
+      --success: #39705A;
+      --main-text: #1C2520;
+      --secondary-text: #5E6B64;
+      --disabled-text: #929B96;
+      --border: #D7DDD8;
+      --divider: #E7EAE7;
+      --radius-card: 20px;
+      --radius-btn: 16px;
+      --radius-pill: 999px;
+      --font-display: 'Manrope', -apple-system, sans-serif;
+      --font-body: 'Inter', -apple-system, sans-serif;
+    }
+
+    [data-theme="dark"] {
+      --app-canvas: #101613;
+      --surface: #18201C;
+      --surface-secondary: #202A25;
+      --primary-brand: #82B89D;
+      --primary-pressed: #689680;
+      --primary-container: #284B3B;
+      --secondary-accent: #C5A184;
+      --emergency: #F06B74;
+      --emergency-pressed: #C6424E;
+      --emergency-container: #512A2E;
+      --warning: #E0A15C;
+      --success: #79B89A;
+      --main-text: #F2F5F2;
+      --secondary-text: #B8C2BC;
+      --disabled-text: #616E67;
+      --border: #35423B;
+      --divider: #26332C;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: var(--font-body);
+      background-color: #E2E0D8;
+      color: var(--main-text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 24px 16px;
+    }
+
+    /* Top Control Bar */
+    .controls-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      background: #FFFFFF;
+      padding: 12px 20px;
+      border-radius: 999px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    }
+    .controls-bar button, .controls-bar select {
+      background: #F7F5EF;
+      border: 1px solid #D7DDD8;
+      color: #1C2520;
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .controls-bar button:hover { background: #EEF1EC; border-color: #244D3C; }
+    .controls-bar button.active { background: #244D3C; color: #FFFFFF; border-color: #244D3C; }
+
+    /* Mobile Frame */
+    .device-viewport {
+      width: 390px;
+      height: 844px;
+      background-color: var(--app-canvas);
+      border-radius: 44px;
+      box-shadow: 0 25px 60px -15px rgba(28, 37, 32, 0.25), 0 0 0 12px #2A332E;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .device-viewport.compact { width: 320px; border-radius: 36px; }
+    .device-viewport.scale-200 { font-size: 130%; }
+
+    /* Safe Area & Header */
+    .status-bar {
+      height: 44px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 24px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--main-text);
+      z-index: 50;
+      flex-shrink: 0;
+    }
+    .screen-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 20px 88px 20px;
+      position: relative;
+    }
+    .screen-content::-webkit-scrollbar { display: none; }
+
+    /* Bottom Nav */
+    .bottom-nav {
+      height: 72px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      z-index: 40;
+      padding-bottom: 8px;
+    }
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      color: var(--secondary-text);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 6px 16px;
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+    .nav-item svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; }
+    .nav-item.active {
+      color: var(--primary-brand);
+      font-weight: 600;
+      background: var(--primary-container);
+    }
+    .nav-item.active svg { stroke: var(--primary-brand); }
+
+    /* Typography & Headers */
+    h1 { font-family: var(--font-display); font-size: 24px; font-weight: 700; color: var(--main-text); margin-bottom: 4px; }
+    p.subtitle { font-size: 14px; color: var(--secondary-text); margin-bottom: 20px; line-height: 1.4; }
+    .section-title { font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--main-text); margin: 24px 0 12px 0; }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      padding: 16px;
+      margin-bottom: 12px;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .card:active { transform: scale(0.99); }
+
+    /* Pills */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: var(--radius-pill);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .pill-success { background: var(--primary-container); color: var(--primary-brand); border: 1px solid rgba(36,77,60,0.25); }
+    .pill-warning { background: #FFF4E5; color: var(--warning); border: 1px solid rgba(169,102,36,0.3); }
+    .pill-emergency { background: var(--emergency-container); color: var(--emergency); border: 1px solid rgba(198,66,78,0.3); }
+
+    /* SOS Hold Button Component */
+    .sos-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    .sos-ring-wrapper {
+      position: relative;
+      width: 170px;
+      height: 170px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      user-select: none;
+      touch-action: none;
+    }
+    .sos-ring-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      transform: rotate(-90deg);
+    }
+    .sos-ring-bg { stroke: var(--emergency-container); stroke-width: 8; fill: none; }
+    .sos-ring-progress {
+      stroke: var(--emergency);
+      stroke-width: 8;
+      fill: none;
+      stroke-linecap: round;
+      stroke-dasharray: 471;
+      stroke-dashoffset: 471;
+      transition: stroke-dashoffset 0.1s linear;
+    }
+    .sos-button-core {
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      background: var(--emergency);
+      color: #FFFFFF;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 24px rgba(198,66,78,0.35);
+      cursor: pointer;
+      transition: transform 0.1s, background 0.1s;
+      z-index: 2;
+    }
+    .sos-button-core:active { transform: scale(0.96); background: var(--emergency-pressed); }
+    .sos-btn-text { font-family: var(--font-display); font-size: 26px; font-weight: 800; letter-spacing: 1px; }
+    .sos-btn-sub { font-size: 11px; font-weight: 600; opacity: 0.9; margin-top: 2px; }
+
+    /* Action Card */
+    .action-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-height: 84px;
+      cursor: pointer;
+    }
+    .action-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: var(--primary-container);
+      color: var(--primary-brand);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .action-icon.coral { background: var(--emergency-container); color: var(--emergency); }
+    .action-icon.earth { background: #F3ECE6; color: var(--secondary-accent); }
+    .action-icon svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; }
+    .action-text { flex: 1; }
+    .action-text h4 { font-size: 15px; font-weight: 600; color: var(--main-text); margin-bottom: 2px; }
+    .action-text p { font-size: 13px; color: var(--secondary-text); }
+
+    /* Primary & Danger Buttons */
+    .btn {
+      width: 100%;
+      height: 52px;
+      border-radius: var(--radius-btn);
+      border: none;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: var(--primary-brand); color: #FFFFFF; }
+    .btn-primary:hover { background: var(--primary-pressed); }
+    .btn-emergency { background: var(--emergency); color: #FFFFFF; }
+    .btn-emergency:hover { background: var(--emergency-pressed); }
+    .btn-outlined { background: transparent; border: 1.5px solid var(--border); color: var(--primary-brand); }
+    .btn-text { background: transparent; color: var(--primary-brand); height: 44px; }
+
+    /* Timeline Event */
+    .timeline-item {
+      display: flex;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--divider);
+    }
+    .timeline-item:last-child { border-bottom: none; }
+    .timeline-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--primary-container);
+      color: var(--primary-brand);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .timeline-icon svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2.5; }
+
+    /* Modal Sheet */
+    .modal-backdrop {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(16, 22, 19, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      display: none;
+      align-items: flex-end;
+    }
+    .modal-backdrop.open { display: flex; animation: fadeIn 0.2s ease-out; }
+    .modal-sheet {
+      background: var(--surface);
+      border-radius: 24px 24px 0 0;
+      width: 100%;
+      padding: 24px 20px 32px 20px;
+      animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .sheet-handle { width: 40px; height: 4px; background: var(--border); border-radius: 99px; margin: 0 auto 16px auto; }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+    /* Push Toast Notification */
+    .push-banner {
+      position: absolute;
+      top: 50px;
+      left: 16px;
+      right: 16px;
+      background: #FFFFFF;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+      z-index: 90;
+      display: none;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      animation: slideDown 0.3s ease-out;
+    }
+    .push-banner.active { display: flex; }
+    @keyframes slideDown { from { transform: translateY(-40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  </style>
+</head>
+<body>
+
+  <!-- Controls Bar -->
+  <div class="controls-bar">
+    <button id="themeToggle" onclick="toggleTheme()">☀️ Light Mode</button>
+    <button id="compactToggle" onclick="toggleCompact()">📱 390px (Full)</button>
+    <button id="scaleToggle" onclick="toggleScale()">🔍 Text 100%</button>
+    <span style="color:#D7DDD8">|</span>
+    <button class="active" onclick="switchView('dashboard')">Home</button>
+    <button onclick="switchView('sos')">SOS Flow</button>
+    <button onclick="switchView('incident')">Active Incident</button>
+    <button onclick="switchView('circle')">Circle</button>
+    <button onclick="switchView('map')">Safety Map & Nav</button>
+    <button onclick="switchView('responder')">Responder</button>
+    <button onclick="switchView('readiness')">Readiness</button>
+    <button onclick="switchView('auth')">Sign In</button>
+    <span style="color:#D7DDD8">|</span>
+    <a href="screens/14_guardian_unified_google_and_phone_authentication.html" target="_blank" style="text-decoration:none;"><button style="background:var(--primary-container);color:var(--primary-brand);font-weight:600;border:1px solid rgba(36,77,60,0.3);">🔑 Auth Screen (Stitch)</button></a>
+    <a href="screens/12_web_emergency_live_incident___evidence_tracker.html" target="_blank" style="text-decoration:none;"><button style="background:var(--primary-container);color:var(--primary-brand);font-weight:600;border:1px solid rgba(36,77,60,0.3);">🖥️ Web Tracker (Stitch)</button></a>
+    <a href="screens/13_guardian_safety_operations___dispatcher_web_console.html" target="_blank" style="text-decoration:none;"><button style="background:var(--primary-container);color:var(--primary-brand);font-weight:600;border:1px solid rgba(36,77,60,0.3);">🖥️ Web Dispatcher (Stitch)</button></a>
+  </div>
+
+  <!-- Mobile Screen Frame -->
+  <div class="device-viewport" id="viewport">
+    
+    <!-- Push Banner Simulation -->
+    <div class="push-banner" id="pushBanner" onclick="openResponderFromPush()">
+      <div class="action-icon coral"><svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+      <div style="flex:1">
+        <strong style="font-size:13px; color:#1C2520;">Guardian Responder Invite</strong>
+        <p style="font-size:12px; color:#5E6B64;">Assistance needed in coarse area • 450m</p>
+      </div>
+      <span class="pill pill-warning">New</span>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <span>9:41</span>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9 0 2.12.74 4.07 1.97 5.61L4.35 19H19.65l-.62-1.39C20.26 16.07 21 14.12 21 12c0-4.97-4.03-9-9-9z"/></svg>
+        <svg width="18" height="12" viewBox="0 0 24 16" fill="currentColor"><rect x="1" y="1" width="19" height="14" rx="3" stroke="currentColor" fill="none" stroke-width="2"/><rect x="4" y="4" width="13" height="8" rx="1"/></svg>
+      </div>
+    </div>
+
+    <!-- VIEW 1: DASHBOARD / HOME -->
+    <div class="screen-content" id="view-dashboard">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+        <div>
+          <h1>Hi, Alex</h1>
+          <p style="font-size:14px; color:var(--secondary-text);">Everything important, without the noise.</p>
+        </div>
+        <div style="width:40px; height:40px; border-radius:50%; background:var(--primary-container); color:var(--primary-brand); display:flex; align-items:center; justify-content:center; font-weight:700;">A</div>
+      </div>
+
+      <!-- Protection Status Card -->
+      <div class="card" style="border-left: 4px solid var(--primary-brand);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span class="pill pill-success">Protection ready</span>
+          <span style="font-size:12px; color:var(--secondary-text);">GPS Active</span>
+        </div>
+        <p style="font-size:13px; color:var(--main-text); margin-bottom:8px;">3 trusted contacts configured • Hardware panic gesture armed.</p>
+        <button class="btn btn-text" style="justify-content:flex-start; padding:0; height:32px; font-size:13px;" onclick="switchView('readiness')">Review readiness status →</button>
+      </div>
+
+      <!-- Emergency SOS Hold Card -->
+      <div class="sos-container">
+        <div class="sos-ring-wrapper" id="sosTriggerZone">
+          <svg class="sos-ring-svg" viewBox="0 0 160 160">
+            <circle class="sos-ring-bg" cx="80" cy="80" r="70" />
+            <circle class="sos-ring-progress" id="sosProgressCircle" cx="80" cy="80" r="70" />
+          </svg>
+          <div class="sos-button-core" id="sosButton">
+            <span class="sos-btn-text" id="sosLabel">SOS</span>
+            <span class="sos-btn-sub" id="sosSub">HOLD 3s</span>
+          </div>
+        </div>
+        <strong style="font-size:15px; color:var(--main-text); margin-bottom:4px;" id="sosStatusHeading">Emergency SOS</strong>
+        <p style="font-size:13px; color:var(--secondary-text);" id="sosStatusSub">Press and hold to activate. Releasing early cancels.</p>
+        <button class="btn btn-text" id="sendNowBtn" style="display:none; color:var(--emergency); margin-top:8px;" onclick="triggerEmergencyNow()">Send SOS immediately</button>
+      </div>
+
+      <!-- Quick Action Cards -->
+      <div class="section-title">Quick Actions</div>
+      <div class="card action-card" onclick="alert('Safety Check-In: Timer started for 45 minutes.')">
+        <div class="action-icon earth">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div class="action-text">
+          <h4>Start a safety check-in</h4>
+          <p>Set a timer for Guardian to verify you arrived safely.</p>
+        </div>
+      </div>
+
+      <div class="card action-card" onclick="switchView('circle')">
+        <div class="action-icon">
+          <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div class="action-text">
+          <h4>View your circle</h4>
+          <p>3 emergency contacts ready to receive alerts.</p>
+        </div>
+      </div>
+
+      <!-- Simulation Trigger for Responder -->
+      <div style="margin-top:16px; text-align:center;">
+        <button class="btn btn-outlined" onclick="simulatePushInvite()">Simulate Inbound Responder Invite</button>
+      </div>
+    </div>
+
+    <!-- VIEW 2: ACTIVE INCIDENT & EVIDENCE -->
+    <div class="screen-content" id="view-incident" style="display:none;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h1>Active Incident</h1>
+        <span class="pill pill-emergency">● Critical</span>
+      </div>
+
+      <div class="card" style="background:var(--emergency-container); border-color:var(--emergency);">
+        <strong style="color:var(--emergency); font-size:16px; display:block; margin-bottom:4px;">Guardian Emergency Dispatch Active</strong>
+        <p style="font-size:13px; color:var(--main-text); line-height:1.4;">3 of 3 contact notifications accepted for delivery. GPS coordinates locked.</p>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-bottom:20px;">
+        <button class="btn btn-emergency" style="flex:1" onclick="alert('Calling 112 directly...')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          Call 112
+        </button>
+        <button class="btn btn-outlined" style="flex:1" onclick="openSafeModal()">
+          I Am Safe
+        </button>
+      </div>
+
+      <div class="section-title">Verified Delivery Evidence</div>
+      <div class="card">
+        <div class="timeline-item">
+          <div class="timeline-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div style="flex:1">
+            <strong style="font-size:13px; color:var(--main-text);">Sarah Jenkins (Primary)</strong>
+            <p style="font-size:12px; color:var(--secondary-text);">SMS dispatch accepted by cellular network • 9:41 AM</p>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div style="flex:1">
+            <strong style="font-size:13px; color:var(--main-text);">David Chen</strong>
+            <p style="font-size:12px; color:var(--secondary-text);">Push notification delivered to device • 9:41 AM</p>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-icon" style="background:#FFF4E5; color:var(--warning);"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+          <div style="flex:1">
+            <strong style="font-size:13px; color:var(--main-text);">Nearby Responders</strong>
+            <p style="font-size:12px; color:var(--secondary-text);">1 responder accepted mission • En route</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 3: CIRCLE -->
+    <div class="screen-content" id="view-circle" style="display:none;">
+      <h1>Guardian Circle</h1>
+      <p class="subtitle">Trusted contacts notified first during an emergency.</p>
+
+      <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <strong style="font-size:15px; color:var(--main-text);">Capacity Status</strong>
+          <p style="font-size:13px; color:var(--secondary-text);">3 of 5 emergency contacts configured</p>
+        </div>
+        <span class="pill pill-success">Healthy</span>
+      </div>
+
+      <div class="section-title">Configured Contacts</div>
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <strong style="font-size:15px; color:var(--main-text);">Sarah Jenkins</strong>
+          <span class="pill pill-success">Primary</span>
+        </div>
+        <p style="font-size:13px; color:var(--secondary-text); margin-bottom:12px;">+1 (555) 234-5678 • Family</p>
+        <button class="btn btn-outlined" style="height:38px; font-size:13px;" onclick="alert('Sent labelled non-emergency test SMS to Sarah.')">Send Labelled Test SMS</button>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <strong style="font-size:15px; color:var(--main-text);">David Chen</strong>
+          <span class="pill" style="background:var(--surface-secondary); color:var(--secondary-text);">Secondary</span>
+        </div>
+        <p style="font-size:13px; color:var(--secondary-text);">+1 (555) 876-5432 • Friend</p>
+      </div>
+
+      <button class="btn btn-primary" style="margin-top:16px;" onclick="alert('Add Contact modal: validated with E.164 phone rules.')">+ Add Emergency Contact</button>
+    </div>
+
+    <!-- VIEW 4: RESPONDER -->
+    <div class="screen-content" id="view-responder" style="display:none;">
+      <h1>Responder Mission</h1>
+      <p class="subtitle">Coarse invitation details & safe coordination.</p>
+
+      <div class="card" style="border-left: 4px solid var(--warning);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span class="pill pill-warning">Approximate Location</span>
+          <span style="font-size:12px; color:var(--secondary-text);">Expires in 4:12</span>
+        </div>
+        <strong style="font-size:16px; color:var(--main-text); display:block; margin-bottom:4px;">Assistance Request • Safe Walk Area</strong>
+        <p style="font-size:13px; color:var(--secondary-text); line-height:1.4;">Exact coordinates remain hidden until you accept. Do not confront attackers; maintain distance and alert 112 if needed.</p>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button class="btn btn-primary" style="flex:1" onclick="acceptMission()">Accept Mission</button>
+        <button class="btn btn-outlined" style="flex:1" onclick="switchView('dashboard')">Decline Safely</button>
+      </div>
+
+      <div id="missionActiveArea" style="display:none; margin-top:24px;">
+        <div class="section-title">Mission Stepper</div>
+        <div class="card">
+          <div class="timeline-item">
+            <div class="timeline-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+            <strong style="font-size:13px; color:var(--primary-brand);">Accepted — Navigation Unlocked</strong>
+          </div>
+          <button class="btn btn-primary" style="margin-top:12px; height:44px;" onclick="alert('Opening Google/Apple Maps with precise short-lived grant...')">Open Navigation App</button>
+          <button class="btn btn-outlined" style="margin-top:8px; height:44px;" onclick="alert('Arrival confirmed. Coordinates grant revoked safely.')">Report Arrival</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 5: READINESS -->
+    <div class="screen-content" id="view-readiness" style="display:none;">
+      <h1>Protection Readiness</h1>
+      <p class="subtitle">Real device permissions & cloud service status.</p>
+
+      <div class="card" style="background:var(--primary-container); border-color:var(--primary-brand);">
+        <strong style="color:var(--primary-brand); font-size:15px;">System Fully Operational</strong>
+        <p style="font-size:12px; color:var(--main-text); margin-top:2px;">Guardian reports current evidence only; delivery depends on carrier networks.</p>
+      </div>
+
+      <div class="card" style="padding:12px 16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--divider);">
+          <span style="font-size:14px; font-weight:500;">Emergency Contacts</span>
+          <span class="pill pill-success">3 Configured</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--divider);">
+          <span style="font-size:14px; font-weight:500;">High-Precision GPS</span>
+          <span class="pill pill-success">Granted</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--divider);">
+          <span style="font-size:14px; font-weight:500;">Push Notifications</span>
+          <span class="pill pill-success">Token Active</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--divider);">
+          <span style="font-size:14px; font-weight:500;">Android Panic Service</span>
+          <span class="pill pill-success">Running</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0;">
+          <span style="font-size:14px; font-weight:500;">Battery Optimization</span>
+          <span class="pill pill-success">Exempt</span>
+        </div>
+      </div>
+    <!-- VIEW 6: SAFETY MAP & SAFE NAVIGATION -->
+    <div class="screen-content" id="view-map" style="display:none; padding:12px 16px 88px 16px;">
+      <!-- Active Safe Walking HUD Pill -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <span class="pill pill-success" style="font-size:12px; font-weight:700; padding:6px 12px; background:var(--primary-container); color:var(--primary-brand); border:1px solid rgba(36,77,60,0.25);">
+          <span style="width:8px; height:8px; border-radius:50%; background:var(--primary-brand); display:inline-block; margin-right:4px;"></span>
+          Guardian Mode • Active
+        </span>
+        <span style="font-size:12px; font-weight:600; color:var(--secondary-text);">GPS • High Precision</span>
+      </div>
+
+      <!-- Top Maneuver HUD Card (Stitch Screen 11) -->
+      <div class="card" style="background:var(--surface); border:1.5px solid var(--border); box-shadow:0 6px 16px rgba(0,0,0,0.06); padding:16px; margin-bottom:12px;">
+        <div style="display:flex; align-items:flex-start; gap:14px;">
+          <div style="width:48px; height:48px; border-radius:14px; background:var(--primary-container); color:var(--primary-brand); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <svg viewBox="0 0 24 24" style="width:26px; height:26px; stroke:currentColor; fill:none; stroke-width:2.5;"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:12px; font-weight:700; color:var(--primary-brand); text-transform:uppercase; letter-spacing:0.5px;">In 80 meters</div>
+            <div style="font-size:16px; font-weight:700; color:var(--main-text); margin:2px 0;">Turn right on Kearny St</div>
+            <div style="font-size:12px; color:var(--secondary-text);">Verified well-lit corridor • 4 active monitors</div>
+          </div>
+          <button style="border:none; background:var(--surface-secondary); width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="toggleAudioNav()">
+            <svg viewBox="0 0 24 24" style="width:18px; height:18px; stroke:var(--secondary-text); fill:none; stroke-width:2;" id="audioNavIcon"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Off-Route Warning Banner (Interactive Toggle) -->
+      <div id="offRouteBanner" style="display:block; background:#FFF4E5; border:1.5px solid rgba(169,102,36,0.35); border-radius:14px; padding:12px 14px; margin-bottom:12px;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+          <span style="font-size:16px;">⚠️</span>
+          <div style="flex:1;">
+            <strong style="font-size:13px; color:var(--warning);">Off designated safe corridor</strong>
+            <p style="font-size:11px; color:#6B4D34;">Deviation detected • Auto-check in 28s</p>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button style="flex:1; height:36px; border-radius:8px; border:none; background:var(--warning); color:#fff; font-size:12px; font-weight:600; cursor:pointer;" onclick="alert('Recalculating safe well-lit route...')">Reroute</button>
+          <button style="flex:1; height:36px; border-radius:8px; border:1px solid rgba(169,102,36,0.4); background:transparent; color:var(--warning); font-size:12px; font-weight:600; cursor:pointer;" onclick="dismissOffRoute()">I'm OK</button>
+        </div>
+      </div>
+
+      <!-- Map Mockup Canvas (Interactive) -->
+      <div style="position:relative; height:240px; border-radius:18px; overflow:hidden; border:1px solid var(--border); margin-bottom:12px; background:#EEF1EC;">
+        <!-- Simulated Map Grid & Route -->
+        <svg viewBox="0 0 350 240" style="width:100%; height:100%; display:block;">
+          <rect width="100%" height="100%" fill="#E9EDE8"/>
+          <!-- Safe Zone Area -->
+          <circle cx="280" cy="50" r="45" fill="#39705A" fill-opacity="0.15" stroke="#39705A" stroke-dasharray="4 2" stroke-width="1.5"/>
+          <text x="280" y="42" text-anchor="middle" font-size="10" font-weight="700" fill="#244D3C">CAMPUS HUB</text>
+          <text x="280" y="55" text-anchor="middle" font-size="8" fill="#5E6B64">Verified Safe Zone</text>
+          
+          <!-- Safe Walking Route Polyline -->
+          <polyline points="70,190 70,120 180,120 180,50 280,50" fill="none" stroke="#244D3C" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="70,190 70,120 180,120 180,50 280,50" fill="none" stroke="#82B89D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          
+          <!-- Off Route Dotted Branch -->
+          <line x1="180" y1="120" x2="220" y2="150" stroke="#A96624" stroke-width="3" stroke-dasharray="5 3"/>
+          <circle cx="220" cy="150" r="6" fill="#A96624"/>
+
+          <!-- User Beacon (Zero Blue) -->
+          <circle cx="180" cy="120" r="14" fill="#244D3C" fill-opacity="0.2"/>
+          <circle cx="180" cy="120" r="7" fill="#244D3C"/>
+          <circle cx="180" cy="120" r="3" fill="#FFFFFF"/>
+
+          <!-- Start Marker -->
+          <circle cx="70" cy="190" r="5" fill="#5E6B64"/>
+        </svg>
+
+        <div style="position:absolute; bottom:10px; right:10px; background:rgba(255,255,255,0.9); padding:4px 8px; border-radius:6px; font-size:10px; font-weight:600; color:var(--secondary-text);">
+          OpenStreetMap • Well-Lit Route
+        </div>
+      </div>
+
+      <!-- Bottom Navigation Summary HUD (Stitch Screen 11) -->
+      <div class="card" style="padding:16px; margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div>
+            <div style="font-size:22px; font-weight:800; color:var(--main-text); font-family:var(--font-display);">11 min <span style="font-size:15px; font-weight:500; color:var(--secondary-text);">• 0.5 mi</span></div>
+            <div style="font-size:12px; color:var(--success); font-weight:600; display:flex; align-items:center; gap:4px; margin-top:2px;">
+              <span style="width:6px; height:6px; border-radius:50%; background:var(--success); display:inline-block;"></span>
+              Circle Tracking • 3 Contacts Notified
+            </div>
+          </div>
+          <button style="border:none; background:var(--emergency-container); color:var(--emergency); padding:8px 14px; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer;" onclick="switchView('sos')">
+            SOS
+          </button>
+        </div>
+
+        <button class="btn btn-primary" onclick="alert('Safe Arrival Confirmed! Circle contacts notified.')">
+          <svg viewBox="0 0 24 24" style="width:20px; height:20px; stroke:currentColor; fill:none; stroke-width:2.5;"><polyline points="20 6 9 17 4 12"/></svg>
+          I Have Arrived Safely
+        </button>
+      </div>
+    </div>
+
+    <!-- VIEW 7: AUTHENTICATION (STITCH SCREEN 14) -->
+    <div class="screen-content" id="view-auth" style="display:none;">
+      <div style="text-align:center; margin-top:20px; margin-bottom:28px;">
+        <div style="width:68px; height:68px; border-radius:20px; background:var(--primary-container); margin:0 auto 16px; display:flex; align-items:center; justify-content:center; border:1px solid var(--border);">
+          <svg viewBox="0 0 24 24" style="width:34px; height:34px; fill:var(--primary-brand);"><path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z"/></svg>
+        </div>
+        <h1 style="font-size:24px; font-weight:800; color:var(--main-text); margin-bottom:6px;">Welcome to Guardian</h1>
+        <p style="font-size:13px; color:var(--secondary-text); line-height:1.4;">Durable protection and peace of mind.</p>
+      </div>
+
+      <!-- Google Sign In Button -->
+      <button class="btn" style="background:var(--surface); border:1.5px solid var(--border); color:var(--main-text); box-shadow:0 2px 6px rgba(0,0,0,0.04); margin-bottom:24px;" onclick="alert('Google Sign-In Triggered! Verified ID token issued & session established.')">
+        <svg style="width:20px; height:20px; margin-right:4px;" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+        </svg>
+        Continue with Google
+      </button>
+
+      <!-- Divider -->
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
+        <div style="flex:1; height:1px; background:var(--divider);"></div>
+        <span style="font-size:11px; font-weight:700; color:var(--secondary-text); letter-spacing:0.8px;">OR CONTINUE WITH PHONE</span>
+        <div style="flex:1; height:1px; background:var(--divider);"></div>
+      </div>
+
+      <!-- Phone Input -->
+      <div style="margin-bottom:16px;">
+        <label style="display:block; font-size:12px; font-weight:600; color:var(--main-text); margin-bottom:6px;">Mobile number</label>
+        <input type="tel" placeholder="+91 98765 43210" style="width:100%; height:52px; padding:0 16px; border-radius:14px; border:1px solid var(--border); background:var(--surface); color:var(--main-text); font-size:15px; outline:none;" />
+      </div>
+
+      <button class="btn btn-primary" style="margin-bottom:24px;" onclick="alert('SMS verification code dispatched via AWS Cognito.')">
+        Send verification code
+      </button>
+
+      <!-- Disclaimer -->
+      <div class="card" style="padding:14px; background:var(--surface-secondary); border:1px solid var(--border); display:flex; gap:10px; align-items:flex-start;">
+        <svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:var(--secondary-text); stroke-width:2; flex-shrink:0; margin-top:2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <p style="font-size:12px; color:var(--secondary-text); line-height:1.4;">
+          Guardian provides durable telemetry and trusted contact escalation. It does not guarantee municipal police dispatch.
+        </p>
+      </div>
+    </div>
+
+    <!-- Bottom Navigation Shell -->
+    <div class="bottom-nav">
+      <div class="nav-item active" id="nav-home" onclick="switchView('dashboard')">
+        <svg viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span>Home</span>
+      </div>
+      <div class="nav-item" id="nav-map" onclick="switchView('map')">
+        <svg viewBox="0 0 24 24"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+        <span>Map</span>
+      </div>
+      <div class="nav-item" id="nav-circle" onclick="switchView('circle')">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Circle</span>
+      </div>
+      <div class="nav-item" id="nav-settings" onclick="switchView('readiness')">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>Settings</span>
+      </div>
+    </div>
+
+    <!-- I AM SAFE CONFIRMATION MODAL SHEET -->
+    <div class="modal-backdrop" id="safeModal">
+      <div class="modal-sheet">
+        <div class="sheet-handle"></div>
+        <h2 style="font-family:var(--font-display); font-size:20px; margin-bottom:8px;">Confirm You Are Safe</h2>
+        <p style="font-size:14px; color:var(--secondary-text); margin-bottom:24px; line-height:1.4;">
+          This will immediately end active emergency sharing and notify your trusted contacts that you are safe.
+        </p>
+        <button class="btn btn-primary" onclick="confirmEndIncident()">I Am Safe — End Incident</button>
+        <button class="btn btn-text" style="margin-top:8px;" onclick="closeSafeModal()">Keep Incident Active</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Theme, Viewport & Scale State
+    let isDark = false;
+    let isCompact = false;
+    let isScaled = false;
+    let holdTimer = null;
+    let holdStartTime = 0;
+    const HOLD_DURATION = 3000; // 3 seconds
+    const CIRCLE_CIRCUMFERENCE = 471; // 2 * PI * 75 approx
+
+    function toggleTheme() {
+      isDark = !isDark;
+      document.getElementById('viewport').setAttribute('data-theme', isDark ? 'dark' : 'light');
+      document.getElementById('themeToggle').innerText = isDark ? '🌙 Dark Mode' : '☀️ Light Mode';
+    }
+
+    function toggleCompact() {
+      isCompact = !isCompact;
+      document.getElementById('viewport').classList.toggle('compact', isCompact);
+      document.getElementById('compactToggle').innerText = isCompact ? '📱 320px (Compact)' : '📱 390px (Full)';
+    }
+
+    function toggleScale() {
+      isScaled = !isScaled;
+      document.getElementById('viewport').classList.toggle('scale-200', isScaled);
+      document.getElementById('scaleToggle').innerText = isScaled ? '🔍 Text 200%' : '🔍 Text 100%';
+    }
+
+    function switchView(viewName) {
+      const views = ['dashboard', 'incident', 'circle', 'responder', 'readiness', 'map', 'auth'];
+      views.forEach(v => {
+        const el = document.getElementById('view-' + v);
+        if (el) el.style.display = (v === viewName) ? 'block' : 'none';
+      });
+
+      // Update nav highlighting
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      if (viewName === 'dashboard') document.getElementById('nav-home')?.classList.add('active');
+      if (viewName === 'circle') document.getElementById('nav-circle')?.classList.add('active');
+      if (viewName === 'readiness') document.getElementById('nav-settings')?.classList.add('active');
+      if (viewName === 'map') document.getElementById('nav-map')?.classList.add('active');
+    }
+
+    function dismissOffRoute() {
+      const banner = document.getElementById('offRouteBanner');
+      if (banner) banner.style.display = 'none';
+    }
+
+    let isAudioOn = true;
+    function toggleAudioNav() {
+      isAudioOn = !isAudioOn;
+      const icon = document.getElementById('audioNavIcon');
+      if (icon) {
+        icon.style.opacity = isAudioOn ? '1.0' : '0.4';
+      }
+    }
+
+    // Hold-to-SOS Logic with Animation Frame
+    const triggerZone = document.getElementById('sosTriggerZone');
+    const circleProgress = document.getElementById('sosProgressCircle');
+    const sosLabel = document.getElementById('sosLabel');
+    const sosSub = document.getElementById('sosSub');
+    const sendNowBtn = document.getElementById('sendNowBtn');
+    let animFrame = null;
+
+    function startHold(e) {
+      e.preventDefault();
+      holdStartTime = Date.now();
+      sendNowBtn.style.display = 'block';
+
+      function update() {
+        const elapsed = Date.now() - holdStartTime;
+        const progress = Math.min(elapsed / HOLD_DURATION, 1);
+        const offset = CIRCLE_CIRCUMFERENCE - (CIRCLE_CIRCUMFERENCE * progress);
+        circleProgress.style.strokeDashoffset = offset;
+
+        const remaining = Math.max(0, Math.ceil((HOLD_DURATION - elapsed) / 1000));
+        sosLabel.innerText = remaining + 's';
+        sosSub.innerText = 'HOLDING';
+
+        if (progress >= 1) {
+          triggerEmergencyNow();
+        } else {
+          animFrame = requestAnimationFrame(update);
+        }
+      }
+      animFrame = requestAnimationFrame(update);
+    }
+
+    function cancelHold(e) {
+      if (animFrame) cancelAnimationFrame(animFrame);
+      circleProgress.style.strokeDashoffset = CIRCLE_CIRCUMFERENCE;
+      sosLabel.innerText = 'SOS';
+      sosSub.innerText = 'HOLD 3s';
+      sendNowBtn.style.display = 'none';
+    }
+
+    function triggerEmergencyNow() {
+      cancelHold();
+      switchView('incident');
+    }
+
+    triggerZone.addEventListener('mousedown', startHold);
+    window.addEventListener('mouseup', cancelHold);
+    triggerZone.addEventListener('touchstart', startHold);
+    window.addEventListener('touchend', cancelHold);
+
+    // Safe Modal
+    function openSafeModal() { document.getElementById('safeModal').classList.add('open'); }
+    function closeSafeModal() { document.getElementById('safeModal').classList.remove('open'); }
+    function confirmEndIncident() {
+      closeSafeModal();
+      switchView('dashboard');
+    }
+
+    // Push Invite Simulation
+    function simulatePushInvite() {
+      const banner = document.getElementById('pushBanner');
+      banner.classList.add('active');
+      setTimeout(() => { banner.classList.remove('active'); }, 6000);
+    }
+    function openResponderFromPush() {
+      document.getElementById('pushBanner').classList.remove('active');
+      switchView('responder');
+    }
+    function acceptMission() {
+      document.getElementById('missionActiveArea').style.display = 'block';
+    }
+  </script>
+</body>
+</html>

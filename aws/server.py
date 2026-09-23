@@ -76,6 +76,7 @@ from aws.agent.safety_policy import evaluate_safety_policy
 
 # AWS Services
 from aws.cognito_service import (
+    authenticate_with_google,
     initiate_phone_auth,
     verify_otp,
     refresh_tokens,
@@ -110,19 +111,15 @@ app = FastAPI(
     version="3.0.0",
 )
 
+_allowed_origins_env = os.environ.get("GUARDIAN_ALLOWED_ORIGINS")
+_allowed_origins = [o.strip() for o in _allowed_origins_env.split(",") if o.strip()] if _allowed_origins_env else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("GUARDIAN_ALLOWED_ORIGINS", "").split(",")
-    if os.environ.get("GUARDIAN_ALLOWED_ORIGINS")
-    else ["http://localhost:8000"],
+    allow_origins=_allowed_origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=[
-        "Content-Type",
-        "Authorization",
-        "X-Correlation-ID",
-        "X-Guardian-Session-ID",
-    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -215,6 +212,31 @@ def health_check():
 
 class SendOtpRequest(BaseModel):
     phone_number: str
+
+
+class GoogleAuthRequest(BaseModel):
+    id_token: str = Field(min_length=1)
+    device_label: str = Field(default="Guardian mobile device", max_length=80)
+    platform: str = Field(default="unknown", max_length=20)
+
+
+@app.post("/auth/google")
+def api_google_auth(req: GoogleAuthRequest):
+    """Authenticate via Google ID token, link profile in DynamoDB, and issue session."""
+    try:
+        result = authenticate_with_google(req.id_token)
+        guardian_session = create_session(
+            result["user_id"],
+            result["refresh_token"],
+            req.device_label,
+            req.platform,
+        )
+        result.update(guardian_session)
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=401, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Google authentication failed: {str(e)}")
 
 
 class VerifyOtpRequest(BaseModel):
@@ -582,8 +604,10 @@ def api_create_incident(
     incident = create_incident(payload)
     iid = incident["incident_id"]
 
-    # Trigger autonomous AI agent evaluation in background
-    background_tasks.add_task(execute_agent_reasoning, iid)
+    # In AWS Lambda production, EventBridge asynchronously triggers GuardianAgentFunction
+    # without freezing or racing against API Gateway responses. In local/dev, execute via background task.
+    if not os.environ.get("AWS_EXECUTION_ENV"):
+        background_tasks.add_task(execute_agent_reasoning, iid)
     
     return incident
 

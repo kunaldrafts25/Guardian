@@ -8,10 +8,11 @@
  *   Push:       AWS SNS (via backend API)        — primary
  *   AI:         Amazon Bedrock Claude            — primary
  *   Maps:       OpenStreetMap (free, no key)     — primary
- *   Fallback:   Firebase kept as graceful fallback for existing users
+ *   Transport:  Firebase Messaging device integration behind Amazon SNS
  */
 
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,17 +26,26 @@ import 'package:guardian/core/services/firebase_runtime_options.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'app/app.dart';
 
-// Optional Firebase — only init if Firebase options are present
-// Remove this block entirely once you are fully AWS-migrated
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
-/// FCM background message handler — kept for backward compatibility
+/// Background push handler for Firebase Messaging delivery callbacks.
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  if (!FirebaseRuntimeOptions.isConfigured) return;
-  await Firebase.initializeApp(options: FirebaseRuntimeOptions.current);
+  await FirebaseRuntimeOptions.initialize();
   Logger.info('Background push received: ${message.messageId}');
+  final title = message.notification?.title ??
+      message.data['title'] as String? ??
+      'Guardian Emergency Alert';
+  final body = message.notification?.body ??
+      message.data['body'] as String? ??
+      'Open Guardian to view emergency dispatch.';
+  final payload = jsonEncode(message.data);
+  await AwsSnsService.showLocalNotification(
+    title: title,
+    body: body,
+    payload: payload,
+    id: message.hashCode,
+  );
 }
 
 /// Global navigator key — used for deep-navigation from notifications
@@ -57,23 +67,20 @@ void main() async {
   // 2. Verify backend connectivity (non-blocking)
   _checkBackendConnectivity();
 
-  // ─── Firebase (Graceful Fallback — safe to remove later) ────────────────
+  // ─── Firebase Messaging device integration ─────────────────────────────
 
   try {
-    if (FirebaseRuntimeOptions.isConfigured) {
-      await Firebase.initializeApp(options: FirebaseRuntimeOptions.current);
-      FirebaseMessaging.onBackgroundMessage(
-        _firebaseMessagingBackgroundHandler,
-      );
-      await AwsSnsService.initialize();
-    } else {
-      Logger.warning(
-        'Push is not configured; provide Firebase dart-defines for this build.',
-      );
-    }
+    await FirebaseRuntimeOptions.initialize();
+    FirebaseMessaging.onBackgroundMessage(
+      _firebaseMessagingBackgroundHandler,
+    );
+    await AwsSnsService.initialize();
   } catch (e) {
     // Firebase failure does NOT stop the app — AWS is primary
-    Logger.warning('Push transport initialization failed: $e');
+    Logger.warning(
+      'Push transport is not configured. Add native Firebase configuration '
+      'or provide Firebase dart-defines: $e',
+    );
   }
 
   // ─── Platform Services ───────────────────────────────────────────────────

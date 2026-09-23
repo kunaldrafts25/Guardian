@@ -73,6 +73,12 @@ class SafetyServiceBridge {
   /// Callback fired when hardware 3-tap power button panic is detected
   void Function(Map<String, dynamic> event)? onHardwarePanic;
 
+  /// Callback fired when user deviates significantly from active route
+  void Function(double deviationMeters)? onRouteDeviation;
+
+  /// Callback fired when native sensors detect an anomaly (fall, impact, shake)
+  void Function(String type, Map<String, dynamic> data)? onAnomalyDetected;
+
   SafetyServiceBridge() {
     _serviceChannel.setMethodCallHandler(_handleNativeCall);
     _emergencyChannel.setMethodCallHandler(_handleEmergencyCall);
@@ -129,6 +135,33 @@ class SafetyServiceBridge {
       return null;
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<bool> setActiveRoute(List<Map<String, double>> points) async {
+    try {
+      return await _serviceChannel.invokeMethod<bool>(
+            'setActiveRoute',
+            {'points': points},
+          ) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } catch (e) {
+      Logger.error('Failed to sync active route to service', e);
+      return false;
+    }
+  }
+
+  Future<bool> clearActiveRoute() async {
+    try {
+      return await _serviceChannel.invokeMethod<bool>('clearActiveRoute') ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } catch (e) {
+      Logger.error('Failed to clear active route in service', e);
+      return false;
     }
   }
 
@@ -289,6 +322,21 @@ class SafetyServiceBridge {
         final source = event['source'] as String? ?? 'unknown';
         Logger.info('🚨 SOS triggered from native service: $source');
         onSosTrigger?.call(event);
+        break;
+
+      case 'onRouteDeviation':
+        final args = call.arguments as Map;
+        final deviation = (args['deviation_meters'] as num?)?.toDouble() ?? 0.0;
+        Logger.warning('🚨 Route deviation received from native: ${deviation.round()}m');
+        onRouteDeviation?.call(deviation);
+        break;
+
+      case 'onAnomalyDetected':
+        final args = call.arguments as Map;
+        final type = args['type'] as String? ?? 'unknown';
+        final data = Map<String, dynamic>.from(args['data'] as Map? ?? {});
+        Logger.warning('🚨 Native anomaly detected: $type, data: $data');
+        onAnomalyDetected?.call(type, data);
         break;
 
       default:

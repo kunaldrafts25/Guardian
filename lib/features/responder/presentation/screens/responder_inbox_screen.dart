@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:guardian/app/routes.dart';
+import 'package:guardian/app/theme/app_theme.dart';
 import 'package:guardian/core/services/responder_service.dart';
+import 'package:guardian/core/widgets/guardian_ui.dart';
 
 class ResponderInboxScreen extends StatefulWidget {
   const ResponderInboxScreen({super.key});
@@ -61,23 +63,71 @@ class _ResponderInboxScreenState extends State<ResponderInboxScreen> {
             child: ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: missions.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
                 final mission = missions[index];
+                final isInvited = mission.status == 'INVITED';
                 return Card(
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      child: Icon(
-                        mission.status == 'INVITED'
-                            ? Icons.notification_important_outlined
-                            : Icons.health_and_safety_outlined,
-                      ),
-                    ),
-                    title: Text(_statusLabel(mission.status)),
-                    subtitle: Text(_description(mission)),
-                    trailing: const Icon(Icons.chevron_right),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: const BorderSide(color: AppColors.border),
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
                     onTap: () => context.push(
                       '${Routes.responderMission}/${Uri.encodeComponent(mission.missionId)}',
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: isInvited
+                                  ? AppColors.warning.withValues(alpha: 0.12)
+                                  : AppColors.brandContainer,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              isInvited
+                                  ? Icons.notification_important_rounded
+                                  : Icons.health_and_safety_rounded,
+                              color: isInvited
+                                  ? AppColors.warning
+                                  : AppColors.brand,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _statusLabel(mission.status),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _description(mission),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                          color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.chevron_right_rounded,
+                              color: AppColors.textSecondary),
+                        ],
+                      ),
                     ),
                   ),
                 );

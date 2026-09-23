@@ -1,16 +1,16 @@
 /*
- * Guardian 2.0 - Women's Safety App
- * © 2025 All Rights Reserved - Kunal Singh
- * 
- * Profile Screen - Shows the authenticated DynamoDB profile
+ * Guardian - Mobile Safety App
+ * Profile Screen - Authenticated Profile & Readiness Status
  */
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:guardian/app/routes.dart';
 import 'package:guardian/app/theme/app_theme.dart';
 import 'package:guardian/core/providers/auth_provider.dart';
 import 'package:guardian/core/providers/user_provider.dart';
-import 'package:guardian/core/models/user_model.dart';
+import 'package:guardian/core/widgets/guardian_ui.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -29,18 +29,14 @@ class ProfileScreen extends ConsumerWidget {
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (profile) {
           final displayName =
-              profile?.displayName ?? sessionUser?.displayName ?? 'Guardian';
+              profile?.displayName ?? sessionUser?.displayName ?? 'Guardian User';
           final phoneNumber =
               profile?.phoneNumber ?? sessionUser?.phoneNumber ?? 'No phone';
           final photoUrl = profile?.photoUrl ?? sessionUser?.photoURL;
-          final trustScore = profile?.trustScore ?? 0;
-          final trustRank = profile?.trustRank ?? TrustRank.watcher;
-          final pointsToNext = profile?.pointsToNextRank ?? 50;
           final helpedCount = profile?.helpedCount ?? 0;
           final sosUsedCount = profile?.sosUsedCount ?? 0;
           final walkSessionsCount = profile?.walkSessionsCount ?? 0;
           final isPhoneVerified = profile?.isPhoneVerified ?? true;
-          final isIdVerified = profile?.isIdVerified ?? false;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
@@ -48,201 +44,168 @@ class ProfileScreen extends ConsumerWidget {
               children: [
                 // Profile Avatar
                 Center(
-                  child: Stack(
-                    children: [
-                      CircleAvatar(
-                        radius: 60,
-                        backgroundColor: AppColors.primary.withOpacity(0.2),
-                        backgroundImage:
-                            photoUrl != null ? NetworkImage(photoUrl) : null,
-                        child: photoUrl == null
-                            ? Text(
-                                displayName[0].toUpperCase(),
-                                style: TextStyle(
-                                  fontSize: 48,
-                                  color: AppColors.primary,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              )
-                            : null,
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                          child: const Icon(Icons.camera_alt,
-                              color: Colors.white, size: 16),
-                        ),
-                      ),
-                    ],
+                  child: CircleAvatar(
+                    radius: 54,
+                    backgroundColor: AppColors.brandContainer,
+                    backgroundImage:
+                        photoUrl != null ? NetworkImage(photoUrl) : null,
+                    child: photoUrl == null
+                        ? Text(
+                            displayName.isNotEmpty
+                                ? displayName[0].toUpperCase()
+                                : 'G',
+                            style: const TextStyle(
+                              fontSize: 44,
+                              color: AppColors.brand,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          )
+                        : null,
                   ),
                 ),
-
                 const SizedBox(height: 16),
 
                 // Name
                 Text(
                   displayName,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w700,
                       ),
                 ),
+                const SizedBox(height: 4),
 
                 // Phone
                 Text(
                   phoneNumber,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: Colors.grey,
+                        color: AppColors.textSecondary,
                       ),
                 ),
 
                 const SizedBox(height: 24),
 
-                // Trust Score Card
+                // Verification & Protection Status Card
                 Card(
-                  color: AppColors.guardian.withOpacity(0.1),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: const BorderSide(color: AppColors.border),
+                  ),
                   child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.star,
-                                color: AppColors.guardian, size: 32),
-                            const SizedBox(width: 8),
-                            Text(
-                              '$trustScore',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineLarge
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.guardian,
-                                  ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Trust Points',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 4),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 4),
+                          width: 44,
+                          height: 44,
                           decoration: BoxDecoration(
-                            color: AppColors.guardian.withOpacity(0.2),
+                            color: AppColors.brand.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Text(
-                            _trustRankName(trustRank).toUpperCase(),
-                            style: TextStyle(
-                              color: AppColors.guardian,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
+                          child: const Icon(Icons.verified_user_rounded,
+                              color: AppColors.brand),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Guardian Identity',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                isPhoneVerified
+                                    ? 'Phone verified • Emergency active'
+                                    : 'Phone verification pending',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        LinearProgressIndicator(
-                          value: _progressForRank(trustScore, trustRank),
-                          backgroundColor: Colors.grey[300],
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(AppColors.guardian),
+                        GuardianStatusPill(
+                          label: isPhoneVerified ? 'Verified' : 'Pending',
+                          tone: isPhoneVerified
+                              ? GuardianStatusTone.success
+                              : GuardianStatusTone.warning,
                         ),
-                        const SizedBox(height: 8),
-                        if (trustRank != TrustRank.guardianAngel)
-                          Text(
-                            '$pointsToNext more points to ${_nextRankName(trustRank)}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: Colors.grey),
-                          )
-                        else
-                          Text(
-                            'Maximum rank achieved! 🏆',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: AppColors.guardian),
-                          ),
                       ],
                     ),
                   ),
                 ),
 
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
 
-                // Stats
+                // Truthful Safety Activity Counters
                 Row(
                   children: [
                     Expanded(
-                        child: _StatCard(
-                            title: 'Helped',
-                            value: '$helpedCount',
-                            icon: Icons.volunteer_activism)),
+                      child: _StatCard(
+                        title: 'Assisted',
+                        value: '$helpedCount',
+                        icon: Icons.volunteer_activism_outlined,
+                      ),
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
-                        child: _StatCard(
-                            title: 'SOS Used',
-                            value: '$sosUsedCount',
-                            icon: Icons.emergency)),
+                      child: _StatCard(
+                        title: 'SOS Recorded',
+                        value: '$sosUsedCount',
+                        icon: Icons.emergency_outlined,
+                      ),
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
-                        child: _StatCard(
-                            title: 'Walks',
-                            value: '$walkSessionsCount',
-                            icon: Icons.directions_walk)),
+                      child: _StatCard(
+                        title: 'Walk Checks',
+                        value: '$walkSessionsCount',
+                        icon: Icons.directions_walk_rounded,
+                      ),
+                    ),
                   ],
                 ),
 
                 const SizedBox(height: 24),
 
-                // Verification Status
+                // Account settings / Navigation Actions
                 Card(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: const BorderSide(color: AppColors.border),
+                  ),
                   child: Column(
                     children: [
                       ListTile(
-                        leading: Icon(
-                          Icons.phone_android,
-                          color:
-                              isPhoneVerified ? AppColors.success : Colors.grey,
-                        ),
-                        title: const Text('Phone Verified'),
+                        leading: const Icon(Icons.phone_android_rounded),
+                        title: const Text('Phone Number'),
+                        subtitle: Text(phoneNumber),
                         trailing: Icon(
                           isPhoneVerified
-                              ? Icons.check_circle
-                              : Icons.radio_button_unchecked,
-                          color:
-                              isPhoneVerified ? AppColors.success : Colors.grey,
+                              ? Icons.check_circle_rounded
+                              : Icons.error_outline_rounded,
+                          color: isPhoneVerified
+                              ? AppColors.success
+                              : AppColors.warning,
                         ),
                       ),
-                      const Divider(height: 1),
+                      const Divider(height: 1, indent: 56),
                       ListTile(
-                        leading: Icon(
-                          Icons.badge,
-                          color: isIdVerified ? AppColors.success : Colors.grey,
-                        ),
-                        title: const Text('ID Verification'),
-                        subtitle: isIdVerified
-                            ? const Text('Verified ✓')
-                            : const Text('Verify for +100 trust points'),
-                        trailing: Icon(
-                          isIdVerified
-                              ? Icons.check_circle
-                              : Icons.chevron_right,
-                          color: isIdVerified ? AppColors.success : null,
-                        ),
-                        onTap: null,
+                        leading: const Icon(Icons.people_outline_rounded),
+                        title: const Text('Guardian Circle'),
+                        subtitle: const Text('Manage emergency contacts'),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () => context.push(Routes.contacts),
+                      ),
+                      const Divider(height: 1, indent: 56),
+                      ListTile(
+                        leading: const Icon(Icons.health_and_safety_outlined),
+                        title: const Text('Protection Readiness'),
+                        subtitle: const Text('Hardware and sensor checklist'),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () => context.push(Routes.readiness),
                       ),
                     ],
                   ),
@@ -253,51 +216,6 @@ class ProfileScreen extends ConsumerWidget {
         },
       ),
     );
-  }
-
-  String _trustRankName(TrustRank rank) {
-    switch (rank) {
-      case TrustRank.watcher:
-        return 'Watcher';
-      case TrustRank.walker:
-        return 'Walker';
-      case TrustRank.responder:
-        return 'Responder';
-      case TrustRank.sentinel:
-        return 'Sentinel';
-      case TrustRank.guardianAngel:
-        return 'Guardian Angel';
-    }
-  }
-
-  String _nextRankName(TrustRank rank) {
-    switch (rank) {
-      case TrustRank.watcher:
-        return 'Walker';
-      case TrustRank.walker:
-        return 'Responder';
-      case TrustRank.responder:
-        return 'Sentinel';
-      case TrustRank.sentinel:
-        return 'Guardian Angel';
-      case TrustRank.guardianAngel:
-        return '';
-    }
-  }
-
-  double _progressForRank(int score, TrustRank rank) {
-    switch (rank) {
-      case TrustRank.watcher:
-        return score / 50;
-      case TrustRank.walker:
-        return (score - 50) / 150;
-      case TrustRank.responder:
-        return (score - 200) / 300;
-      case TrustRank.sentinel:
-        return (score - 500) / 500;
-      case TrustRank.guardianAngel:
-        return 1.0;
-    }
   }
 }
 
@@ -315,22 +233,31 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: AppColors.border),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
         child: Column(
           children: [
-            Icon(icon, color: AppColors.primary),
+            Icon(icon, color: AppColors.brand, size: 26),
             const SizedBox(height: 8),
             Text(
               value,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
             ),
+            const SizedBox(height: 2),
             Text(
               title,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey,
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
                   ),
             ),
           ],

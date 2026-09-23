@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:guardian/app/theme/app_theme.dart';
 import 'package:guardian/core/providers/contacts_provider.dart';
 import 'package:guardian/core/services/aws_incident_service.dart';
 import 'package:guardian/core/services/aws_auth_service.dart';
@@ -176,12 +177,31 @@ class _ReadinessScreenState extends ConsumerState<ReadinessScreen> {
               children: [
                 Card(
                   color: ready
-                      ? Theme.of(context).colorScheme.primaryContainer
-                      : Theme.of(context).colorScheme.errorContainer,
+                      ? AppColors.brandContainer.withValues(alpha: 0.4)
+                      : AppColors.emergencyContainer.withValues(alpha: 0.4),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: BorderSide(
+                      color: ready ? AppColors.brand : AppColors.emergency,
+                      width: 1.5,
+                    ),
+                  ),
                   child: ListTile(
-                    leading: Icon(ready ? Icons.verified : Icons.warning_amber),
+                    leading: Icon(
+                      ready
+                          ? Icons.verified_user_rounded
+                          : Icons.warning_amber_rounded,
+                      color: ready ? AppColors.brand : AppColors.emergency,
+                      size: 32,
+                    ),
                     title: Text(
-                        ready ? 'Protection ready' : 'Protection degraded'),
+                      ready ? 'Protection ready' : 'Protection degraded',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color:
+                                ready ? AppColors.brand : AppColors.emergency,
+                          ),
+                    ),
                     subtitle: const Text(
                       'Guardian reports current evidence only; it does not guarantee delivery or universal hardware-trigger support.',
                     ),
@@ -193,9 +213,11 @@ class _ReadinessScreenState extends ConsumerState<ReadinessScreen> {
                     child: ListTile(
                       leading: Icon(
                         check.passed
-                            ? Icons.check_circle
+                            ? Icons.check_circle_rounded
                             : Icons.cancel_outlined,
-                        color: check.passed ? Colors.green : Colors.orange,
+                        color: check.passed
+                            ? AppColors.success
+                            : AppColors.warning,
                       ),
                       title: Text(check.name),
                       subtitle: Text(check.detail),

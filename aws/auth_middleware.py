@@ -80,6 +80,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         "/",
         "/auth/send-otp",
         "/auth/verify-otp",
+        "/auth/google",
         "/auth/refresh",
         "/docs",
         "/docs/oauth2-redirect",

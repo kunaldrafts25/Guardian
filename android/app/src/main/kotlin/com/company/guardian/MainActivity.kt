@@ -67,7 +67,7 @@ class MainActivity : FlutterActivity() {
         // 'service_trigger'     → onServiceSosTrigger (standard notification SOS)
         SafetyForegroundService.onSosTrigger = { source ->
             Handler(Looper.getMainLooper()).post {
-                val methodName = if (source == "hardware_power_panic") "onHardwarePanic" else "onServiceSosTrigger"
+                val methodName = if (source == "hardware_power_panic" || source == "fall_detected") "onHardwarePanic" else "onServiceSosTrigger"
                 val pending = NativeEmergencyStore.pendingEvents(this)
                 val latest = if (pending.length() > 0) {
                     jsonObjectToMap(pending.getJSONObject(pending.length() - 1))
@@ -76,6 +76,18 @@ class MainActivity : FlutterActivity() {
                 }
                 MethodChannel(flutterEngine.dartExecutor.binaryMessenger, EMERGENCY_CHANNEL)
                     .invokeMethod(methodName, latest)
+            }
+        }
+        SafetyForegroundService.onRouteDeviation = { deviationMeters ->
+            Handler(Looper.getMainLooper()).post {
+                MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SERVICE_CHANNEL)
+                    .invokeMethod("onRouteDeviation", mapOf("deviation_meters" to deviationMeters))
+            }
+        }
+        SafetyForegroundService.onAnomalyDetected = { anomalyType, data ->
+            Handler(Looper.getMainLooper()).post {
+                MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SERVICE_CHANNEL)
+                    .invokeMethod("onAnomalyDetected", mapOf("type" to anomalyType, "data" to data))
             }
         }
 
@@ -252,6 +264,20 @@ class MainActivity : FlutterActivity() {
                             actionId != null && NativeEmergencyStore
                                 .acknowledgeCheckInAction(this, actionId)
                         )
+                    }
+                    "setActiveRoute" -> {
+                        val pointsRaw = call.argument<List<Map<String, Any>>>("points") ?: emptyList()
+                        val points = pointsRaw.mapNotNull {
+                            val lat = (it["latitude"] as? Number)?.toDouble()
+                            val lng = (it["longitude"] as? Number)?.toDouble()
+                            if (lat != null && lng != null) Pair(lat, lng) else null
+                        }
+                        SafetyForegroundService.setActiveRoute(points)
+                        result.success(true)
+                    }
+                    "clearActiveRoute" -> {
+                        SafetyForegroundService.clearActiveRoute()
+                        result.success(true)
                     }
                     else -> result.notImplemented()
                 }

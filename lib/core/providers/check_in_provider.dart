@@ -128,7 +128,7 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
     try {
       await _notifications.initialize(
         const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          android: AndroidInitializationSettings('@drawable/ic_notification_guardian'),
           iOS: DarwinInitializationSettings(),
         ),
         onDidReceiveNotificationResponse: _onNotificationResponse,

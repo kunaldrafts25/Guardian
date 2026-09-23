@@ -12,6 +12,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
 import 'package:guardian/core/utils/logger.dart';
+import 'package:guardian/core/services/safety_service_bridge.dart';
 
 /// Route information
 class RouteInfo {
@@ -137,6 +138,13 @@ class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
             currentRoute: routeInfo,
           );
 
+          // Sync polyline points to native foreground service for background route deviation detection
+          SafetyServiceBridge().setActiveRoute(
+            polylinePoints
+                .map((p) => {'latitude': p.latitude, 'longitude': p.longitude})
+                .toList(),
+          );
+
           Logger.info('🗺️ OSRM route: $distanceText, $durationText');
           return;
         }
@@ -198,6 +206,7 @@ class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
   /// Clear current route
   void clearRoute() {
     state = const SafeRouteState();
+    SafetyServiceBridge().clearActiveRoute();
     Logger.info('🗺️ Route cleared');
   }
 
@@ -225,9 +234,16 @@ final routePolylinesProvider = Provider<List<Polyline>>((ref) {
   }
 
   return [
+    // Outer casing / shadow line
     Polyline(
       points: routeState.currentRoute!.polylinePoints,
-      color: const Color(0xFF4CAF50), // Green for safe route
+      color: const Color(0xFF173A2C).withValues(alpha: 0.35),
+      strokeWidth: 8,
+    ),
+    // Core safe walking line in signature deep forest green
+    Polyline(
+      points: routeState.currentRoute!.polylinePoints,
+      color: const Color(0xFF244D3C),
       strokeWidth: 5,
     ),
   ];
@@ -245,17 +261,52 @@ final routeMarkersProvider = Provider<List<Marker>>((ref) {
   if (points.isEmpty) return [];
 
   return [
+    // Origin marker
     Marker(
       point: points.first,
-      width: 40,
-      height: 40,
-      child: const Icon(Icons.my_location, color: Colors.green, size: 28),
+      width: 32,
+      height: 32,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF244D3C),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 3),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Center(
+          child: Icon(Icons.circle, color: Colors.white, size: 10),
+        ),
+      ),
     ),
+    // Destination marker
     Marker(
       point: points.last,
       width: 40,
       height: 40,
-      child: const Icon(Icons.location_on, color: Colors.red, size: 36),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF39705A),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 3),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF39705A).withValues(alpha: 0.4),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: const Center(
+          child: Icon(Icons.flag_rounded, color: Colors.white, size: 20),
+        ),
+      ),
     ),
   ];
 });
+

@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Protection Readiness - SafeHaven</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@500;600;700;800&amp;family=Public+Sans:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "on-tertiary": "#eafcff",
+            "on-primary-fixed-variant": "#3b6451",
+            "inverse-on-surface": "#9e9d98",
+            "surface-container-low": "#f5f4ec",
+            "primary-fixed": "#bfedd5",
+            "on-secondary-fixed-variant": "#75553c",
+            "outline-variant": "#b2b3a9",
+            "secondary-fixed-dim": "#f7ccad",
+            "on-error": "#fff7f6",
+            "tertiary": "#2d676e",
+            "on-tertiary-fixed": "#074c53",
+            "primary-dim": "#325b49",
+            "surface-dim": "#dadbd1",
+            "secondary": "#79583f",
+            "inverse-surface": "#0e0f0b",
+            "error-container": "#fa746f",
+            "primary": "#3e6755",
+            "on-tertiary-container": "#235f66",
+            "on-secondary-container": "#6a4b33",
+            "tertiary-container": "#bbf5fd",
+            "surface-tint": "#3e6755",
+            "on-surface": "#31332c",
+            "tertiary-fixed-dim": "#ade7ef",
+            "surface": "#fbf9f3",
+            "surface-container-lowest": "#ffffff",
+            "outline": "#7a7b73",
+            "on-background": "#31332c",
+            "surface-variant": "#e3e3d9",
+            "tertiary-fixed": "#bbf5fd",
+            "on-secondary-fixed": "#553922",
+            "on-primary-container": "#315a48",
+            "on-surface-variant": "#5e6058",
+            "on-tertiary-fixed-variant": "#2f6970",
+            "error": "#a83836",
+            "secondary-container": "#ffdcc3",
+            "on-error-container": "#6e0a12",
+            "tertiary-dim": "#1f5b62",
+            "inverse-primary": "#d0fee6",
+            "primary-fixed-dim": "#b2dec7",
+            "secondary-fixed": "#ffdcc3",
+            "surface-container-highest": "#e3e3d9",
+            "surface-bright": "#fbf9f3",
+            "background": "#fbf9f3",
+            "secondary-dim": "#6b4d34",
+            "error-dim": "#67040d",
+            "surface-container": "#efeee6",
+            "on-secondary": "#fff7f4",
+            "surface-container-high": "#e9e9e0",
+            "primary-container": "#bfedd5",
+            "on-primary-fixed": "#1d4736",
+            "on-primary": "#e5fff0"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "fontFamily": {
+            "headline": ["Manrope"],
+            "display": ["Manrope"],
+            "body": ["Inter"],
+            "label": ["Public Sans"]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body antialiased selection:bg-primary-container selection:text-on-primary-container min-h-screen pb-28">
+<!-- Mobile Wrapper Frame -->
+<div class="max-w-md mx-auto min-h-screen flex flex-col relative bg-surface shadow-2xl">
+<!-- Top Navigation Bar (Shared Component Anchor) -->
+<header class="sticky top-0 z-40 bg-surface-container-low px-4 py-3 flex justify-between items-center w-full max-w-md mx-auto">
+<div class="flex items-center gap-2.5">
+<div class="w-9 h-9 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container">
+<span class="material-symbols-outlined text-[20px]" data-icon="shield" style="font-variation-settings: 'FILL' 1;">shield</span>
+</div>
+<div>
+<span class="font-headline font-bold text-lg tracking-tight text-primary block leading-none">SafeHaven</span>
+<span class="font-label text-[11px] font-semibold tracking-wide text-on-surface-variant">PROTECTION READINESS</span>
+</div>
+</div>
+<button aria-label="Notifications" class="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-surface-container text-on-surface-variant transition-transform active:scale-95">
+<span class="material-symbols-outlined text-[22px]" data-icon="notifications">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 rounded-full bg-secondary"></span>
+</button>
+</header>
+<!-- Main Content Canvas -->
+<main class="px-4 pt-3 flex-1 flex flex-col gap-4">
+<!-- Hero Summary Card -->
+<section class="bg-surface-container-lowest rounded-xl p-4 shadow-sm border border-surface-container-high/60">
+<div class="flex items-center justify-between gap-4">
+<!-- Circular Score Representation -->
+<div class="relative w-24 h-24 shrink-0 flex items-center justify-center">
+<svg class="w-full h-full -rotate-90" viewbox="0 0 36 36">
+<path class="text-surface-container" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3.5"></path>
+<path class="text-primary transition-all duration-700 ease-out" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="86, 100" stroke-linecap="round" stroke-width="3.5"></path>
+</svg>
+<div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+<span class="font-headline font-extrabold text-xl leading-none text-primary">86%</span>
+<span class="font-label text-[10px] font-bold text-on-surface-variant uppercase mt-0.5">Ready</span>
+</div>
+</div>
+<!-- Hero Status Metrics -->
+<div class="flex-1 min-w-0">
+<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-primary-container text-on-primary-container mb-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+<span class="font-label text-[11px] font-bold uppercase tracking-wider">6 of 7 Systems Operational</span>
+</div>
+<h1 class="font-headline text-sm font-bold text-on-surface leading-snug">
+              Guardian is actively monitoring.
+            </h1>
+<p class="font-body text-xs text-secondary font-medium mt-0.5">
+              1 action recommended for optimal durability.
+            </p>
+</div>
+</div>
+<!-- Telemetry bar & refresh -->
+<div class="mt-3.5 pt-3 border-t border-surface-container flex items-center justify-between text-xs text-on-surface-variant font-label">
+<div class="flex items-center gap-1.5 truncate">
+<span class="material-symbols-outlined text-[15px] text-primary" data-icon="sync_saved_locally">sync_saved_locally</span>
+<span class="truncate">Diagnostic verified 2 mins ago • Live Telemetry</span>
+</div>
+<button class="flex items-center gap-1 px-2 py-1 rounded hover:bg-surface-container text-primary font-semibold text-xs transition-transform active:scale-95 ml-2 shrink-0">
+<span class="material-symbols-outlined text-[15px]" data-icon="refresh">refresh</span>
+<span>Refresh</span>
+</button>
+</div>
+</section>
+<!-- Checklist Section Header -->
+<div class="flex items-center justify-between px-1 pt-1">
+<h2 class="font-headline font-bold text-sm tracking-tight text-on-surface">Subsystem Verification</h2>
+<span class="font-label text-xs font-semibold text-on-surface-variant">7 Checks Performed</span>
+</div>
+<!-- Diagnostic Checks List -->
+<section class="space-y-2.5">
+<!-- Check 1: Trusted Contacts -->
+<article class="bg-surface-container-lowest rounded-xl p-3.5 flex items-start justify-between gap-3 shadow-sm border border-surface-container-high/40 hover:border-surface-container-highest transition-colors">
+<div class="flex items-start gap-3 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-primary mt-0.5 shrink-0">
+<span class="material-symbols-outlined text-[19px]" data-icon="group">group</span>
+</div>
+<div class="min-w-0">
+<h3 class="font-headline text-xs font-bold text-on-surface leading-tight">Trusted Contacts</h3>
+<p class="font-body text-xs text-on-surface-variant mt-0.5 truncate">3 configured (Maya, David, Mom)</p>
+</div>
+</div>
+<span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary-container/70 text-on-primary-container text-[11px] font-label font-bold">
+<span class="material-symbols-outlined text-[13px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+            Operational
+          </span>
+</article>
+<!-- Check 2: Location Services -->
+<article class="bg-surface-container-lowest rounded-xl p-3.5 flex items-start justify-between gap-3 shadow-sm border border-surface-container-high/40 hover:border-surface-container-highest transition-colors">
+<div class="flex items-start gap-3 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-primary mt-0.5 shrink-0">
+<span class="material-symbols-outlined text-[19px]" data-icon="location_on">location_on</span>
+</div>
+<div class="min-w-0">
+<h3 class="font-headline text-xs font-bold text-on-surface leading-tight">Location Services</h3>
+<p class="font-body text-xs text-on-surface-variant mt-0.5 truncate">Always-on high accuracy GPS • ±3m accuracy</p>
+</div>
+</div>
+<span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary-container/70 text-on-primary-container text-[11px] font-label font-bold">
+<span class="material-symbols-outlined text-[13px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+            Operational
+          </span>
+</article>
+<!-- Check 3: Critical Notifications -->
+<article class="bg-surface-container-lowest rounded-xl p-3.5 flex items-start justify-between gap-3 shadow-sm border border-surface-container-high/40 hover:border-surface-container-highest transition-colors">
+<div class="flex items-start gap-3 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-primary mt-0.5 shrink-0">
+<span class="material-symbols-outlined text-[19px]" data-icon="notifications_active">notifications_active</span>
+</div>
+<div class="min-w-0">
+<h3 class="font-headline text-xs font-bold text-on-surface leading-tight">Critical Notifications</h3>
+<p class="font-body text-xs text-on-surface-variant mt-0.5 truncate">Bypass Do Not Disturb enabled for safety alerts</p>
+</div>
+</div>
+<span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary-container/70 text-on-primary-container text-[11px] font-label font-bold">
+<span class="material-symbols-outlined text-[13px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+            Operational
+          </span>
+</article>
+<!-- Check 4: Direct SMS Capability -->
+<article class="bg-surface-container-lowest rounded-xl p-3.5 flex items-start justify-between gap-3 shadow-sm border border-surface-container-high/40 hover:border-surface-container-highest transition-colors">
+<div class="flex items-start gap-3 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-primary mt-0.5 shrink-0">
+<span class="material-symbols-outlined text-[19px]" data-icon="sms">sms</span>
+</div>
+<div class="min-w-0">
+<h3 class="font-headline text-xs font-bold text-on-surface leading-tight">Direct SMS Capability</h3>
+<p class="font-body text-xs text-on-surface-variant mt-0.5 truncate">Android direct SMS active • Offline fallback ready</p>
+</div>
+</div>
+<span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary-container/70 text-on-primary-container text-[11px] font-label font-bold">
+<span class="material-symbols-outlined text-[13px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+            Operational
+          </span>
+</article>
+<!-- Check 5: Protection Background Service -->
+<article class="bg-surface-container-lowest rounded-xl p-3.5 flex items-start justify-between gap-3 shadow-sm border border-surface-container-high/40 hover:border-surface-container-highest transition-colors">
+<div class="flex items-start gap-3 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-primary mt-0.5 shrink-0">
+<span class="material-symbols-outlined text-[19px]" data-icon="security">security</span>
+</div>
+<div class="min-w-0">
+<h3 class="font-headline text-xs font-bold text-on-surface leading-tight">Protection Background Service</h3>
+<p class="font-body text-xs text-on-surface-variant mt-0.5 truncate">Foreground safety service running continuously</p>
+</div>
+</div>
+<span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary-container/70 text-on-primary-container text-[11px] font-label font-bold">
+<span class="material-symbols-outlined text-[13px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+            Operational
+          </span>
+</article>
+<!-- Check 6: Battery Optimization (Highlighted Warning Card) -->
+<article class="bg-secondary-container/40 rounded-xl p-4 border border-secondary/30 shadow-sm relative overflow-hidden">
+<div class="flex items-start justify-between gap-2">
+<div class="flex items-start gap-3">
+<div class="w-8 h-8 rounded-lg bg-secondary text-on-secondary flex items-center justify-center shrink-0 mt-0.5">
+<span class="material-symbols-outlined text-[20px]" data-icon="battery_alert">battery_alert</span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<h3 class="font-headline text-sm font-bold text-on-surface">Battery Optimization</h3>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-fixed text-[11px] font-label font-bold border border-secondary/20">
+<span class="material-symbols-outlined text-[12px]" data-icon="warning" style="font-variation-settings: 'FILL' 1;">warning</span>
+                    Action Needed
+                  </span>
+</div>
+<p class="font-body text-xs text-secondary-dim font-medium mt-1 leading-relaxed">
+                  Background restriction detected — Guardian may sleep when screen is off
+                </p>
+</div>
+</div>
+</div>
+<div class="mt-3.5 pt-2.5 border-t border-secondary/20 flex justify-end">
+<button class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-on-secondary font-label text-xs font-bold hover:bg-secondary-dim active:scale-95 transition-all shadow-sm">
+<span>Exclude from optimization</span>
+<span class="material-symbols-outlined text-[15px]" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Check 7: Cloud & Carrier Connectivity -->
+<article class="bg-surface-container-lowest rounded-xl p-3.5 flex items-start justify-between gap-3 shadow-sm border border-surface-container-high/40 hover:border-surface-container-highest transition-colors">
+<div class="flex items-start gap-3 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-primary mt-0.5 shrink-0">
+<span class="material-symbols-outlined text-[19px]" data-icon="cell_tower">cell_tower</span>
+</div>
+<div class="min-w-0">
+<h3 class="font-headline text-xs font-bold text-on-surface leading-tight">Cloud &amp; Carrier Connectivity</h3>
+<p class="font-body text-xs text-on-surface-variant mt-0.5 truncate">WebSocket active • Carrier handshake OK</p>
+</div>
+</div>
+<span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary-container/70 text-on-primary-container text-[11px] font-label font-bold">
+<span class="material-symbols-outlined text-[13px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+            Operational
+          </span>
+</article>
+</section>
+<!-- Action Panel -->
+<section class="mt-2 space-y-2.5">
+<!-- Primary Action Button -->
+<button class="w-full py-3.5 px-4 rounded-xl bg-primary text-on-primary font-headline text-sm font-bold flex items-center justify-center gap-2 hover:bg-primary-dim active:scale-98 transition-all shadow-md">
+<span class="material-symbols-outlined text-[19px]" data-icon="sync">sync</span>
+<span>Run Full Hardware &amp; Carrier Diagnostic</span>
+</button>
+<!-- Secondary Action Button -->
+<button class="w-full py-2.5 px-4 rounded-xl bg-surface-container-lowest text-on-surface border border-surface-container-high hover:bg-surface-container-low font-headline text-xs font-bold flex items-center justify-center gap-2 active:scale-98 transition-all">
+<span class="material-symbols-outlined text-[17px] text-secondary" data-icon="sms">sms</span>
+<span>Send Non-Emergency Test Alert</span>
+</button>
+<!-- Footnote Information -->
+<p class="px-2 pt-1 font-body text-[11px] leading-relaxed text-on-surface-variant text-center">
+          SafeHaven runs silent local checks hourly to ensure hardware sensors, emergency SMS pipelines, and location beacons are unhindered.
+        </p>
+</section>
+</main>
+<!-- Bottom Navigation Bar (Shared Component Anchor) -->
+<nav class="fixed bottom-0 left-0 right-0 w-full z-50 flex justify-around items-center px-4 py-2 max-w-md mx-auto bg-surface-container-lowest shadow-sm">
+<!-- Destination 1: Home -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:text-primary transition-colors active:scale-95" href="#">
+<span class="material-symbols-outlined text-[22px]" data-icon="home">home</span>
+<span class="font-label text-xs font-medium mt-0.5">Home</span>
+</a>
+<!-- Destination 2: Map -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:text-primary transition-colors active:scale-95" href="#">
+<span class="material-symbols-outlined text-[22px]" data-icon="explore">explore</span>
+<span class="font-label text-xs font-medium mt-0.5">Map</span>
+</a>
+<!-- Destination 3: Circle -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:text-primary transition-colors active:scale-95" href="#">
+<span class="material-symbols-outlined text-[22px]" data-icon="group">group</span>
+<span class="font-label text-xs font-medium mt-0.5">Circle</span>
+</a>
+<!-- Destination 4: Settings (Active Item) -->
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-4 py-1.5 font-semibold active:scale-95 transition-transform" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="settings" style="font-variation-settings: 'FILL' 1;">settings</span>
+<span class="font-label text-xs mt-0.5">Settings</span>
+</a>
+</nav>
+</div>
+</body></html>
