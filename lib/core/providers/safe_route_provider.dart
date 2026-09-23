@@ -309,4 +309,3 @@ final routeMarkersProvider = Provider<List<Marker>>((ref) {
     ),
   ];
 });
-

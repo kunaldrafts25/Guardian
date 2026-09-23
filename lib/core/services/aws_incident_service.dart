@@ -22,7 +22,8 @@ class AwsIncidentService {
   /// Can be set via --dart-define=AWS_API_ENDPOINT=https://...
   static const String _configuredEndpoint = String.fromEnvironment(
     'AWS_API_ENDPOINT',
-    defaultValue: 'https://3v1rfjbkq1.execute-api.ap-south-1.amazonaws.com/Prod',
+    defaultValue:
+        'https://3v1rfjbkq1.execute-api.ap-south-1.amazonaws.com/Prod',
   );
 
   String get baseUrl {

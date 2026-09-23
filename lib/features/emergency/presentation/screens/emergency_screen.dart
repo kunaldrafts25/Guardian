@@ -319,12 +319,10 @@ class _HoldControl extends StatelessWidget {
                               .textTheme
                               .displayLarge
                               ?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontFeatures: const [
-                                  FontFeature.tabularFigures()
-                                ],
-                              ),
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
                         )
                       else ...[
                         const Icon(Icons.sos_rounded,

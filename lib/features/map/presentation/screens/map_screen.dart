@@ -82,7 +82,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   : 'OpenStreetMap • Offline Cached',
               style: theme.textTheme.bodySmall?.copyWith(
                 fontSize: 11,
-                color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                color: isDark
+                    ? AppColors.textSecondaryDark
+                    : AppColors.textSecondary,
               ),
             ),
           ],
@@ -224,9 +226,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         height: 16,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: isDark
-                              ? AppColors.brandDark
-                              : AppColors.brand,
+                          color: isDark ? AppColors.brandDark : AppColors.brand,
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -253,8 +253,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             bottom: 20,
             child: routeState.hasRoute
                 ? _buildRouteNavigationHUD(context, ref, routeState, isDark)
-                : _buildSafeZoneSummaryHUD(
-                    context, ref, safeZoneState, isDark),
+                : _buildSafeZoneSummaryHUD(context, ref, safeZoneState, isDark),
           ),
         ],
       ),
@@ -324,7 +323,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     ),
                     const SizedBox(width: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(999),
@@ -354,7 +354,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 const SizedBox(height: 2),
                 const Row(
                   children: [
-                    Icon(Icons.shield_rounded, size: 11, color: Color(0xFF82B89D)),
+                    Icon(Icons.shield_rounded,
+                        size: 11, color: Color(0xFF82B89D)),
                     SizedBox(width: 4),
                     Expanded(
                       child: Text(
@@ -405,7 +406,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 onTap: () => context.push(Routes.emergency),
                 borderRadius: BorderRadius.circular(6),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: AppColors.emergency,
                     borderRadius: BorderRadius.circular(6),
@@ -472,7 +474,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   'Auto-check in 28s • Deviation logged',
                   style: TextStyle(
                     fontSize: 11,
-                    color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                    color: isDark
+                        ? AppColors.textSecondaryDark
+                        : AppColors.textSecondary,
                   ),
                 ),
               ],
@@ -641,9 +645,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Color _getModeColor(LocationMode mode, bool isDark) {
     switch (mode) {
       case LocationMode.ghost:
-        return isDark
-            ? AppColors.textSecondaryDark
-            : AppColors.textSecondary;
+        return isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
       case LocationMode.smart:
         return isDark ? AppColors.warningDark : AppColors.warning;
       case LocationMode.guardian:
@@ -688,9 +690,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.borderDark
-                          : AppColors.border,
+                      color: isDark ? AppColors.borderDark : AppColors.border,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -778,7 +778,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           decoration: BoxDecoration(
             color: isSelected
                 ? color.withValues(alpha: 0.1)
-                : (isDark ? AppColors.surfaceMutedDark : AppColors.surfaceMuted),
+                : (isDark
+                    ? AppColors.surfaceMutedDark
+                    : AppColors.surfaceMuted),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isSelected ? color : Colors.transparent,
@@ -877,15 +879,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                        color: isDark
+                            ? AppColors.textSecondaryDark
+                            : AppColors.textSecondary,
                       ),
                     ),
                   ],
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.brandContainerDark : AppColors.brandContainer,
+                    color: isDark
+                        ? AppColors.brandContainerDark
+                        : AppColors.brandContainer,
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Row(
@@ -918,7 +925,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: isDark ? AppColors.surfaceMutedDark : AppColors.surfaceMuted,
+                color: isDark
+                    ? AppColors.surfaceMutedDark
+                    : AppColors.surfaceMuted,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: isDark ? AppColors.borderDark : AppColors.border,
@@ -926,7 +935,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.campaign_outlined, size: 20, color: AppColors.emergency),
+                  const Icon(Icons.campaign_outlined,
+                      size: 20, color: AppColors.emergency),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -943,7 +953,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           'Tap for instant 105dB strobe & audio alarm',
                           style: TextStyle(
                             fontSize: 11,
-                            color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                            color: isDark
+                                ? AppColors.textSecondaryDark
+                                : AppColors.textSecondary,
                           ),
                         ),
                       ],
@@ -954,10 +966,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.emergency,
                       side: const BorderSide(color: AppColors.emergency),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
                       minimumSize: Size.zero,
                     ),
-                    child: const Text('ARM', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                    child: const Text('ARM',
+                        style: TextStyle(
+                            fontSize: 11, fontWeight: FontWeight.w800)),
                   ),
                 ],
               ),
@@ -972,7 +987,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 onPressed: () {
                   ref.read(safeRouteProvider.notifier).clearRoute();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Safe arrival confirmed! Trusted circle notified.')),
+                    const SnackBar(
+                        content: Text(
+                            'Safe arrival confirmed! Trusted circle notified.')),
                   );
                 },
                 style: ElevatedButton.styleFrom(
@@ -1335,9 +1352,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.borderDark
-                          : AppColors.border,
+                      color: isDark ? AppColors.borderDark : AppColors.border,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -1488,8 +1503,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
                       border: Border.all(
-                        color:
-                            isDark ? AppColors.borderDark : AppColors.border,
+                        color: isDark ? AppColors.borderDark : AppColors.border,
                       ),
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -1497,9 +1511,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       children: [
                         Icon(Icons.search_rounded,
                             size: 18,
-                            color: isDark
-                                ? AppColors.brandDark
-                                : AppColors.brand),
+                            color:
+                                isDark ? AppColors.brandDark : AppColors.brand),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
@@ -1576,9 +1589,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: isDark
-                        ? AppColors.borderDark
-                        : AppColors.border,
+                    color: isDark ? AppColors.borderDark : AppColors.border,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),

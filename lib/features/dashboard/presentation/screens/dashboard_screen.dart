@@ -94,12 +94,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: isDark ? AppColors.brandContainerDark : AppColors.brandContainer,
+                color: isDark
+                    ? AppColors.brandContainerDark
+                    : AppColors.brandContainer,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Center(
                 child: SvgPicture.asset(
-                  isDark ? 'assets/icons/guardian_symbol_dark.svg' : 'assets/icons/guardian_symbol.svg',
+                  isDark
+                      ? 'assets/icons/guardian_symbol_dark.svg'
+                      : 'assets/icons/guardian_symbol.svg',
                   width: 20,
                   height: 20,
                   placeholderBuilder: (ctx) => Icon(
@@ -125,7 +129,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             tooltip: 'Profile and Settings',
             icon: CircleAvatar(
               radius: 16,
-              backgroundColor: isDark ? AppColors.brandContainerDark : AppColors.brandContainer,
+              backgroundColor: isDark
+                  ? AppColors.brandContainerDark
+                  : AppColors.brandContainer,
               child: Text(
                 firstName != null && firstName.isNotEmpty
                     ? firstName[0].toUpperCase()
@@ -172,7 +178,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                 height: 7,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: isDark ? AppColors.brandDark : AppColors.brand,
+                                  color: isDark
+                                      ? AppColors.brandDark
+                                      : AppColors.brand,
                                 ),
                               ),
                               const SizedBox(width: 6),
@@ -181,7 +189,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                   'Monitored safe space • Calm protection',
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.bodySmall?.copyWith(
-                                    color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                                    color: isDark
+                                        ? AppColors.textSecondaryDark
+                                        : AppColors.textSecondary,
                                   ),
                                 ),
                               ),
@@ -212,7 +222,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
                 // Bento Quick Action Grid (Responsive: 2-column or stacked for <360px)
                 if (isCompact) ...[
-                  _CheckInBentoCard(onTap: () => context.push(Routes.quickActions)),
+                  _CheckInBentoCard(
+                      onTap: () => context.push(Routes.quickActions)),
                   const SizedBox(height: 10),
                   _CircleBentoCard(
                     contactsCount: contacts.length,
@@ -222,7 +233,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   Row(
                     children: [
                       Expanded(
-                        child: _CheckInBentoCard(onTap: () => context.push(Routes.quickActions)),
+                        child: _CheckInBentoCard(
+                            onTap: () => context.push(Routes.quickActions)),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -237,14 +249,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 const SizedBox(height: 20),
 
                 // Safety Tools Section Header
-                const GuardianSectionHeader(title: 'Safety diagnostics & tools'),
+                const GuardianSectionHeader(
+                    title: 'Safety diagnostics & tools'),
                 const SizedBox(height: 10),
 
                 // Readiness Diagnostic
                 GuardianActionCard(
                   icon: Icons.health_and_safety_outlined,
                   title: 'Protection readiness',
-                  description: '6 of 7 systems operational • Verify hardware and SMS durability.',
+                  description:
+                      '6 of 7 systems operational • Verify hardware and SMS durability.',
                   onTap: () => context.push(Routes.readiness),
                   tone: GuardianStatusTone.neutral,
                 ),
@@ -254,7 +268,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 GuardianActionCard(
                   icon: Icons.location_on_outlined,
                   title: 'Saved places & zones',
-                  description: 'Manage safe routes, geofences, and quiet areas.',
+                  description:
+                      'Manage safe routes, geofences, and quiet areas.',
                   onTap: () => context.push(Routes.safeZones),
                 ),
 
@@ -264,7 +279,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   GuardianActionCard(
                     icon: Icons.volunteer_activism_outlined,
                     title: 'Responder requests',
-                    description: 'Review nearby invitations you are authorized to see.',
+                    description:
+                        'Review nearby invitations you are authorized to see.',
                     onTap: () => context.push(Routes.responderInbox),
                     tone: GuardianStatusTone.success,
                   ),
@@ -319,10 +335,14 @@ class _ProtectionBanner extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     final containerColor = status.tone == GuardianStatusTone.emergency
-        ? (isDark ? AppColors.emergencyContainerDark : AppColors.emergencyContainer)
+        ? (isDark
+            ? AppColors.emergencyContainerDark
+            : AppColors.emergencyContainer)
         : status.tone == GuardianStatusTone.warning
             ? (isDark ? const Color(0xFF422B14) : const Color(0xFFFAF1E3))
-            : (isDark ? AppColors.brandContainerDark : AppColors.brandContainer);
+            : (isDark
+                ? AppColors.brandContainerDark
+                : AppColors.brandContainer);
 
     return InkWell(
       onTap: status.onTap,
@@ -356,7 +376,9 @@ class _ProtectionBanner extends StatelessWidget {
                     status.title,
                     style: theme.textTheme.labelLarge?.copyWith(
                       fontWeight: FontWeight.w700,
-                      color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+                      color: isDark
+                          ? AppColors.textPrimaryDark
+                          : AppColors.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 1),
@@ -366,7 +388,9 @@ class _ProtectionBanner extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontSize: 12,
-                      color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                      color: isDark
+                          ? AppColors.textSecondaryDark
+                          : AppColors.textSecondary,
                     ),
                   ),
                 ],
@@ -446,13 +470,18 @@ class _SosEmergencyCard extends StatelessWidget {
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.8,
-                      color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                      color: isDark
+                          ? AppColors.textSecondaryDark
+                          : AppColors.textSecondary,
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: isDark ? AppColors.surfaceMutedDark : AppColors.surfaceMuted,
+                      color: isDark
+                          ? AppColors.surfaceMutedDark
+                          : AppColors.surfaceMuted,
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Row(
@@ -461,7 +490,9 @@ class _SosEmergencyCard extends StatelessWidget {
                         Icon(
                           Icons.lock_outline_rounded,
                           size: 11,
-                          color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                          color: isDark
+                              ? AppColors.textSecondaryDark
+                              : AppColors.textSecondary,
                         ),
                         const SizedBox(width: 4),
                         Text(
@@ -469,7 +500,9 @@ class _SosEmergencyCard extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
-                            color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                            color: isDark
+                                ? AppColors.textSecondaryDark
+                                : AppColors.textSecondary,
                           ),
                         ),
                       ],
@@ -498,7 +531,8 @@ class _SosEmergencyCard extends StatelessWidget {
                               height: 156,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: emergencyColor.withValues(alpha: pulseOpacity.value),
+                                color: emergencyColor.withValues(
+                                    alpha: pulseOpacity.value),
                               ),
                             ),
                           );
@@ -538,7 +572,9 @@ class _SosEmergencyCard extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(
-                                  active ? Icons.warning_amber_rounded : Icons.crisis_alert_rounded,
+                                  active
+                                      ? Icons.warning_amber_rounded
+                                      : Icons.crisis_alert_rounded,
                                   size: 34,
                                   color: Colors.white,
                                 ),
@@ -565,7 +601,9 @@ class _SosEmergencyCard extends StatelessWidget {
 
               // Reassurance guidance text
               Text(
-                active ? 'Emergency incident is active' : 'Press and hold for SOS',
+                active
+                    ? 'Emergency incident is active'
+                    : 'Press and hold for SOS',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -577,7 +615,9 @@ class _SosEmergencyCard extends StatelessWidget {
                     : 'Hold 3s to alert emergency contacts & dispatch with real-time location.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                  color: isDark
+                      ? AppColors.textSecondaryDark
+                      : AppColors.textSecondary,
                 ),
               ),
               const SizedBox(height: 14),
@@ -588,7 +628,9 @@ class _SosEmergencyCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   border: Border(
                     top: BorderSide(
-                      color: isDark ? AppColors.borderDark : AppColors.dividerColor,
+                      color: isDark
+                          ? AppColors.borderDark
+                          : AppColors.dividerColor,
                     ),
                   ),
                 ),
@@ -598,7 +640,9 @@ class _SosEmergencyCard extends StatelessWidget {
                     Icon(
                       Icons.verified_user_outlined,
                       size: 13,
-                      color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                      color: isDark
+                          ? AppColors.textSecondaryDark
+                          : AppColors.textSecondary,
                     ),
                     const SizedBox(width: 5),
                     Text(
@@ -606,7 +650,9 @@ class _SosEmergencyCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
-                        color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                        color: isDark
+                            ? AppColors.textSecondaryDark
+                            : AppColors.textSecondary,
                       ),
                     ),
                   ],
@@ -650,7 +696,9 @@ class _CheckInBentoCard extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: isDark ? AppColors.surfaceMutedDark : AppColors.surfaceMuted,
+                  color: isDark
+                      ? AppColors.surfaceMutedDark
+                      : AppColors.surfaceMuted,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(Icons.timer_outlined, size: 20, color: primary),
@@ -669,7 +717,9 @@ class _CheckInBentoCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
                   fontSize: 11,
-                  color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                  color: isDark
+                      ? AppColors.textSecondaryDark
+                      : AppColors.textSecondary,
                 ),
               ),
               const SizedBox(height: 14),
@@ -709,7 +759,8 @@ class _CircleBentoCard extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final primary = isDark ? AppColors.brandDark : AppColors.brand;
-    final earth = isDark ? AppColors.secondaryAccentDark : AppColors.secondaryAccent;
+    final earth =
+        isDark ? AppColors.secondaryAccentDark : AppColors.secondaryAccent;
 
     return Card(
       shape: RoundedRectangleBorder(
@@ -736,14 +787,20 @@ class _CircleBentoCard extends StatelessWidget {
                       color: earth.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(Icons.people_outline_rounded, size: 20, color: earth),
+                    child: Icon(Icons.people_outline_rounded,
+                        size: 20, color: earth),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                     decoration: BoxDecoration(
                       color: contactsCount > 0
-                          ? (isDark ? AppColors.brandContainerDark : AppColors.brandContainer)
-                          : (isDark ? const Color(0xFF422B14) : const Color(0xFFFAF1E3)),
+                          ? (isDark
+                              ? AppColors.brandContainerDark
+                              : AppColors.brandContainer)
+                          : (isDark
+                              ? const Color(0xFF422B14)
+                              : const Color(0xFFFAF1E3)),
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
@@ -753,7 +810,9 @@ class _CircleBentoCard extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: contactsCount > 0
                             ? primary
-                            : (isDark ? AppColors.warningDark : AppColors.warning),
+                            : (isDark
+                                ? AppColors.warningDark
+                                : AppColors.warning),
                       ),
                     ),
                   ),
@@ -775,7 +834,9 @@ class _CircleBentoCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
                   fontSize: 11,
-                  color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
+                  color: isDark
+                      ? AppColors.textSecondaryDark
+                      : AppColors.textSecondary,
                 ),
               ),
               const SizedBox(height: 14),
@@ -800,5 +861,3 @@ class _CircleBentoCard extends StatelessWidget {
     );
   }
 }
-
-

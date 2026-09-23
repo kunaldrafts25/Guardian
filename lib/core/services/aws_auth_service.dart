@@ -105,7 +105,8 @@ class AwsAuthService {
   /// The backend API base URL — injected at build time via --dart-define
   static const String _apiBase = String.fromEnvironment(
     'AWS_API_ENDPOINT',
-    defaultValue: 'https://3v1rfjbkq1.execute-api.ap-south-1.amazonaws.com/Prod',
+    defaultValue:
+        'https://3v1rfjbkq1.execute-api.ap-south-1.amazonaws.com/Prod',
   );
 
   String get _baseUrl {
@@ -609,7 +610,8 @@ class AwsAuthService {
     if (displayName != null) {
       await _storage.write(key: _kDisplayName, value: displayName);
     }
-    if (photoUrl != null) await _storage.write(key: _kPhotoUrl, value: photoUrl);
+    if (photoUrl != null)
+      await _storage.write(key: _kPhotoUrl, value: photoUrl);
     await _storage.write(key: _kAuthProvider, value: authProvider);
 
     Logger.info(

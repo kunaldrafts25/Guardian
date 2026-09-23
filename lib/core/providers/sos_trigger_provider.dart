@@ -97,8 +97,10 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
       Logger.info('🚨 Native service SOS trigger: $source');
       if (event['event_id'] != null) {
         unawaited(_ingestNativeEvent(event));
-      } else if (source == 'hardware_power_panic' || source == 'fall_detected') {
-        unawaited(_ref.read(emergencyProvider.notifier).triggerFromHardwarePanic());
+      } else if (source == 'hardware_power_panic' ||
+          source == 'fall_detected') {
+        unawaited(
+            _ref.read(emergencyProvider.notifier).triggerFromHardwarePanic());
       } else if (source == 'shake_sos') {
         _triggerSosIfNotActive(SosTriggerSource.shake);
       } else {
@@ -106,13 +108,15 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
       }
     };
     _bridge!.onRouteDeviation = (deviationMeters) {
-      Logger.warning('🚨 Route deviation received: ${deviationMeters.round()}m');
+      Logger.warning(
+          '🚨 Route deviation received: ${deviationMeters.round()}m');
       _triggerSosIfNotActive(SosTriggerSource.button);
     };
     _bridge!.onAnomalyDetected = (type, data) {
       Logger.warning('🚨 Anomaly detected: $type, data: $data');
       if (type == 'fall_detected') {
-        unawaited(_ref.read(emergencyProvider.notifier).triggerFromHardwarePanic());
+        unawaited(
+            _ref.read(emergencyProvider.notifier).triggerFromHardwarePanic());
       } else if (type == 'shake_sos') {
         _triggerSosIfNotActive(SosTriggerSource.shake);
       }

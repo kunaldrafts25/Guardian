@@ -131,12 +131,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                           const SizedBox(height: 8),
                           Text(
                             'Warm Safety System',
-                            style:
-                                Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                      color: Colors.white.withValues(alpha: 0.8),
-                                      fontWeight: FontWeight.w500,
-                                      letterSpacing: 0.5,
-                                    ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyLarge
+                                ?.copyWith(
+                                  color: Colors.white.withValues(alpha: 0.8),
+                                  fontWeight: FontWeight.w500,
+                                  letterSpacing: 0.5,
+                                ),
                           ),
                         ],
                       ),

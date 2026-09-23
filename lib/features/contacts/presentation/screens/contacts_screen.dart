@@ -172,15 +172,17 @@ class ContactsScreen extends ConsumerWidget {
           child: Text(
             contact.name[0].toUpperCase(),
             style: TextStyle(
-              color:
-                  contact.isPrimary ? AppColors.brand : AppColors.secondaryAccent,
+              color: contact.isPrimary
+                  ? AppColors.brand
+                  : AppColors.secondaryAccent,
               fontWeight: FontWeight.bold,
             ),
           ),
         ),
         title: Row(
           children: [
-            Flexible(child: Text(contact.name, overflow: TextOverflow.ellipsis)),
+            Flexible(
+                child: Text(contact.name, overflow: TextOverflow.ellipsis)),
             if (contact.isPrimary) ...[
               const SizedBox(width: 8),
               Container(
@@ -188,7 +190,8 @@ class ContactsScreen extends ConsumerWidget {
                 decoration: BoxDecoration(
                   color: AppColors.brandContainer,
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: AppColors.brand.withValues(alpha: 0.3)),
+                  border:
+                      Border.all(color: AppColors.brand.withValues(alpha: 0.3)),
                 ),
                 child: const Text(
                   'Primary',

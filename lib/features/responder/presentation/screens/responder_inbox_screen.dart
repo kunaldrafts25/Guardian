@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 import 'package:guardian/app/routes.dart';
 import 'package:guardian/app/theme/app_theme.dart';
 import 'package:guardian/core/services/responder_service.dart';
-import 'package:guardian/core/widgets/guardian_ui.dart';
 
 class ResponderInboxScreen extends StatefulWidget {
   const ResponderInboxScreen({super.key});

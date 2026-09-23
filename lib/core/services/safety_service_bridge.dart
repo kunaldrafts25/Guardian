@@ -327,7 +327,8 @@ class SafetyServiceBridge {
       case 'onRouteDeviation':
         final args = call.arguments as Map;
         final deviation = (args['deviation_meters'] as num?)?.toDouble() ?? 0.0;
-        Logger.warning('🚨 Route deviation received from native: ${deviation.round()}m');
+        Logger.warning(
+            '🚨 Route deviation received from native: ${deviation.round()}m');
         onRouteDeviation?.call(deviation);
         break;
 

@@ -106,16 +106,20 @@ abstract final class AppTheme {
       onPrimary: dark ? AppColors.textPrimary : Colors.white,
       primaryContainer: primaryContainer,
       onPrimaryContainer: dark ? AppColors.brandDark : AppColors.brandPressed,
-      secondary: dark ? AppColors.secondaryAccentDark : AppColors.secondaryAccent,
+      secondary:
+          dark ? AppColors.secondaryAccentDark : AppColors.secondaryAccent,
       onSecondary: dark ? AppColors.textPrimary : Colors.white,
-      secondaryContainer: dark ? const Color(0xFF382A20) : const Color(0xFFF3ECE6),
-      onSecondaryContainer: dark ? AppColors.secondaryAccentDark : AppColors.secondaryAccent,
+      secondaryContainer:
+          dark ? const Color(0xFF382A20) : const Color(0xFFF3ECE6),
+      onSecondaryContainer:
+          dark ? AppColors.secondaryAccentDark : AppColors.secondaryAccent,
       tertiary: dark ? AppColors.successDark : AppColors.success,
       onTertiary: dark ? AppColors.textPrimary : Colors.white,
       error: emergency,
       onError: Colors.white,
       errorContainer: emergencyContainer,
-      onErrorContainer: dark ? AppColors.emergencyDark : AppColors.emergencyPressed,
+      onErrorContainer:
+          dark ? AppColors.emergencyDark : AppColors.emergencyPressed,
       surface: surface,
       onSurface: onSurface,
       surfaceContainerHighest: muted,

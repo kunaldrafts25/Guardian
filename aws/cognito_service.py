@@ -221,6 +221,28 @@ def refresh_tokens(refresh_token: str) -> Dict[str, Any]:
         raise ValueError(f"Token refresh failed: {ce.response['Error']['Message']}")
 
 
+def _verify_google_payload(id_token_str: str) -> Dict[str, Any]:
+    """Cryptographic verification via google.oauth2.id_token or Google tokeninfo endpoint."""
+    try:
+        from google.oauth2 import id_token
+        from google.auth.transport import requests as google_requests
+
+        req = google_requests.Request()
+        audience = GOOGLE_CLIENT_ID if GOOGLE_CLIENT_ID else None
+        return id_token.verify_oauth2_token(id_token_str, req, audience=audience)
+    except Exception as library_err:
+        logger.info(f"Local google-auth transport note: {library_err}. Using Google tokeninfo endpoint.")
+        import urllib.request
+        import json
+        tokeninfo_url = f"https://oauth2.googleapis.com/tokeninfo?id_token={id_token_str}"
+        req = urllib.request.Request(tokeninfo_url, headers={"User-Agent": "Guardian-Backend"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            id_info = json.loads(resp.read().decode("utf-8"))
+        if "error" in id_info:
+            raise ValueError(id_info.get("error_description", id_info["error"]))
+        return id_info
+
+
 def authenticate_with_google(id_token_str: str) -> Dict[str, Any]:
     """
     Authenticate with Google ID Token.
@@ -245,14 +267,8 @@ def authenticate_with_google(id_token_str: str) -> Dict[str, Any]:
         name = f"Guardian User ({user_suffix})"
         picture = "https://lh3.googleusercontent.com/a/default-user"
     else:
-        # Cryptographic verification via google.oauth2.id_token
         try:
-            from google.oauth2 import id_token
-            from google.auth.transport import requests as google_requests
-
-            req = google_requests.Request()
-            audience = GOOGLE_CLIENT_ID if GOOGLE_CLIENT_ID else None
-            id_info = id_token.verify_oauth2_token(id_token_str, req, audience=audience)
+            id_info = _verify_google_payload(id_token_str)
 
             if id_info.get("iss") not in ["accounts.google.com", "https://accounts.google.com"]:
                 raise ValueError("Invalid Google token issuer")

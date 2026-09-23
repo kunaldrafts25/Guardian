@@ -370,6 +370,9 @@ Resources:
         RefreshToken:
           Type: Api
           Properties: {Path: /auth/refresh, Method: post, Auth: {Authorizer: NONE}}
+        GoogleAuth:
+          Type: Api
+          Properties: {Path: /auth/google, Method: post, Auth: {Authorizer: NONE}}
         ProtectedApi:
           Type: Api
           Properties: {Path: '/{proxy+}', Method: any}

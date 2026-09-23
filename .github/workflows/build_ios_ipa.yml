@@ -17,7 +17,7 @@ concurrency:
 jobs:
   build-ipa:
     name: Build Guardian IPA for iOS
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 35
 
     steps:
@@ -34,10 +34,15 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
 
-      - name: Create stub Config.xcconfig if missing
+      - name: Configure unsigned Xcode build settings
         run: |
           mkdir -p ios/Runner
-          touch ios/Runner/Config.xcconfig
+          cat << 'EOF' > ios/Runner/Config.xcconfig
+          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO
+          CODE_SIGN_IDENTITY=
+          EXPANDED_CODE_SIGN_IDENTITY=
+          EOF
 
       - name: Setup GoogleService-Info.plist
         run: |

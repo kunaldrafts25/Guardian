@@ -28,8 +28,9 @@ class ProfileScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (profile) {
-          final displayName =
-              profile?.displayName ?? sessionUser?.displayName ?? 'Guardian User';
+          final displayName = profile?.displayName ??
+              sessionUser?.displayName ??
+              'Guardian User';
           final phoneNumber =
               profile?.phoneNumber ?? sessionUser?.phoneNumber ?? 'No phone';
           final photoUrl = profile?.photoUrl ?? sessionUser?.photoURL;

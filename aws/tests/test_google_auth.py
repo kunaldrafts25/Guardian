@@ -57,7 +57,7 @@ def test_google_auth_mocked_verified_token_success():
         "picture": "https://lh3.googleusercontent.com/a/custom-avatar",
     }
 
-    with patch("google.oauth2.id_token.verify_oauth2_token", return_value=mock_payload):
+    with patch("aws.cognito_service._verify_google_payload", return_value=mock_payload):
         response = client.post(
             "/auth/google",
             json={
@@ -77,7 +77,7 @@ def test_google_auth_mocked_verified_token_success():
 
 
 def test_google_auth_invalid_token_rejected():
-    with patch("google.oauth2.id_token.verify_oauth2_token", side_effect=ValueError("Token expired")):
+    with patch("aws.cognito_service._verify_google_payload", side_effect=ValueError("Token expired")):
         response = client.post(
             "/auth/google",
             json={

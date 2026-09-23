@@ -46,8 +46,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _handleGoogleSignIn() async {
-    final success =
-        await ref.read(googleSignInStateProvider.notifier).signIn();
+    final success = await ref.read(googleSignInStateProvider.notifier).signIn();
     if (!mounted) return;
     if (success) {
       context.go(Routes.dashboard);
@@ -92,11 +91,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: isDark
-                            ? AppColors.brandContainerDark.withValues(alpha: 0.5)
+                            ? AppColors.brandContainerDark
+                                .withValues(alpha: 0.5)
                             : AppColors.brandContainer.withValues(alpha: 0.4),
                         borderRadius: BorderRadius.circular(22),
                         border: Border.all(
-                          color: isDark ? AppColors.borderDark : AppColors.border,
+                          color:
+                              isDark ? AppColors.borderDark : AppColors.border,
                           width: 1.2,
                         ),
                       ),
@@ -137,9 +138,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ? null
                           : _handleGoogleSignIn,
                       style: OutlinedButton.styleFrom(
-                        backgroundColor: isDark
-                            ? const Color(0xFF18201C)
-                            : Colors.white,
+                        backgroundColor:
+                            isDark ? const Color(0xFF18201C) : Colors.white,
                         side: const BorderSide(
                           color: AppColors.border,
                           width: 1.5,
@@ -239,8 +239,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       }
                       return null;
                     },
-                    onFieldSubmitted:
-                        (isPhoneLoading || isGoogleLoading) ? null : (_) => _sendOtp(),
+                    onFieldSubmitted: (isPhoneLoading || isGoogleLoading)
+                        ? null
+                        : (_) => _sendOtp(),
                   ),
                   const SizedBox(height: 16),
 
@@ -354,19 +355,22 @@ class _GoogleIconPainter extends CustomPainter {
 
     final redPath = Path()
       ..moveTo(center.dx, center.dy)
-      ..arcTo(Rect.fromCircle(center: center, radius: radius), -0.85, -1.8, false)
+      ..arcTo(
+          Rect.fromCircle(center: center, radius: radius), -0.85, -1.8, false)
       ..close();
     canvas.drawPath(redPath, redPaint);
 
     final yellowPath = Path()
       ..moveTo(center.dx, center.dy)
-      ..arcTo(Rect.fromCircle(center: center, radius: radius), -2.65, -1.3, false)
+      ..arcTo(
+          Rect.fromCircle(center: center, radius: radius), -2.65, -1.3, false)
       ..close();
     canvas.drawPath(yellowPath, yellowPaint);
 
     final greenPath = Path()
       ..moveTo(center.dx, center.dy)
-      ..arcTo(Rect.fromCircle(center: center, radius: radius), -3.95, -1.5, false)
+      ..arcTo(
+          Rect.fromCircle(center: center, radius: radius), -3.95, -1.5, false)
       ..close();
     canvas.drawPath(greenPath, greenPaint);
 

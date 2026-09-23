@@ -48,7 +48,8 @@ void main() {
   }
 
   group('LoginScreen UI Tests', () {
-    testWidgets('renders all key elements from Stitch Screen 14', (tester) async {
+    testWidgets('renders all key elements from Stitch Screen 14',
+        (tester) async {
       await tester.pumpWidget(
         buildTestableWidget(
           overrides: [
@@ -77,12 +78,14 @@ void main() {
 
       // Verify Safety Disclaimer
       expect(
-        find.text('Guardian provides durable telemetry and trusted contact escalation. It does not guarantee municipal police dispatch.'),
+        find.text(
+            'Guardian provides durable telemetry and trusted contact escalation. It does not guarantee municipal police dispatch.'),
         findsOneWidget,
       );
     });
 
-    testWidgets('displays loading indicator during Google sign-in', (tester) async {
+    testWidgets('displays loading indicator during Google sign-in',
+        (tester) async {
       final notifier = TestGoogleSignInNotifier(
         mockAuthService,
         initialState: GoogleSignInState.authenticating,
@@ -104,7 +107,8 @@ void main() {
       expect(find.text('Continue with Google'), findsNothing);
     });
 
-    testWidgets('calls signIn and handles cancellation gracefully', (tester) async {
+    testWidgets('calls signIn and handles cancellation gracefully',
+        (tester) async {
       when(() => mockAuthService.signInWithGoogle())
           .thenAnswer((_) async => null);
 
