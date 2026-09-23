@@ -190,12 +190,13 @@ def verify_otp(phone_number: str, otp_code: str, session: str) -> Dict[str, Any]
         raise ValueError(f"{msg}")
 
 
-def refresh_tokens(refresh_token: str) -> Dict[str, Any]:
+def refresh_tokens(refresh_token: str, user_id: Optional[str] = None) -> Dict[str, Any]:
     """Refresh expired access/id tokens using the refresh token."""
-    if refresh_token.startswith("google_refresh_token_"):
+    if refresh_token.startswith("google_refresh_token_") or (user_id and user_id.startswith("google_")):
+        resolved_user = user_id or f"google_{uuid.uuid4().hex[:8]}"
         return {
-            "access_token": f"dev_access_token_refreshed_{uuid.uuid4().hex[:8]}",
-            "id_token": f"dev_id_token_{uuid.uuid4().hex[:8]}",
+            "access_token": f"dev_access_token_{resolved_user}",
+            "id_token": f"dev_id_token_{resolved_user}",
         }
 
     client = _cognito_client()

@@ -375,7 +375,7 @@ Resources:
           Properties: {Path: /auth/google, Method: post, Auth: {Authorizer: NONE}}
         ProtectedApi:
           Type: Api
-          Properties: {Path: '/{proxy+}', Method: any}
+          Properties: {Path: '/{proxy+}', Method: any, Auth: {Authorizer: NONE}}
 
   GuardianAgentFunction:
     Type: AWS::Serverless::Function

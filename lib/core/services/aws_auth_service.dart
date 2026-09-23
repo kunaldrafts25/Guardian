@@ -190,15 +190,13 @@ class AwsAuthService {
       if (_userId != null &&
           _userId!.isNotEmpty &&
           _accessToken != null &&
-          _accessToken!.isNotEmpty &&
-          _sessionId != null &&
-          _sessionId!.isNotEmpty) {
+          _accessToken!.isNotEmpty) {
         if (_isJwtExpired(_accessToken!)) {
           final refreshed = await refreshSession();
           if (!refreshed) {
-            await _clearLocalSession();
-            _authStateController.add(null);
-            return;
+            Logger.warning(
+              'AwsAuthService: could not refresh token at startup; retaining local session.',
+            );
           }
         }
         _currentUser = AwsAuthUser(
@@ -383,16 +381,16 @@ class AwsAuthService {
   bool _isJwtExpired(String token) {
     try {
       final parts = token.split('.');
-      if (parts.length != 3) return true;
+      if (parts.length != 3) return false;
       final payload = jsonDecode(
         utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
       ) as Map<String, dynamic>;
       final expiry = (payload['exp'] as num?)?.toInt();
-      if (expiry == null) return true;
+      if (expiry == null) return false;
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       return expiry <= now + 60;
     } catch (_) {
-      return true;
+      return false;
     }
   }
 
@@ -560,14 +558,20 @@ class AwsAuthService {
         ? decoded
         : <String, dynamic>{'data': decoded};
     if (response.statusCode >= 400) {
-      if (response.statusCode == 401 && !_isPublicAuthPath(path)) {
-        await _clearLocalSession();
-        _authStateController.add(null);
-      }
       final structuredError = data['error'];
-      final message = structuredError is Map<String, dynamic>
-          ? structuredError['message']
-          : data['detail'];
+      final message = (structuredError is Map<String, dynamic>
+              ? structuredError['message']
+              : data['detail'])
+          ?.toString();
+      if (response.statusCode == 401 && !_isPublicAuthPath(path)) {
+        final lower = (message ?? '').toLowerCase();
+        if (lower.contains('revoked') ||
+            lower.contains('invalid session') ||
+            lower.contains('session expired')) {
+          await _clearLocalSession();
+          _authStateController.add(null);
+        }
+      }
       throw Exception(message ?? 'Request failed: ${response.statusCode}');
     }
     return data;

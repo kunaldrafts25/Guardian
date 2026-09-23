@@ -295,7 +295,7 @@ def api_refresh_token(req: RefreshTokenRequest):
     """Refresh expired JWT access/id tokens."""
     try:
         user_id = validate_refresh_session(req.session_id, req.refresh_token)
-        result = refresh_tokens(req.refresh_token)
+        result = refresh_tokens(req.refresh_token, user_id=user_id)
         touch_session(req.session_id, user_id)
         result["session_id"] = req.session_id
         return result

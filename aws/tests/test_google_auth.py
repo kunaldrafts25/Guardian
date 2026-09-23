@@ -88,3 +88,41 @@ def test_google_auth_invalid_token_rejected():
         )
         assert response.status_code == 401
         assert "Invalid Google ID token" in response.text
+
+
+def test_google_auth_refresh_and_authenticated_call():
+    auth_resp = client.post(
+        "/auth/google",
+        json={
+            "id_token": "dev_google_token_priya",
+            "device_label": "Priya's Galaxy S24",
+            "platform": "android",
+        },
+    )
+    assert auth_resp.status_code == 200
+    auth_data = auth_resp.json()
+    user_id = auth_data["user_id"]
+    session_id = auth_data["session_id"]
+    refresh_token = auth_data["refresh_token"]
+
+    refresh_resp = client.post(
+        "/auth/refresh",
+        json={
+            "refresh_token": refresh_token,
+            "session_id": session_id,
+        },
+    )
+    assert refresh_resp.status_code == 200
+    refreshed_data = refresh_resp.json()
+    assert refreshed_data["session_id"] == session_id
+    assert refreshed_data["access_token"].startswith(f"dev_access_token_{user_id}")
+
+    user_resp = client.get(
+        f"/users/{user_id}",
+        headers={
+            "Authorization": f"Bearer {refreshed_data['access_token']}",
+            "X-Guardian-Session-ID": session_id,
+        },
+    )
+    assert user_resp.status_code == 200
+
