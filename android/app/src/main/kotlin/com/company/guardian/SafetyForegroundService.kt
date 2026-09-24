@@ -692,7 +692,17 @@ class SafetyForegroundService : Service() {
         routeDeviationRunnable = Runnable {
             Log.w(TAG, "🚨 Route deviation unacknowledged after 60s — escalating to native emergency dispatcher!")
             dismissRouteDeviationAlert()
-            val event = NativeEmergencyDispatcher.trigger(this@SafetyForegroundService, "ROUTE_DEVIATION")
+            val evidence = org.json.JSONObject().apply {
+                put("detector_version", "route-deviation-v1")
+                put("deviation_meters", deviationMeters)
+                put("consecutive_deviation_count", 3)
+                put("confirmation_timeout_seconds", 60)
+            }
+            val event = NativeEmergencyDispatcher.trigger(
+                this@SafetyForegroundService,
+                "ROUTE_DEVIATION",
+                sensorEvidence = evidence,
+            )
             if (event != null) onSosTrigger?.invoke("ROUTE_DEVIATION")
         }
         routeDeviationHandler.postDelayed(routeDeviationRunnable!!, 60_000L)
