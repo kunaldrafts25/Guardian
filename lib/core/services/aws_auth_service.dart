@@ -211,8 +211,10 @@ class AwsAuthService {
       return;
     }
     try {
+      final refreshToken = await _storage.read(key: _kRefreshToken);
       await SafetyServiceBridge.updateEmergencyAuth(
         accessToken: accessToken,
+        refreshToken: refreshToken,
         sessionId: sessionId,
         apiEndpoint: baseUrl,
       );
