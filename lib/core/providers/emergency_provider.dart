@@ -290,6 +290,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     final evidencedMotionData = <String, dynamic>{
       ...motionData,
       'local_sms_accepted_count': acceptedLocalDispatches,
+      'event_occurred_at': alert.startedAt.toUtc().toIso8601String(),
     };
     final emergencyLocation = location != null
         ? EmergencyLocation.fromFix(
@@ -720,8 +721,12 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       eventType: eventType,
       motionData: {
         'trigger': nativeSource,
+        'trigger_source': nativeSource,
         'native_dispatch': true,
         'snapshot_version': event['snapshot_version'],
+        'event_occurred_at': occurredAt.toUtc().toIso8601String(),
+        if (event['sensor_evidence'] is Map)
+          ...Map<String, dynamic>.from(event['sensor_evidence'] as Map),
       },
     );
     state = EmergencyState(
