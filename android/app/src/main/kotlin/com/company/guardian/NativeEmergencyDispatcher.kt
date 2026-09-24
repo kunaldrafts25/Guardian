@@ -55,16 +55,28 @@ object NativeEmergencyDispatcher {
         }
 
         val phones = mutableListOf<String>()
+        val contactIdByPhone = mutableMapOf<String, String>()
         for (index in 0 until contacts.length()) {
-            contacts.optJSONObject(index)?.optString("phone")
-                ?.takeIf { it.isNotBlank() }
-                ?.let(phones::add)
+            val contact = contacts.optJSONObject(index) ?: continue
+            val phone = contact.optString("phone").takeIf { it.isNotBlank() } ?: continue
+            phones.add(phone)
+            contact.optString("id").takeIf { it.isNotBlank() }?.let { contactId ->
+                contactIdByPhone[phone] = contactId
+            }
         }
         val dispatchResults = SmsHelper.sendEmergencySms(context, phones.distinct(), message)
         val acceptedPhones = JSONArray()
         val failedPhones = JSONArray()
+        val acceptedContactIds = JSONArray()
+        val failedContactIds = JSONArray()
         dispatchResults.forEach { (phone, accepted) ->
-            if (accepted) acceptedPhones.put(phone) else failedPhones.put(phone)
+            if (accepted) {
+                acceptedPhones.put(phone)
+                contactIdByPhone[phone]?.let(acceptedContactIds::put)
+            } else {
+                failedPhones.put(phone)
+                contactIdByPhone[phone]?.let(failedContactIds::put)
+            }
         }
 
         val event = JSONObject().apply {
@@ -75,6 +87,8 @@ object NativeEmergencyDispatcher {
             put("snapshot_version", snapshot?.optInt("version", 0) ?: 0)
             put("accepted_phones", acceptedPhones)
             put("failed_phones", failedPhones)
+            put("accepted_contact_ids", acceptedContactIds)
+            put("failed_contact_ids", failedContactIds)
             put("latitude", location?.latitude ?: JSONObject.NULL)
             put("longitude", location?.longitude ?: JSONObject.NULL)
             put("accuracy", location?.accuracy ?: JSONObject.NULL)
