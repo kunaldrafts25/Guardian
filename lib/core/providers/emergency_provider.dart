@@ -290,6 +290,12 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     final evidencedMotionData = <String, dynamic>{
       ...motionData,
       'local_sms_accepted_count': acceptedLocalDispatches,
+      'local_sms_delivery': alert.contactStatuses
+          .map((status) => <String, dynamic>{
+                'contact_id': status.contact.id,
+                'state': status.deliveryState.serialized,
+              })
+          .toList(),
       'event_occurred_at': alert.startedAt.toUtc().toIso8601String(),
     };
     final emergencyLocation = location != null
