@@ -642,6 +642,14 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
 
     final userId = AwsAuthService.instance.currentUserId;
     if (userId == null) return false;
+    final nativeOwnerId = event['owner_user_id']?.toString();
+    if (nativeOwnerId == null ||
+        nativeOwnerId.isEmpty ||
+        nativeOwnerId != userId) {
+      Logger.warning(
+          'Refusing native emergency replay across account boundary.');
+      return false;
+    }
     await _ref.read(contactsProvider.notifier).ready;
     final contacts = _ref.read(contactsProvider).contacts;
     final accepted = (event['accepted_phones'] as List? ?? const [])
