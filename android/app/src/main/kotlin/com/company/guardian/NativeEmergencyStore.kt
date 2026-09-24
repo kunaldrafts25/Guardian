@@ -17,7 +17,7 @@ object NativeEmergencyStore {
     private const val LAST_TRIGGER_PRIORITY_KEY = "last_trigger_priority"
     private const val CHECK_IN_SCHEDULE_KEY = "check_in_schedule"
     private const val CHECK_IN_ACTIONS_KEY = "check_in_actions"
-    private const val MAX_EVENTS = 32
+    private const val MAX_EVENTS = 64
 
     private fun preferences(context: Context): SharedPreferences {
         val masterKey = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
@@ -94,10 +94,24 @@ object NativeEmergencyStore {
     fun appendEvent(context: Context, event: JSONObject) {
         val events = allEvents(context)
         events.put(event)
-        val trimmed = JSONArray()
-        val start = maxOf(0, events.length() - MAX_EVENTS)
-        for (index in start until events.length()) trimmed.put(events.getJSONObject(index))
-        preferences(context).edit().putString(EVENTS_KEY, trimmed.toString()).commit()
+
+        // Never discard emergency evidence that still needs Flutter import or
+        // native cloud synchronisation. Only fully-reconciled oldest records
+        // are eligible for trimming. If more than MAX_EVENTS are unresolved,
+        // retain them all rather than losing safety evidence.
+        var removable = maxOf(0, events.length() - MAX_EVENTS)
+        val retained = JSONArray()
+        for (index in 0 until events.length()) {
+            val item = events.getJSONObject(index)
+            val fullyReconciled =
+                item.optBoolean("consumed", false) && item.optBoolean("cloud_synced", false)
+            if (removable > 0 && fullyReconciled) {
+                removable--
+                continue
+            }
+            retained.put(item)
+        }
+        preferences(context).edit().putString(EVENTS_KEY, retained.toString()).commit()
     }
 
     @Synchronized
