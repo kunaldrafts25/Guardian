@@ -251,19 +251,31 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                     "updateEmergencyAuth" -> {
-                        val idToken = call.argument<String>("id_token")
+                        val accessToken = call.argument<String>("access_token")
+                        val sessionId = call.argument<String>("session_id")
                         val apiEndpoint = call.argument<String>("api_endpoint")
-                        val currentSnapshot = NativeEmergencyStore.snapshot(this) ?: org.json.JSONObject()
-                        currentSnapshot.put("id_token", idToken)
-                        currentSnapshot.put("api_endpoint", apiEndpoint)
-                        if (currentSnapshot.optInt("version", 0) == 0) {
-                            currentSnapshot.put("version", 1)
+                        if (accessToken.isNullOrBlank() || sessionId.isNullOrBlank() || apiEndpoint.isNullOrBlank()) {
+                            result.error(
+                                "INVALID_CLOUD_AUTH",
+                                "access_token, session_id and api_endpoint are required",
+                                null,
+                            )
+                        } else {
+                            NativeEmergencyStore.saveCloudAuth(
+                                this,
+                                JSONObject().apply {
+                                    put("access_token", accessToken)
+                                    put("session_id", sessionId)
+                                    put("api_endpoint", apiEndpoint)
+                                    put("updated_at_ms", System.currentTimeMillis())
+                                },
+                            )
+                            result.success(true)
                         }
-                        NativeEmergencyStore.saveSnapshot(this, currentSnapshot)
-                        result.success(true)
                     }
                     "clearEmergencySnapshot" -> {
                         NativeEmergencyStore.clearSnapshot(this)
+                        NativeEmergencyStore.clearCloudAuth(this)
                         result.success(true)
                     }
                     "getPendingNativeEmergencyEvents" -> {
