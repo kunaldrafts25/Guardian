@@ -226,6 +226,7 @@ class SafetyServiceBridge {
 
   static Future<bool> updateEmergencySnapshot({
     required int version,
+    required String userId,
     required String userName,
     required List<Map<String, String>> contacts,
     String? message,
@@ -235,6 +236,7 @@ class SafetyServiceBridge {
             'updateEmergencySnapshot',
             {
               'version': version,
+              'user_id': userId,
               'user_name': userName,
               'contacts': contacts,
               if (message != null && message.isNotEmpty) 'message': message,
