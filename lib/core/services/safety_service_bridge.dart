@@ -252,6 +252,7 @@ class SafetyServiceBridge {
   }
 
   static Future<bool> updateEmergencyAuth({
+    required String userId,
     required String accessToken,
     String? refreshToken,
     required String sessionId,
@@ -264,6 +265,7 @@ class SafetyServiceBridge {
       return await _serviceChannel.invokeMethod<bool>(
             'updateEmergencyAuth',
             {
+              'user_id': userId,
               'access_token': accessToken,
               if (refreshToken != null && refreshToken.isNotEmpty)
                 'refresh_token': refreshToken,
