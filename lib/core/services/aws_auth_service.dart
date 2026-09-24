@@ -202,9 +202,12 @@ class AwsAuthService {
   bool get isResponder => roles.contains('responder');
 
   Future<void> _syncNativeEmergencyAuth() async {
+    final userId = _userId;
     final accessToken = _accessToken;
     final sessionId = _sessionId;
-    if (accessToken == null ||
+    if (userId == null ||
+        userId.isEmpty ||
+        accessToken == null ||
         accessToken.isEmpty ||
         sessionId == null ||
         sessionId.isEmpty) {
@@ -213,7 +216,7 @@ class AwsAuthService {
     try {
       final refreshToken = await _storage.read(key: _kRefreshToken);
       await SafetyServiceBridge.updateEmergencyAuth(
-        userId: _userId!,
+        userId: userId,
         accessToken: accessToken,
         refreshToken: refreshToken,
         sessionId: sessionId,
