@@ -10,7 +10,10 @@ import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
-import java.time.Instant
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  * Native emergency cloud outbox.
@@ -117,7 +120,7 @@ class CloudSyncWorker(
 
         val occurredAtMs = event.optLong("occurred_at_ms", 0L)
         if (occurredAtMs > 0L) {
-            motion.put("event_occurred_at", Instant.ofEpochMilli(occurredAtMs).toString())
+            motion.put("event_occurred_at", isoUtc(occurredAtMs))
         }
         motion.put("trigger_source", event.optString("source", "native_trigger"))
         motion.put("native_dispatch", true)
@@ -140,11 +143,12 @@ class CloudSyncWorker(
                 .put("longitude", longitude)
                 .put("accuracy", event.optDouble("accuracy", 0.0))
                 .put("source", event.optString("location_provider", "native_cached"))
-                .put("received_at", Instant.now().toString())
+                .put("received_at", isoUtc(System.currentTimeMillis()))
+                .put("timezone_offset", TimeZone.getDefault().rawOffset / 1000)
 
             val capturedAtMs = event.optLong("location_time_ms", 0L)
             if (capturedAtMs > 0L) {
-                location.put("captured_at", Instant.ofEpochMilli(capturedAtMs).toString())
+                location.put("captured_at", isoUtc(capturedAtMs))
             }
             payload.put("location", location)
         }
@@ -159,6 +163,12 @@ class CloudSyncWorker(
             connection.errorStream
         } ?: return ""
         return BufferedReader(InputStreamReader(stream)).use { it.readText() }
+    }
+
+    private fun isoUtc(epochMs: Long): String {
+        val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+        formatter.timeZone = TimeZone.getTimeZone("UTC")
+        return formatter.format(Date(epochMs))
     }
 
     companion object {
