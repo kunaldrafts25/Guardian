@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:guardian/core/utils/logger.dart';
 import 'package:guardian/core/services/aws_auth_service.dart';
+import 'package:guardian/core/models/nearby_responder_summary.dart';
 
 /// Service interfacing with AWS API Gateway / Serverless Incident Handler
 class AwsIncidentService {
@@ -97,6 +98,28 @@ class AwsIncidentService {
           'Failed to create incident: HTTP ${response.statusCode} - ${response.body}');
     } catch (e) {
       Logger.error('AWS Incident Service: Error creating incident', e);
+      rethrow;
+    }
+  }
+
+  /// Update current emergency location for an active incident (P0-04)
+  Future<Map<String, dynamic>> updateIncidentLocation({
+    required String incidentId,
+    required Map<String, dynamic> location,
+  }) async {
+    final url = Uri.parse('$baseUrl/incidents/$incidentId/location');
+    final body = jsonEncode({'location': location});
+    try {
+      final response = await http
+          .post(url, headers: _headers, body: body)
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      throw Exception(
+          'Failed to update incident location: HTTP ${response.statusCode} - ${response.body}');
+    } catch (e) {
+      Logger.error('AWS Incident Service: Error updating location', e);
       rethrow;
     }
   }
@@ -229,8 +252,8 @@ class AwsIncidentService {
     return answer;
   }
 
-  /// Query verified nearby responders within radius
-  Future<List<Map<String, dynamic>>> getNearbyResponders(
+  /// Query verified nearby responders within radius (privacy-preserving summary)
+  Future<NearbyResponderSummary> getNearbyResponders(
     String incidentId, {
     double radiusMeters = 1200.0,
   }) async {
@@ -243,15 +266,20 @@ class AwsIncidentService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final list = data['nearby_responders'] as List<dynamic>? ?? [];
-        return list
-            .map((item) => Map<String, dynamic>.from(item as Map))
-            .toList();
+        return NearbyResponderSummary.fromJson(data);
       }
-      return [];
+      return NearbyResponderSummary(
+        incidentId: incidentId,
+        eligibleResponderCount: 0,
+        radiusMeters: radiusMeters,
+      );
     } catch (e) {
       Logger.error('AWS Incident Service: Error getting nearby responders', e);
-      return [];
+      return NearbyResponderSummary(
+        incidentId: incidentId,
+        eligibleResponderCount: 0,
+        radiusMeters: radiusMeters,
+      );
     }
   }
 

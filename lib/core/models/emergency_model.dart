@@ -23,7 +23,7 @@ class Emergency {
   final String? address;
   final DateTime startedAt;
   final DateTime? endedAt;
-  final List<String> notifiedContacts;
+  final List<String> dispatchedContacts;
   final List<String> responders;
   final String? audioRecordingUrl;
   final String? notes;
@@ -37,11 +37,15 @@ class Emergency {
     this.address,
     required this.startedAt,
     this.endedAt,
-    this.notifiedContacts = const [],
+    List<String>? dispatchedContacts,
+    List<String>? notifiedContacts,
     this.responders = const [],
     this.audioRecordingUrl,
     this.notes,
-  });
+  }) : dispatchedContacts = dispatchedContacts ?? notifiedContacts ?? const [];
+
+  @Deprecated('Use dispatchedContacts instead')
+  List<String> get notifiedContacts => dispatchedContacts;
 
   /// Create from JSON
   factory Emergency.fromJson(Map<String, dynamic> json, String id) {
@@ -60,7 +64,7 @@ class Emergency {
       endedAt: json['endedAt'] is String
           ? DateTime.tryParse(json['endedAt'] as String)
           : null,
-      notifiedContacts: List<String>.from(json['notifiedContacts'] ?? []),
+      dispatchedContacts: List<String>.from(json['dispatchedContacts'] ?? json['notifiedContacts'] ?? []),
       responders: List<String>.from(json['responders'] ?? []),
       audioRecordingUrl: json['audioRecordingUrl'] as String?,
       notes: json['notes'] as String?,
@@ -76,7 +80,8 @@ class Emergency {
         'address': address,
         'startedAt': startedAt.toUtc().toIso8601String(),
         'endedAt': endedAt?.toUtc().toIso8601String(),
-        'notifiedContacts': notifiedContacts,
+        'dispatchedContacts': dispatchedContacts,
+        'notifiedContacts': dispatchedContacts,
         'responders': responders,
         'audioRecordingUrl': audioRecordingUrl,
         'notes': notes,

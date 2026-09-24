@@ -6,12 +6,14 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:guardian/core/services/aws_incident_service.dart';
+import 'package:guardian/core/models/nearby_responder_summary.dart';
 import 'package:guardian/core/utils/logger.dart';
 
 class AwsIncidentState {
   final Map<String, dynamic>? currentIncident;
   final List<Map<String, dynamic>> timeline;
   final List<Map<String, dynamic>> nearbyResponders;
+  final NearbyResponderSummary? nearbySummary;
   final Map<String, dynamic>? activeMission;
   final bool isLoading;
   final String? errorMessage;
@@ -21,11 +23,15 @@ class AwsIncidentState {
     this.currentIncident,
     this.timeline = const [],
     this.nearbyResponders = const [],
+    this.nearbySummary,
     this.activeMission,
     this.isLoading = false,
     this.errorMessage,
     this.verificationSecondsRemaining = 15,
   });
+
+  int get eligibleResponderCount =>
+      nearbySummary?.eligibleResponderCount ?? nearbyResponders.length;
 
   String? get incidentId => currentIncident?['incident_id'] as String?;
   String get state => (currentIncident?['state'] as String?) ?? 'IDLE';
@@ -63,6 +69,7 @@ class AwsIncidentState {
     Map<String, dynamic>? currentIncident,
     List<Map<String, dynamic>>? timeline,
     List<Map<String, dynamic>>? nearbyResponders,
+    NearbyResponderSummary? nearbySummary,
     Map<String, dynamic>? activeMission,
     bool? isLoading,
     String? errorMessage,
@@ -72,6 +79,7 @@ class AwsIncidentState {
       currentIncident: currentIncident ?? this.currentIncident,
       timeline: timeline ?? this.timeline,
       nearbyResponders: nearbyResponders ?? this.nearbyResponders,
+      nearbySummary: nearbySummary ?? this.nearbySummary,
       activeMission: activeMission ?? this.activeMission,
       isLoading: isLoading ?? this.isLoading,
       errorMessage: errorMessage,
@@ -143,15 +151,15 @@ class AwsIncidentNotifier extends StateNotifier<AwsIncidentState> {
       final timeline = await _service.getIncidentTimeline(incidentId);
 
       final wasNotVerifying = !state.isVerifying;
-      List<Map<String, dynamic>> responders = state.nearbyResponders;
-      if (incident['state'] == 'RESPONDING' && responders.isEmpty) {
-        responders = await _service.getNearbyResponders(incidentId);
+      NearbyResponderSummary? summary = state.nearbySummary;
+      if (incident['state'] == 'RESPONDING' && summary == null) {
+        summary = await _service.getNearbyResponders(incidentId);
       }
 
       state = state.copyWith(
         currentIncident: incident,
         timeline: timeline,
-        nearbyResponders: responders,
+        nearbySummary: summary,
       );
 
       // If state just changed to VERIFYING, begin 15s timer
@@ -174,8 +182,8 @@ class AwsIncidentNotifier extends StateNotifier<AwsIncidentState> {
     final iid = state.incidentId;
     if (iid == null) return;
     try {
-      final responders = await _service.getNearbyResponders(iid);
-      state = state.copyWith(nearbyResponders: responders);
+      final summary = await _service.getNearbyResponders(iid);
+      state = state.copyWith(nearbySummary: summary);
     } catch (e) {
       Logger.error('Failed to fetch nearby responders', e);
     }

@@ -9,6 +9,7 @@ import 'package:guardian/core/providers/emergency_provider.dart';
 import 'package:guardian/core/providers/sos_settings_provider.dart';
 import 'package:guardian/core/providers/sos_trigger_provider.dart';
 import 'package:guardian/core/services/sos_sound_service.dart';
+import 'package:guardian/core/models/sms_delivery_state.dart';
 import 'package:guardian/core/widgets/guardian_ui.dart';
 
 class EmergencyScreen extends ConsumerStatefulWidget {
@@ -416,7 +417,9 @@ class _ActiveIncident extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statuses = emergency.sosAlert?.contactStatuses ?? const [];
-    final accepted = statuses.where((status) => status.smsSent).length;
+    final accepted = statuses
+        .where((status) => status.deliveryState.isAcceptedForDispatch)
+        .length;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
       children: [
@@ -477,21 +480,27 @@ class _ActiveIncident extends StatelessWidget {
                 for (var index = 0; index < statuses.length; index++) ...[
                   ListTile(
                     leading: Icon(
-                      statuses[index].smsSent
+                      statuses[index].deliveryState.isAcceptedForDispatch
                           ? Icons.outbox_rounded
-                          : Icons.error_outline_rounded,
+                          : (statuses[index].deliveryState == SmsDeliveryState.composerOpened
+                              ? Icons.sms_outlined
+                              : Icons.error_outline_rounded),
                       color: guardianToneColor(
                         context,
-                        statuses[index].smsSent
+                        statuses[index].deliveryState.isAcceptedForDispatch
                             ? GuardianStatusTone.success
-                            : GuardianStatusTone.warning,
+                            : (statuses[index].deliveryState == SmsDeliveryState.composerOpened
+                                ? GuardianStatusTone.neutral
+                                : GuardianStatusTone.warning),
                       ),
                     ),
                     title: Text(statuses[index].contact.name),
                     subtitle: Text(
-                      statuses[index].smsSent
-                          ? 'Dispatch accepted — awaiting delivery evidence'
-                          : 'Dispatch was not accepted',
+                      statuses[index].deliveryState == SmsDeliveryState.composerOpened
+                          ? 'Composer opened — dispatch not verified'
+                          : (statuses[index].deliveryState.isAcceptedForDispatch
+                              ? 'Dispatch accepted — awaiting delivery evidence'
+                              : 'Dispatch was not accepted'),
                     ),
                   ),
                   if (index != statuses.length - 1)

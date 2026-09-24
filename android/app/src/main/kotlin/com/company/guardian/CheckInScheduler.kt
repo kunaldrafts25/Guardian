@@ -48,7 +48,7 @@ object CheckInScheduler {
         val deadline = schedule.optLong("deadline_ms")
         val grace = schedule.optLong("grace_deadline_ms")
         if (grace <= now) {
-            NativeEmergencyDispatcher.trigger(context, "check_in_expired")
+            NativeEmergencyDispatcher.trigger(context, "CHECK_IN_EXPIRED")
             NativeEmergencyStore.clearCheckInSchedule(context)
             return
         }
@@ -140,12 +140,12 @@ class CheckInAlarmReceiver : BroadcastReceiver() {
         when (intent.action) {
             CheckInScheduler.ACTION_REMINDER -> CheckInScheduler.showReminder(context)
             CheckInScheduler.ACTION_ESCALATE -> {
-                NativeEmergencyDispatcher.trigger(context, "check_in_expired")
+                NativeEmergencyDispatcher.trigger(context, "CHECK_IN_EXPIRED")
                 CheckInScheduler.cancel(context)
             }
             CheckInScheduler.ACTION_SAFE -> CheckInScheduler.recordSafeAction(context)
             CheckInScheduler.ACTION_HELP -> {
-                NativeEmergencyDispatcher.trigger(context, "check_in_need_help")
+                NativeEmergencyDispatcher.trigger(context, "CHECK_IN_EXPIRED")
                 CheckInScheduler.cancel(context)
             }
         }

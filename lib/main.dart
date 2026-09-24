@@ -1,3 +1,4 @@
+import 'package:guardian/core/services/backend_health_service.dart';
 /*
  * Guardian — Application Entry Point
  * v3.0 — AWS-First Stack
@@ -18,7 +19,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:guardian/core/services/aws_auth_service.dart';
-import 'package:guardian/core/services/aws_incident_service.dart';
 import 'package:guardian/core/services/aws_sns_service.dart';
 import 'package:guardian/core/services/safety_service_bridge.dart';
 import 'package:guardian/core/services/power_optimization_service.dart';
@@ -113,9 +113,8 @@ void main() async {
 /// Ping backend to verify connectivity — non-blocking, logged only.
 void _checkBackendConnectivity() async {
   try {
-    final svc = AwsIncidentService.instance;
-    Logger.info('Backend check: ${svc.baseUrl}');
-    // We don't await this — it's just a background health probe
+    final state = await BackendHealthService.instance.checkHealth();
+    Logger.info('Backend connectivity: status=${state.status.name} reachability=${state.apiReachable}');
   } catch (e) {
     Logger.warning('Backend connectivity check failed: $e');
   }

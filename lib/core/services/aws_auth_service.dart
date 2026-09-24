@@ -25,6 +25,15 @@ const _kPhotoUrl = 'aws_user_photo_url';
 const _kAuthProvider = 'aws_auth_provider';
 const _kSessionId = 'guardian_session_id';
 
+/// Canonical authentication lifecycle states for mobile UI and services.
+enum AuthStatus {
+  signedOut,
+  authenticating,
+  authenticated,
+  refreshing,
+  reauthenticationRequired,
+}
+
 class AwsAuthUser {
   final String uid;
   final String? phoneNumber;
@@ -125,6 +134,9 @@ class AwsAuthService {
     return 'http://192.168.0.100:8000';
   }
 
+  /// The resolved base URL for API requests.
+  String get baseUrl => _baseUrl;
+
   // ─── Cached state ───────────────────────────────────────────────────────
   String? _userId;
   String? _accessToken;
@@ -136,13 +148,28 @@ class AwsAuthService {
   final StreamController<AwsAuthUser?> _authStateController =
       StreamController<AwsAuthUser?>.broadcast();
 
+  AuthStatus _authStatus = AuthStatus.signedOut;
+  final StreamController<AuthStatus> _authStatusController =
+      StreamController<AuthStatus>.broadcast();
+
   String? get currentUserId => _userId;
   String? get currentPhone => _phone;
   String? get accessToken => _accessToken;
   String? get sessionId => _sessionId;
-  bool get isSignedIn => _userId != null;
+  AuthStatus get authStatus => _authStatus;
+  Stream<AuthStatus> get authStatusChanges => _authStatusController.stream;
+  bool get isSignedIn => _authStatus == AuthStatus.authenticated;
+  bool get isReauthenticationRequired =>
+      _authStatus == AuthStatus.reauthenticationRequired;
   AwsAuthUser? get currentUser => _currentUser;
   Stream<AwsAuthUser?> get authStateChanges => _authStateController.stream;
+
+  void _updateAuthStatus(AuthStatus status) {
+    if (_authStatus != status) {
+      _authStatus = status;
+      _authStatusController.add(status);
+    }
+  }
 
   Set<String> get roles {
     final token = _accessToken;
@@ -191,14 +218,6 @@ class AwsAuthService {
           _userId!.isNotEmpty &&
           _accessToken != null &&
           _accessToken!.isNotEmpty) {
-        if (_isJwtExpired(_accessToken!)) {
-          final refreshed = await refreshSession();
-          if (!refreshed) {
-            Logger.warning(
-              'AwsAuthService: could not refresh token at startup; retaining local session.',
-            );
-          }
-        }
         _currentUser = AwsAuthUser(
           uid: _userId!,
           phoneNumber: _phone,
@@ -207,11 +226,28 @@ class AwsAuthService {
           photoURL: photoUrl,
           authProvider: authProvider,
         );
+        if (_isJwtExpired(_accessToken!)) {
+          _updateAuthStatus(AuthStatus.refreshing);
+          final refreshed = await refreshSession();
+          if (!refreshed) {
+            Logger.warning(
+              'AwsAuthService: could not refresh token at startup; session requires reauthentication.',
+            );
+            _updateAuthStatus(AuthStatus.reauthenticationRequired);
+          } else {
+            _updateAuthStatus(AuthStatus.authenticated);
+          }
+        } else {
+          _updateAuthStatus(AuthStatus.authenticated);
+        }
       } else if (_userId != null || _accessToken != null) {
         await _clearLocalSession();
+        _updateAuthStatus(AuthStatus.signedOut);
+      } else {
+        _updateAuthStatus(AuthStatus.signedOut);
       }
       _authStateController.add(_currentUser);
-      Logger.info('AwsAuthService: restored user=$_userId');
+      Logger.info('AwsAuthService: restored user=$_userId (authStatus=$_authStatus)');
     } catch (e) {
       Logger.warning('AwsAuthService: could not restore session: $e');
     }
@@ -308,9 +344,21 @@ class AwsAuthService {
   Future<bool> refreshSession() {
     final inFlight = _refreshInFlight;
     if (inFlight != null) return inFlight;
+    _updateAuthStatus(AuthStatus.refreshing);
     final operation = _refreshSessionInternal();
     _refreshInFlight = operation;
-    return operation.whenComplete(() {
+    return operation.then((success) {
+      if (success) {
+        _updateAuthStatus(AuthStatus.authenticated);
+      } else {
+        if (_userId != null) {
+          _updateAuthStatus(AuthStatus.reauthenticationRequired);
+        } else {
+          _updateAuthStatus(AuthStatus.signedOut);
+        }
+      }
+      return success;
+    }).whenComplete(() {
       if (identical(_refreshInFlight, operation)) _refreshInFlight = null;
     });
   }
@@ -401,6 +449,7 @@ class AwsAuthService {
     _sessionId = null;
     _pendingSession = null;
     _currentUser = null;
+    _updateAuthStatus(AuthStatus.signedOut);
     for (final key in [
       _kUserId,
       _kAccessToken,
@@ -614,12 +663,14 @@ class AwsAuthService {
     if (displayName != null) {
       await _storage.write(key: _kDisplayName, value: displayName);
     }
-    if (photoUrl != null)
+    if (photoUrl != null) {
       await _storage.write(key: _kPhotoUrl, value: photoUrl);
+    }
     await _storage.write(key: _kAuthProvider, value: authProvider);
 
     Logger.info(
         'AwsAuthService: session persisted for user=$_userId ($authProvider)');
+    _updateAuthStatus(AuthStatus.authenticated);
     _authStateController.add(_currentUser);
   }
 }

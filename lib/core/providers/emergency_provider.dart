@@ -10,6 +10,8 @@ import 'package:drift/drift.dart' show Value;
 import 'package:geolocator/geolocator.dart';
 import 'package:guardian/core/database/guardian_database.dart';
 import 'package:guardian/core/models/emergency_domain.dart';
+import 'package:guardian/core/models/emergency_location.dart';
+import 'package:guardian/core/models/sms_delivery_state.dart';
 import 'package:guardian/core/models/emergency_model.dart';
 import 'package:guardian/core/providers/auth_provider.dart';
 import 'package:guardian/core/providers/aws_incident_provider.dart';
@@ -32,41 +34,67 @@ enum SosState {
   error, // Error state
 }
 
+/// Explicit emergency lifecycle semantics (P2 requirement 2)
+enum EmergencyLifecycleStage {
+  idle,
+  localEmergencyActive,
+  cloudQueued,
+  cloudDelivering,
+  cloudAcknowledged,
+  contactDeliveryPending,
+  responderSearching,
+  responderInvited,
+  responderAccepted,
+  responderEnRoute,
+  responderArrived,
+  resolved,
+  failedOrPartial,
+}
+
 /// Emergency state holder
 class EmergencyState {
   final SosState state;
+  final EmergencyLifecycleStage lifecycleStage;
   final Emergency? activeEmergency;
   final int countdownSeconds;
   final String? errorMessage;
-  final List<String> notifiedContacts;
+  final List<String> dispatchedContacts;
   final Position? currentLocation;
   final SosAlert? sosAlert;
 
   const EmergencyState({
     this.state = SosState.idle,
+    this.lifecycleStage = EmergencyLifecycleStage.idle,
     this.activeEmergency,
     this.countdownSeconds = 0,
     this.errorMessage,
-    this.notifiedContacts = const [],
+    List<String>? dispatchedContacts,
+    List<String>? notifiedContacts,
     this.currentLocation,
     this.sosAlert,
-  });
+  }) : dispatchedContacts = dispatchedContacts ?? notifiedContacts ?? const [];
+
+  @Deprecated('Use dispatchedContacts instead')
+  List<String> get notifiedContacts => dispatchedContacts;
 
   EmergencyState copyWith({
     SosState? state,
+    EmergencyLifecycleStage? lifecycleStage,
     Emergency? activeEmergency,
     int? countdownSeconds,
     String? errorMessage,
+    List<String>? dispatchedContacts,
     List<String>? notifiedContacts,
     Position? currentLocation,
     SosAlert? sosAlert,
   }) {
     return EmergencyState(
       state: state ?? this.state,
+      lifecycleStage: lifecycleStage ?? this.lifecycleStage,
       activeEmergency: activeEmergency ?? this.activeEmergency,
       countdownSeconds: countdownSeconds ?? this.countdownSeconds,
       errorMessage: errorMessage,
-      notifiedContacts: notifiedContacts ?? this.notifiedContacts,
+      dispatchedContacts: dispatchedContacts ?? notifiedContacts ?? this.dispatchedContacts,
       currentLocation: currentLocation ?? this.currentLocation,
       sosAlert: sosAlert ?? this.sosAlert,
     );
@@ -143,8 +171,26 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     );
     _backendIncidentId = alert.cloudIncidentId;
     _sosService.restoreActiveAlert(restoredAlert);
+
+    final cloudId = alert.cloudIncidentId;
+    EmergencyLifecycleStage restoredStage;
+    if (alert.status == 'resolved' || alert.status == 'cancelled') {
+      restoredStage = EmergencyLifecycleStage.resolved;
+    } else if (cloudId != null && cloudId.isNotEmpty) {
+      restoredStage = EmergencyLifecycleStage.cloudAcknowledged;
+    } else {
+      final outboxOps = await database.getDueOutboxOperations(limit: 50);
+      final hasPending = outboxOps.any((op) => op.aggregateId == alert.alertId);
+      if (hasPending) {
+        restoredStage = EmergencyLifecycleStage.cloudQueued;
+      } else {
+        restoredStage = EmergencyLifecycleStage.localEmergencyActive;
+      }
+    }
+
     state = EmergencyState(
       state: SosState.active,
+      lifecycleStage: restoredStage,
       activeEmergency: Emergency(
         id: alert.cloudIncidentId ?? alert.alertId,
         userId: alert.userId,
@@ -152,15 +198,15 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
         latitude: alert.latitude,
         longitude: alert.longitude,
         startedAt: alert.startedAt,
-        notifiedContacts: restoredAlert.contactStatuses
-            .where((status) => status.smsSent)
+        dispatchedContacts: restoredAlert.contactStatuses
+            .where((status) => status.smsAcceptedByDevice)
             .map((status) => status.contact.phone)
             .toList(),
       ),
       sosAlert: restoredAlert,
       currentLocation: position,
-      notifiedContacts: restoredAlert.contactStatuses
-          .where((status) => status.smsSent)
+      dispatchedContacts: restoredAlert.contactStatuses
+          .where((status) => status.smsAcceptedByDevice)
           .map((status) => status.contact.name)
           .toList(),
     );
@@ -169,10 +215,13 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
   }
 
   SosTriggerSource _sourceFromStoredValue(String value) => switch (value) {
-        'hardware_power_panic' => SosTriggerSource.hardwarePower,
-        'shake_sos' => SosTriggerSource.shake,
-        'voice_sos' => SosTriggerSource.voiceCommand,
-        'check_in_expired' => SosTriggerSource.scheduled,
+        'ANDROID_POWER_GESTURE' || 'hardware_power_panic' => SosTriggerSource.hardwarePower,
+        'ANDROID_SHAKE' || 'shake_sos' => SosTriggerSource.shake,
+        'ANDROID_FALL' || 'fall_detected' => SosTriggerSource.fall,
+        'VOICE_SOS' || 'voice_sos' => SosTriggerSource.voiceCommand,
+        'CHECK_IN_EXPIRED' || 'check_in_expired' => SosTriggerSource.scheduled,
+        'ROUTE_DEVIATION' || 'route_deviation' => SosTriggerSource.routeDeviation,
+        'MULTI_TAP' || 'triple_tap' => SosTriggerSource.multiTap,
         _ => SosTriggerSource.button,
       };
 
@@ -195,9 +244,36 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     );
   }
 
-  /// Handle location updates
+  DateTime? _lastLocationPushAt;
+
+  /// Handle location updates (P0-04: live monotonic upstream location propagation)
   void _onLocationUpdate(Position position) {
     state = state.copyWith(currentLocation: position);
+    final cloudId = _backendIncidentId;
+    if (cloudId != null && state.isActive) {
+      final now = DateTime.now();
+      if (_lastLocationPushAt == null ||
+          now.difference(_lastLocationPushAt!).inSeconds >= 5) {
+        _lastLocationPushAt = now;
+        final emergencyLocation = EmergencyLocation.fromFix(
+          latitude: position.latitude,
+          longitude: position.longitude,
+          accuracy: position.accuracy,
+          capturedAt: position.timestamp,
+          receivedAt: now.toUtc(),
+          source: 'gps_stream',
+        );
+        AwsIncidentService.instance
+            .updateIncidentLocation(
+              incidentId: cloudId,
+              location: emergencyLocation.toJson(),
+            )
+            .catchError((e) {
+          Logger.warning('Failed to push live emergency location: $e');
+          return <String, dynamic>{};
+        });
+      }
+    }
   }
 
   Future<String?> _persistAndIngestAlert({
@@ -208,22 +284,30 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
   }) async {
     final location = alert.currentLocation ?? alert.initialLocation;
     final database = _ref.read(databaseProvider);
-    final acceptedLocalDispatches =
-        alert.contactStatuses.where((status) => status.smsSent).length;
+    final acceptedLocalDispatches = alert.contactStatuses
+        .where((status) => status.deliveryState.isLocalOsAccepted)
+        .length;
     final evidencedMotionData = <String, dynamic>{
       ...motionData,
       'local_sms_accepted_count': acceptedLocalDispatches,
     };
+    final emergencyLocation = location != null
+        ? EmergencyLocation.fromFix(
+            latitude: location.latitude,
+            longitude: location.longitude,
+            accuracy: location.accuracy,
+            capturedAt: location.timestamp,
+            receivedAt: DateTime.now().toUtc(),
+            source: 'initial_sos',
+          )
+        : null;
     final cloudPayload = <String, dynamic>{
       'event_type': eventType,
-      if (location != null)
-        'location': {
-          'latitude': location.latitude,
-          'longitude': location.longitude,
-          'accuracy': location.accuracy,
-        },
+      if (emergencyLocation != null)
+        'location': emergencyLocation.toJson(),
       'motion_data': evidencedMotionData,
     };
+    state = state.copyWith(lifecycleStage: EmergencyLifecycleStage.cloudQueued);
     try {
       final queued = await database.queueAlertForCloud(
         alertId: alert.id,
@@ -231,15 +315,20 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
         occurredAt: alert.startedAt,
         cloudPayload: cloudPayload,
         deliveryAttempts: alert.contactStatuses.map((contactStatus) {
-          final accepted = contactStatus.smsSent;
+          final isOsAccepted = contactStatus.deliveryState.isLocalOsAccepted;
+          final isComposer =
+              contactStatus.deliveryState == SmsDeliveryState.composerOpened;
+          final accepted = isOsAccepted;
           return LocalDeliveryAttemptsCompanion.insert(
             attemptId: '${alert.id}:sms:${contactStatus.contact.id}',
             incidentId: alert.id,
             channel: 'sms',
             recipientRef: contactStatus.contact.id,
-            status: accepted
-                ? DeliveryState.accepted.name
-                : DeliveryState.failed.name,
+            status: isComposer
+                ? 'composer_opened'
+                : (accepted
+                    ? DeliveryState.accepted.name
+                    : DeliveryState.failed.name),
             failureCode: Value(accepted
                 ? null
                 : (contactStatus.error ?? 'sms_dispatch_failed')),
@@ -257,9 +346,11 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
           accuracy: Value(location?.accuracy),
           customMessage: Value(alert.customMessage),
           startedAt: alert.startedAt,
-          smsSent: Value(alert.contactStatuses.any((item) => item.smsSent)),
-          smsCount:
-              Value(alert.contactStatuses.where((item) => item.smsSent).length),
+          smsSent: Value(alert.contactStatuses
+              .any((item) => item.deliveryState.isLocalOsAccepted)),
+          smsCount: Value(alert.contactStatuses
+              .where((item) => item.deliveryState.isLocalOsAccepted)
+              .length),
           syncedToCloud: const Value(false),
         ),
       );
@@ -271,28 +362,25 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       rethrow;
     }
 
+    state = state.copyWith(lifecycleStage: EmergencyLifecycleStage.cloudDelivering);
     try {
       final incident = await AwsIncidentService.instance.createIncident(
         eventId: alert.id,
         eventType: eventType,
-        location: location != null
-            ? {
-                'latitude': location.latitude,
-                'longitude': location.longitude,
-                'accuracy': location.accuracy,
-              }
-            : null,
+        location: emergencyLocation?.toJson(),
         motionData: evidencedMotionData,
       );
       final cloudIncidentId = incident['incident_id'] as String?;
       if (cloudIncidentId == null || cloudIncidentId.isEmpty) {
         throw const FormatException('Incident response has no incident_id');
       }
+      _backendIncidentId = cloudIncidentId;
       await database.recordCloudIncidentCreated(
         alertId: alert.id,
         cloudIncidentId: cloudIncidentId,
       );
       await database.markOutboxSucceeded('${alert.id}:createIncident');
+      state = state.copyWith(lifecycleStage: EmergencyLifecycleStage.cloudAcknowledged);
       _ref.read(awsIncidentProvider.notifier).startPolling(cloudIncidentId);
       await _ref.read(awsIncidentProvider.notifier).pollStatus(cloudIncidentId);
       return cloudIncidentId;
@@ -368,12 +456,9 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
 
       Logger.info('🚨 SOS TRIGGERED via ${source.name}');
 
-      // Use the same AWS identity that the protected incident API authorizes.
+      // Use the cached AWS identity, or fallback to local emergency identity for offline SOS safety
       final awsAuth = AwsAuthService.instance;
-      final realUid = awsAuth.currentUserId;
-      if (realUid == null) {
-        throw StateError('Authentication is required for SOS');
-      }
+      final realUid = awsAuth.currentUserId ?? 'offline_user';
       final realName = awsAuth.currentUser?.displayName ??
           awsAuth.currentPhone ??
           'Guardian';
@@ -408,11 +493,14 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
 
       state = state.copyWith(
         state: SosState.active,
+        lifecycleStage: _backendIncidentId != null
+            ? EmergencyLifecycleStage.cloudAcknowledged
+            : EmergencyLifecycleStage.cloudQueued,
         activeEmergency: emergency,
         sosAlert: alert,
         currentLocation: alert.currentLocation,
-        notifiedContacts: alert.contactStatuses
-            .where((c) => c.smsSent)
+        dispatchedContacts: alert.contactStatuses
+            .where((c) => c.smsAcceptedByDevice)
             .map((c) => c.contact.name)
             .toList(),
       );
@@ -494,7 +582,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       _backendIncidentId = await _persistAndIngestAlert(
         alert: alert,
         userId: realUid,
-        eventType: 'hardware_power_panic',
+        eventType: 'ANDROID_POWER_GESTURE',
         motionData: {'tap_count': 3, 'trigger': 'power_button'},
       );
 
@@ -555,11 +643,27 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     );
     final latitude = (event['latitude'] as num?)?.toDouble();
     final longitude = (event['longitude'] as num?)?.toDouble();
-    final nativeSource = event['source'] as String? ?? 'hardware_power_panic';
-    final isCheckIn = nativeSource.startsWith('check_in_');
-    final triggerSource =
-        isCheckIn ? SosTriggerSource.scheduled : SosTriggerSource.hardwarePower;
-    final eventType = isCheckIn ? 'check_in_expired' : 'hardware_power_panic';
+    final nativeSource = event['source'] as String? ?? 'ANDROID_POWER_GESTURE';
+    final triggerSource = switch (nativeSource) {
+      'ANDROID_POWER_GESTURE' || 'hardware_power_panic' => SosTriggerSource.hardwarePower,
+      'ANDROID_SHAKE' || 'shake_sos' => SosTriggerSource.shake,
+      'ANDROID_FALL' || 'fall_detected' => SosTriggerSource.fall,
+      'VOICE_SOS' || 'voice_sos' => SosTriggerSource.voiceCommand,
+      'CHECK_IN_EXPIRED' || 'check_in_expired' => SosTriggerSource.scheduled,
+      'ROUTE_DEVIATION' || 'route_deviation' => SosTriggerSource.routeDeviation,
+      'MULTI_TAP' || 'triple_tap' => SosTriggerSource.multiTap,
+      _ => SosTriggerSource.hardwarePower,
+    };
+    final eventType = switch (nativeSource) {
+      'ANDROID_POWER_GESTURE' || 'hardware_power_panic' => 'ANDROID_POWER_GESTURE',
+      'ANDROID_SHAKE' || 'shake_sos' => 'ANDROID_SHAKE',
+      'ANDROID_FALL' || 'fall_detected' => 'ANDROID_FALL',
+      'VOICE_SOS' || 'voice_sos' => 'VOICE_SOS',
+      'CHECK_IN_EXPIRED' || 'check_in_expired' => 'CHECK_IN_EXPIRED',
+      'ROUTE_DEVIATION' || 'route_deviation' => 'ROUTE_DEVIATION',
+      'MULTI_TAP' || 'triple_tap' => 'MULTI_TAP',
+      _ => nativeSource,
+    };
     final position = latitude != null && longitude != null
         ? Position(
             latitude: latitude,
@@ -640,12 +744,15 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
 
   /// Add a responder
   String _eventTypeForSource(SosTriggerSource source) => switch (source) {
-        SosTriggerSource.hardwarePower => 'hardware_power_panic',
-        SosTriggerSource.shake => 'shake_sos',
-        SosTriggerSource.voiceCommand => 'voice_sos',
-        SosTriggerSource.scheduled => 'check_in_expired',
-        SosTriggerSource.widget => 'widget_sos',
-        SosTriggerSource.button => 'sos_button',
+        SosTriggerSource.hardwarePower => 'ANDROID_POWER_GESTURE',
+        SosTriggerSource.shake => 'ANDROID_SHAKE',
+        SosTriggerSource.fall => 'ANDROID_FALL',
+        SosTriggerSource.voiceCommand => 'VOICE_SOS',
+        SosTriggerSource.scheduled => 'CHECK_IN_EXPIRED',
+        SosTriggerSource.routeDeviation => 'ROUTE_DEVIATION',
+        SosTriggerSource.multiTap => 'MULTI_TAP',
+        SosTriggerSource.widget => 'MANUAL_SOS',
+        SosTriggerSource.button => 'MANUAL_SOS',
       };
 
   /// Add a responder
@@ -716,6 +823,13 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
   /// Get current location
   Future<Position?> getCurrentLocation() async {
     return await LocationUtils.getCurrentPosition();
+  }
+
+  /// Update emergency lifecycle stage
+  void updateLifecycleStage(EmergencyLifecycleStage stage) {
+    if (state.lifecycleStage != stage) {
+      state = state.copyWith(lifecycleStage: stage);
+    }
   }
 
   /// Reset error state

@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:guardian/core/models/user_model.dart';
+import 'package:guardian/core/models/sms_delivery_state.dart';
 import 'package:guardian/core/utils/location_utils.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -30,6 +31,9 @@ enum SosTriggerSource {
   button, // Manual button press
   hardwarePower, // Covert hardware-button panic gesture
   shake, // Shake detection
+  fall, // Fall / collapse detection
+  routeDeviation, // Route deviation trigger
+  multiTap, // Power button multi-tap
   widget, // Home screen widget
   voiceCommand, // Voice command
   scheduled, // Check-in timer expired
@@ -45,33 +49,55 @@ enum SosAlertStatus {
   failed, // Failed to send alerts
 }
 
-/// Individual contact alert status
+/// Individual contact alert dispatch evidence status
 class ContactAlertStatus {
   final EmergencyContact contact;
-  final bool smsSent;
-  final bool pushSent;
-  final DateTime? sentAt;
+  final bool smsAcceptedByDevice;
+  final SmsDeliveryState deliveryState;
+  final bool pushDispatched;
+  final DateTime? dispatchedAt;
   final String? error;
 
   const ContactAlertStatus({
     required this.contact,
-    this.smsSent = false,
-    this.pushSent = false,
-    this.sentAt,
+    bool? smsAcceptedByDevice,
+    this.deliveryState = SmsDeliveryState.notAttempted,
+    bool? pushDispatched,
+    DateTime? dispatchedAt,
     this.error,
-  });
-
-  ContactAlertStatus copyWith({
     bool? smsSent,
     bool? pushSent,
     DateTime? sentAt,
+  })  : smsAcceptedByDevice = smsAcceptedByDevice ?? smsSent ?? false,
+        pushDispatched = pushDispatched ?? pushSent ?? false,
+        dispatchedAt = dispatchedAt ?? sentAt;
+
+  @Deprecated('Use smsAcceptedByDevice instead')
+  bool get smsSent => smsAcceptedByDevice;
+
+  @Deprecated('Use pushDispatched instead')
+  bool get pushSent => pushDispatched;
+
+  @Deprecated('Use dispatchedAt instead')
+  DateTime? get sentAt => dispatchedAt;
+
+  ContactAlertStatus copyWith({
+    bool? smsAcceptedByDevice,
+    SmsDeliveryState? deliveryState,
+    bool? pushDispatched,
+    DateTime? dispatchedAt,
     String? error,
+    bool? smsSent,
+    bool? pushSent,
+    DateTime? sentAt,
   }) {
     return ContactAlertStatus(
       contact: contact,
-      smsSent: smsSent ?? this.smsSent,
-      pushSent: pushSent ?? this.pushSent,
-      sentAt: sentAt ?? this.sentAt,
+      smsAcceptedByDevice:
+          smsAcceptedByDevice ?? smsSent ?? this.smsAcceptedByDevice,
+      deliveryState: deliveryState ?? this.deliveryState,
+      pushDispatched: pushDispatched ?? pushSent ?? this.pushDispatched,
+      dispatchedAt: dispatchedAt ?? sentAt ?? this.dispatchedAt,
       error: error ?? this.error,
     );
   }
@@ -128,9 +154,13 @@ class SosAlert {
     return 'https://maps.google.com/?q=$lat,$lng';
   }
 
-  /// Count of successfully notified contacts
-  int get notifiedCount =>
-      contactStatuses.where((c) => c.smsSent || c.pushSent).length;
+  /// Count of contacts with device-accepted dispatches
+  int get contactsDispatchedCount =>
+      contactStatuses.where((c) => c.deliveryState.isLocalOsAccepted || c.smsAcceptedByDevice || c.pushDispatched).length;
+
+  /// Count of successfully notified contacts (deprecated alias)
+  @Deprecated('Use contactsDispatchedCount instead')
+  int get notifiedCount => contactsDispatchedCount;
 }
 
 /// Callback types
@@ -249,7 +279,12 @@ class SosService {
             speedAccuracy: 0,
             altitudeAccuracy: 0,
             headingAccuracy: 0,
-            timestamp: DateTime.now(),
+            timestamp: cached['time_ms'] != null
+                ? DateTime.fromMillisecondsSinceEpoch(
+                    (cached['time_ms'] as num).toInt(),
+                    isUtc: true,
+                  )
+                : DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
           );
           Logger.info(
               '📍 Using cached location (accuracy: ${position.accuracy.toStringAsFixed(0)}m)');
@@ -328,7 +363,9 @@ class SosService {
     required String userName,
     String? customMessage,
   }) async {
-    bool smsSent = false;
+    SmsDispatchResult dispatchResult = const SmsDispatchResult(
+      state: SmsDeliveryState.notAttempted,
+    );
     String? error;
 
     try {
@@ -340,12 +377,12 @@ class SosService {
       );
 
       // Send SMS automatically via native SmsManager — no user tap required
-      smsSent = await _sendSmsNative(
+      dispatchResult = await _sendSmsNative(
         phone: contact.phone,
         message: message,
       );
 
-      if (smsSent) {
+      if (dispatchResult.state.isAcceptedForDispatch) {
         Logger.info('📱 Emergency SMS dispatched to contact');
       } else {
         Logger.warning('📱 SMS failed for a contact');
@@ -358,9 +395,10 @@ class SosService {
 
     return ContactAlertStatus(
       contact: contact,
-      smsSent: smsSent,
-      pushSent: false, // FCM requires backend
-      sentAt: smsSent ? DateTime.now() : null,
+      smsAcceptedByDevice: dispatchResult.state.isAcceptedForDispatch,
+      deliveryState: dispatchResult.state,
+      pushDispatched: false, // FCM requires backend
+      dispatchedAt: dispatchResult.state.isAcceptedForDispatch ? DateTime.now() : null,
       error: error,
     );
   }
@@ -399,13 +437,16 @@ class SosService {
   /// Send SMS automatically via Android SmsManager method channel.
   /// No user interaction required — SMS is dispatched silently.
   /// On iOS: falls back to url_launcher (iOS limitation, no SmsManager equivalent).
-  Future<bool> _sendSmsNative({
+  Future<SmsDispatchResult> _sendSmsNative({
     required String phone,
     required String message,
   }) async {
     if (kIsWeb) {
       Logger.debug('📱 [WEB] SMS not available on web');
-      return false;
+      return const SmsDispatchResult(
+        state: SmsDeliveryState.failed,
+        error: 'SMS not available on web',
+      );
     }
 
     try {
@@ -420,7 +461,9 @@ class SosService {
 
       if (result != null && result['allSuccess'] == true) {
         Logger.info('📱 Emergency SMS dispatched via SmsManager');
-        return true;
+        return const SmsDispatchResult(
+          state: SmsDeliveryState.osAccepted,
+        );
       } else {
         // Fallback to url_launcher (iOS or SmsManager error)
         return await _sendSmsUrlLauncher(phone: phone, message: message);
@@ -436,7 +479,7 @@ class SosService {
 
   /// iOS / web fallback: open SMS app with pre-filled message.
   /// This requires user to tap Send — unavoidable on iOS.
-  Future<bool> _sendSmsUrlLauncher({
+  Future<SmsDispatchResult> _sendSmsUrlLauncher({
     required String phone,
     required String message,
   }) async {
@@ -449,12 +492,21 @@ class SosService {
       );
       if (await canLaunchUrl(smsUri)) {
         await launchUrl(smsUri);
-        return true;
+        return const SmsDispatchResult(
+          state: SmsDeliveryState.composerOpened,
+          note: 'SMS composer opened on device; user dispatch required',
+        );
       }
-      return false;
+      return const SmsDispatchResult(
+        state: SmsDeliveryState.failed,
+        error: 'Cannot launch SMS app',
+      );
     } catch (e) {
       Logger.error('SMS url_launcher fallback error', e);
-      return false;
+      return SmsDispatchResult(
+        state: SmsDeliveryState.failed,
+        error: e.toString(),
+      );
     }
   }
 

@@ -15,6 +15,12 @@ final currentUserProvider = Provider<AwsAuthUser?>((ref) {
   return ref.watch(authStateProvider).valueOrNull;
 });
 
+final authStatusProvider = StreamProvider<AuthStatus>((ref) async* {
+  final service = ref.watch(authServiceProvider);
+  yield service.authStatus;
+  yield* service.authStatusChanges;
+});
+
 enum PhoneVerificationState { idle, codeSent, verifying, verified, error }
 
 final phoneVerificationProvider =
