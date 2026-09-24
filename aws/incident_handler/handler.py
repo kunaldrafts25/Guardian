@@ -92,8 +92,39 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         location=location,
         motion_data=motion_data,
     )
+    abuse_signals = {}
+    now_ts = datetime.now(timezone.utc).timestamp()
+    recent_count = 0
+    if not dynamo and _local_store_enabled():
+        for inc in _LOCAL_INCIDENTS.values():
+            if inc.get("user_id") == user_id:
+                try:
+                    c_dt = datetime.fromisoformat(inc.get("created_at", ""))
+                    if (now_ts - c_dt.timestamp()) <= 600.0:
+                        recent_count += 1
+                except Exception:
+                    pass
+    if recent_count >= 3:
+        abuse_signals["high_frequency_creation"] = True
+        abuse_signals["recent_incident_count_10m"] = recent_count
+        risk["abuse_signals"] = abuse_signals
+        risk["responder_advisory"] = (
+            "Caution: Multiple recent alerts recorded from this account. "
+            "Anti-solo buddy quorum enforced. Maintain situational caution."
+        )
 
     initial_state = IncidentState.CLOUD_ACCEPTED.value
+    curr_location = dict(location) if isinstance(location, dict) else location
+    if isinstance(curr_location, dict) and "captured_at" in curr_location and "freshness" not in curr_location:
+        try:
+            cap_dt = datetime.fromisoformat(str(curr_location["captured_at"]))
+            if cap_dt.tzinfo is None:
+                cap_dt = cap_dt.replace(tzinfo=timezone.utc)
+            age = max(0.0, (datetime.now(timezone.utc) - cap_dt).total_seconds())
+            curr_location["freshness"] = "FRESH" if age <= 30 else "STALE"
+            curr_location["age_seconds"] = round(age, 1)
+        except Exception:
+            curr_location["freshness"] = "UNKNOWN"
 
     incident_record = {
         "incident_id": incident_id,
@@ -102,7 +133,10 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         "event_type": event_type,
         "state": initial_state,
         "location": location,
+        "initial_sos_location": location,
+        "current_emergency_location": curr_location,
         "motion_data": motion_data,
+        "trigger_source": (motion_data or {}).get("trigger_source") or event_type,
         "risk_assessment": risk,
         "created_at": now_iso,
         "updated_at": now_iso,
@@ -117,6 +151,7 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         "incident_id": incident_id,
         "timestamp": now_iso,
         "event_type": event_type,
+        "trigger_source": (motion_data or {}).get("trigger_source") or event_type,
         "state": initial_state,
         "actor": "SYSTEM",
         "details": f"Anomaly detected ({event_type}) with risk level {risk['level']} (score: {risk['score']})",
@@ -310,3 +345,105 @@ def append_incident_event(
         with _LOCAL_STORE_LOCK:
             _LOCAL_EVENTS.setdefault(incident_id, []).append(entry)
     return entry
+
+
+def update_incident_location(
+    incident_id: str,
+    location_payload: Dict[str, Any],
+    user_id: str,
+) -> Dict[str, Any]:
+    """
+    Monotonically update active incident location.
+    Requires caller ownership and active incident state.
+    Rejects out-of-order or stale capture timestamps.
+    """
+    incident = get_incident(incident_id)
+    if not incident:
+        raise ValueError(f"Incident {incident_id} not found")
+    if incident.get("user_id") != user_id:
+        raise PermissionError("Only the incident owner can update emergency location")
+
+    current_state = incident.get("state")
+    if current_state in {
+        IncidentState.RESOLVED.value,
+        IncidentState.CANCELLED.value,
+        IncidentState.EXPIRED.value,
+    }:
+        raise ValueError(f"Cannot update location for {current_state} incident")
+
+    # Validate coordinate bounds
+    try:
+        lat = float(location_payload["latitude"])
+        lng = float(location_payload["longitude"])
+    except (KeyError, TypeError, ValueError) as err:
+        raise ValueError(f"Invalid latitude/longitude: {err}")
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lng <= 180.0):
+        raise ValueError("Latitude/longitude out of valid range")
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+
+    # Monotonic timestamp check
+    incoming_cap_str = location_payload.get("captured_at")
+    if incoming_cap_str:
+        try:
+            incoming_cap = datetime.fromisoformat(incoming_cap_str.replace("Z", "+00:00"))
+        except Exception as e:
+            raise ValueError(f"Invalid captured_at ISO timestamp: {e}")
+        # Reject future timestamps beyond 5 minutes
+        if (incoming_cap - now).total_seconds() > 300:
+            raise ValueError("Captured timestamp cannot be in the future")
+    else:
+        incoming_cap = now
+        location_payload["captured_at"] = now_iso
+
+    current_loc = incident.get("current_emergency_location") or incident.get("location") or {}
+    existing_cap_str = current_loc.get("captured_at")
+    if existing_cap_str:
+        try:
+            existing_cap = datetime.fromisoformat(existing_cap_str.replace("Z", "+00:00"))
+            if incoming_cap <= existing_cap:
+                raise ValueError("Out-of-order or stale location update rejected")
+        except ValueError:
+            raise
+        except Exception:
+            pass
+
+    location_payload["received_at"] = now_iso
+    initial_loc = incident.get("initial_sos_location") or incident.get("location") or location_payload
+
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        table = dynamo.Table(DYNAMODB_INCIDENTS_TABLE)
+        table.update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression="SET current_emergency_location = :curr, #loc = :curr, initial_sos_location = :init, updated_at = :now",
+            ExpressionAttributeNames={"#loc": "location"},
+            ExpressionAttributeValues={
+                ":curr": location_payload,
+                ":init": initial_loc,
+                ":now": now_iso,
+            },
+        )
+        incident["current_emergency_location"] = location_payload
+        incident["location"] = location_payload
+        incident["initial_sos_location"] = initial_loc
+        incident["updated_at"] = now_iso
+    else:
+        _require_local_store()
+        with _LOCAL_STORE_LOCK:
+            incident["current_emergency_location"] = location_payload
+            incident["location"] = location_payload
+            incident["initial_sos_location"] = initial_loc
+            incident["updated_at"] = now_iso
+            _LOCAL_INCIDENTS[incident_id] = incident
+
+    append_incident_event(
+        incident_id=incident_id,
+        event_type="victim_location_updated",
+        actor="VICTIM_DEVICE",
+        details=f"Location updated to ({lat:.4f}, {lng:.4f}) captured_at {incoming_cap_str or now_iso}",
+        state=current_state,
+    )
+
+    return incident

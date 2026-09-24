@@ -192,7 +192,10 @@ def verify_otp(phone_number: str, otp_code: str, session: str) -> Dict[str, Any]
 
 def refresh_tokens(refresh_token: str, user_id: Optional[str] = None) -> Dict[str, Any]:
     """Refresh expired access/id tokens using the refresh token."""
+    is_dev = os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
     if refresh_token.startswith("google_refresh_token_") or (user_id and user_id.startswith("google_")):
+        if not is_dev:
+            raise ValueError("Development tokens cannot be refreshed in production.")
         resolved_user = user_id or f"google_{uuid.uuid4().hex[:8]}"
         return {
             "access_token": f"dev_access_token_{resolved_user}",
@@ -285,8 +288,51 @@ def authenticate_with_google(id_token_str: str) -> Dict[str, Any]:
             raise ValueError(f"Invalid Google ID token: {str(e)}")
 
     user_id = f"google_{sub}"
-    refresh_token = f"google_refresh_token_{uuid.uuid4().hex}"
-    access_token = f"dev_access_token_{user_id}"
+
+    if is_dev:
+        refresh_token = f"google_refresh_token_{uuid.uuid4().hex}"
+        access_token = f"dev_access_token_{user_id}"
+    else:
+        client = _cognito_client()
+        if not client or not COGNITO_USER_POOL_ID or not COGNITO_CLIENT_ID:
+            raise ValueError("AWS Cognito is not configured; Google authentication is unavailable in production")
+        temp_pwd = _generate_temp_password()
+        try:
+            client.admin_create_user(
+                UserPoolId=COGNITO_USER_POOL_ID,
+                Username=user_id,
+                UserAttributes=[
+                    {"Name": "email", "Value": email},
+                    {"Name": "email_verified", "Value": "true"},
+                ],
+                MessageAction="SUPPRESS",
+                TemporaryPassword=temp_pwd,
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] != "UsernameExistsException":
+                logger.warning(f"Google Cognito user creation note: {e}")
+        try:
+            client.admin_set_user_password(
+                UserPoolId=COGNITO_USER_POOL_ID,
+                Username=user_id,
+                Password=temp_pwd,
+                Permanent=True,
+            )
+            auth_params = {"USERNAME": user_id, "PASSWORD": temp_pwd}
+            if COGNITO_CLIENT_SECRET:
+                auth_params["SECRET_HASH"] = _get_secret_hash(user_id)
+            resp = client.admin_initiate_auth(
+                UserPoolId=COGNITO_USER_POOL_ID,
+                ClientId=COGNITO_CLIENT_ID,
+                AuthFlow="ADMIN_USER_PASSWORD_AUTH",
+                AuthParameters=auth_params,
+            )
+            auth_result = resp.get("AuthenticationResult", {})
+            access_token = auth_result.get("AccessToken", "")
+            refresh_token = auth_result.get("RefreshToken", "")
+        except Exception as e:
+            logger.error(f"Cognito token issuance for Google auth failed: {e}")
+            raise ValueError("Unable to issue authenticated session for Google login.")
 
     # Upsert user profile in DynamoDB
     _upsert_user_profile(

@@ -8,7 +8,19 @@ from aws.agent.policy_authorization import POLICY_VERSION
 
 TERMINAL_STATES = frozenset({"RESOLVED", "CANCELLED", "EXPIRED"})
 IMMEDIATE_TRIGGER_TYPES = frozenset(
-    {"sos_button", "hardware_power_panic", "crash_detected", "check_in_expired"}
+    {
+        "sos_button",
+        "hardware_power_panic",
+        "crash_detected",
+        "check_in_expired",
+        "android_power_gesture",
+        "android_shake",
+        "android_fall",
+        "manual_sos",
+        "voice_sos",
+        "route_deviation",
+        "multi_tap",
+    }
 )
 
 
