@@ -26,6 +26,11 @@ def test_fall_movement_risk():
     fall_risk = calculate_movement_risk("fall_detected", {"g_force": 4.5})
     assert fall_risk >= 0.90
 
+    peak_risk = calculate_movement_risk(
+        "ANDROID_FALL", {"peak_acceleration": 39.2266}
+    )
+    assert peak_risk >= 0.90
+
     normal_risk = calculate_movement_risk("normal_checkin")
     assert normal_risk <= 0.30
 
@@ -39,7 +44,8 @@ def test_incident_composite_assessment():
         timestamp=night_dt,
     )
     assert result["level"] in ("HIGH", "CRITICAL")
-    assert result["score"] >= 0.80
+    # Location safety labels are intentionally unavailable/neutral unless backed by real data.
+    assert result["score"] >= 0.75
     assert result["recommended_action"] in ("USER_VERIFICATION", "IMMEDIATE_ESCALATION")
     assert len(result["reasons"]) >= 2
 
