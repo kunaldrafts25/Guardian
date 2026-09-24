@@ -721,6 +721,23 @@ def dispatch_community_alert(
         expected_incident_id=incident_id,
         expected_action="dispatch_community_alert",
     )
+    ctx = get_incident_context(incident_id)
+    if ctx.get("state") in {
+        IncidentState.COMMUNITY_OFFERED.value,
+        IncidentState.RESPONDERS_ACCEPTED.value,
+        IncidentState.RESPONDERS_EN_ROUTE.value,
+        IncidentState.HELP_ARRIVED.value,
+        IncidentState.RESOLVED.value,
+        IncidentState.CANCELLED.value,
+        IncidentState.EXPIRED.value,
+    } or int(ctx.get("current_escalation_stage") or 0) > 0:
+        return {
+            "incident_id": incident_id,
+            "status": "ALREADY_DISPATCHED",
+            "dispatched_count": 0,
+            "invite_count": 0,
+        }
+
     constraints = authorization.get("constraints") or {}
     _persist_escalation_policy(
         incident_id,
@@ -946,7 +963,7 @@ def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]
         incident_id=incident_id,
         new_state=IncidentState.RESPONDERS_ACCEPTED.value,
         actor="COMMUNITY_RESPONDER",
-        note=f"Verified helper {resp.get('name')} accepted mission and is en-route.",
+        note=f"Verified helper {resp.get('name')} accepted the responder mission.",
     )
 
     return {
@@ -1138,7 +1155,7 @@ def transition_rescue_mission(
             "COMMUNITY_RESPONDER",
             f"Responder mission {mission_id} changed from {current} to {target}.",
         )
-    if target == "WITHDRAWN":
+    if target in {"WITHDRAWN", "DECLINED"}:
         remaining = [
             m for m in _incident_missions(incident_id)
             if m.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}
@@ -1494,8 +1511,29 @@ def _dispatch_escalation_stage(
         f"{provider_accepted_count} push requests accepted by provider.",
     )
 
-    # Only wait when at least one responder was actually reachable through push.
-    if provider_accepted_count > 0:
+    invitation_payload = {
+        "incident_id": incident_id,
+        "event_type": ctx.get("event_type"),
+        "approximate_location": {
+            "latitude": round(float(location.get("latitude", 0.0)), precision),
+            "longitude": round(float(location.get("longitude", 0.0)), precision),
+        },
+        "eligible_count": len(all_candidates),
+        "invite_count": len(created_missions),
+        "required_quorum": required_quorum,
+        "policy_version": ctx.get("responder_policy_version"),
+        "stage": stage.stage_index,
+        "radius_meters": radius_meters,
+    }
+
+    # In local test mode the transport is deliberately not sent, but creation of
+    # real mission records is still the behavior under test. In production, a
+    # stage with zero provider-accepted pushes widens immediately.
+    local_simulation = _dev_mode() and not os.environ.get("AWS_EXECUTION_ENV")
+    waiting_for_response = provider_accepted_count > 0 or (
+        local_simulation and bool(created_missions)
+    )
+    if waiting_for_response:
         schedule = _schedule_agent_timeout(
             incident_id,
             "ESCALATION_CHECK",
@@ -1507,10 +1545,13 @@ def _dispatch_escalation_stage(
             "stage": stage.stage_index,
             "radius_meters": radius_meters,
             "new_invitations": len(created_missions),
+            "invite_count": len(created_missions),
+            "dispatched_count": provider_accepted_count,
             "provider_accepted_count": provider_accepted_count,
             "failed_count": failed_count,
             "status": "INVITATIONS_CREATED",
             "invitation_expires_at": invitation_expiry,
+            "invitation_payload": invitation_payload,
             "backend_timer_scheduled": bool(schedule.get("scheduled")),
         }
 
@@ -1519,10 +1560,14 @@ def _dispatch_escalation_stage(
         "stage": stage.stage_index,
         "radius_meters": radius_meters,
         "new_invitations": len(created_missions),
+        "invite_count": len(created_missions),
+        "dispatched_count": 0,
         "provider_accepted_count": 0,
         "failed_count": failed_count,
         "status": "NO_REACHABLE_RESPONDERS",
         "invitation_expires_at": invitation_expiry,
+        "invitation_payload": invitation_payload,
+        "backend_timer_scheduled": False,
     }
 
 
