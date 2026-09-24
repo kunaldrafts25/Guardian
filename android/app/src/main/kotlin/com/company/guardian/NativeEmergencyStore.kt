@@ -11,6 +11,7 @@ import org.json.JSONObject
 object NativeEmergencyStore {
     private const val FILE_NAME = "guardian_native_emergency_v1"
     private const val SNAPSHOT_KEY = "snapshot"
+    private const val CLOUD_AUTH_KEY = "cloud_auth"
     private const val EVENTS_KEY = "events"
     private const val LAST_TRIGGER_AT_KEY = "last_trigger_at"
     private const val LAST_TRIGGER_PRIORITY_KEY = "last_trigger_priority"
@@ -44,6 +45,25 @@ object NativeEmergencyStore {
     @Synchronized
     fun clearSnapshot(context: Context) {
         preferences(context).edit().remove(SNAPSHOT_KEY).commit()
+    }
+
+    @Synchronized
+    fun saveCloudAuth(context: Context, auth: JSONObject) {
+        require(auth.optString("access_token").isNotBlank()) { "Access token is required" }
+        require(auth.optString("session_id").isNotBlank()) { "Guardian session ID is required" }
+        require(auth.optString("api_endpoint").isNotBlank()) { "API endpoint is required" }
+        preferences(context).edit().putString(CLOUD_AUTH_KEY, auth.toString()).commit()
+    }
+
+    @Synchronized
+    fun cloudAuth(context: Context): JSONObject? {
+        val raw = preferences(context).getString(CLOUD_AUTH_KEY, null) ?: return null
+        return runCatching { JSONObject(raw) }.getOrNull()
+    }
+
+    @Synchronized
+    fun clearCloudAuth(context: Context) {
+        preferences(context).edit().remove(CLOUD_AUTH_KEY).commit()
     }
 
     @Synchronized
@@ -89,6 +109,35 @@ object NativeEmergencyStore {
             if (!event.optBoolean("consumed", false)) pending.put(event)
         }
         return pending
+    }
+
+    @Synchronized
+    fun eventById(context: Context, eventId: String): JSONObject? {
+        val all = allEvents(context)
+        for (index in 0 until all.length()) {
+            val event = all.getJSONObject(index)
+            if (event.optString("event_id") == eventId) {
+                return JSONObject(event.toString())
+            }
+        }
+        return null
+    }
+
+    @Synchronized
+    fun markCloudSynced(context: Context, eventId: String, incidentId: String?): Boolean {
+        val all = allEvents(context)
+        var found = false
+        for (index in 0 until all.length()) {
+            val event = all.getJSONObject(index)
+            if (event.optString("event_id") == eventId) {
+                event.put("cloud_synced", true)
+                event.put("cloud_synced_at_ms", System.currentTimeMillis())
+                if (!incidentId.isNullOrBlank()) event.put("cloud_incident_id", incidentId)
+                found = true
+            }
+        }
+        if (found) preferences(context).edit().putString(EVENTS_KEY, all.toString()).commit()
+        return found
     }
 
     @Synchronized
