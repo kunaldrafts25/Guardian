@@ -251,6 +251,7 @@ class SafetyServiceBridge {
 
   static Future<bool> updateEmergencyAuth({
     required String accessToken,
+    String? refreshToken,
     required String sessionId,
     required String apiEndpoint,
   }) async {
@@ -262,6 +263,8 @@ class SafetyServiceBridge {
             'updateEmergencyAuth',
             {
               'access_token': accessToken,
+              if (refreshToken != null && refreshToken.isNotEmpty)
+                'refresh_token': refreshToken,
               'session_id': sessionId,
               'api_endpoint': apiEndpoint,
             },
