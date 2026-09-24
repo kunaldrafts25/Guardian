@@ -699,7 +699,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 incident_id,
                 correlation_id=correlation_id,
             )
-            if (result.get("action_result", {}).get("status") == "AGENT_LEASE_BUSY":
+            if result.get("action_result", {}).get("status") == "AGENT_LEASE_BUSY":
                 raise RuntimeError("Agent execution lease is currently held; retry event")
         return {"statusCode": 200, "body": result}
     except Exception:
