@@ -78,7 +78,8 @@ class MainActivity : FlutterActivity() {
                 val isHighPriority = source in setOf(
                     "ANDROID_POWER_GESTURE", "hardware_power_panic",
                     "ANDROID_FALL", "fall_detected",
-                    "ROUTE_DEVIATION", "CHECK_IN_EXPIRED"
+                    "ROUTE_DEVIATION", "ROUTE_DEVIATION_TIMEOUT",
+                    "ROUTE_DEVIATION_USER_SOS", "CHECK_IN_EXPIRED"
                 )
                 val methodName = if (isHighPriority) "onHardwarePanic" else "onServiceSosTrigger"
                 MethodChannel(flutterEngine.dartExecutor.binaryMessenger, EMERGENCY_CHANNEL)
