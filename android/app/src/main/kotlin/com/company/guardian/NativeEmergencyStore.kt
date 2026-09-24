@@ -49,6 +49,7 @@ object NativeEmergencyStore {
 
     @Synchronized
     fun saveCloudAuth(context: Context, auth: JSONObject) {
+        require(auth.optString("user_id").isNotBlank()) { "User ID is required" }
         require(auth.optString("access_token").isNotBlank()) { "Access token is required" }
         require(auth.optString("session_id").isNotBlank()) { "Guardian session ID is required" }
         require(auth.optString("api_endpoint").isNotBlank()) { "API endpoint is required" }
