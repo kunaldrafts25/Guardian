@@ -220,7 +220,10 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
         'ANDROID_FALL' || 'fall_detected' => SosTriggerSource.fall,
         'VOICE_SOS' || 'voice_sos' => SosTriggerSource.voiceCommand,
         'CHECK_IN_EXPIRED' || 'check_in_expired' => SosTriggerSource.scheduled,
-        'ROUTE_DEVIATION' || 'route_deviation' => SosTriggerSource.routeDeviation,
+        'ROUTE_DEVIATION' ||
+      'route_deviation' ||
+      'ROUTE_DEVIATION_TIMEOUT' ||
+      'ROUTE_DEVIATION_USER_SOS' => SosTriggerSource.routeDeviation,
         'MULTI_TAP' || 'triple_tap' => SosTriggerSource.multiTap,
         _ => SosTriggerSource.button,
       };
@@ -671,6 +674,8 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       'VOICE_SOS' || 'voice_sos' => 'VOICE_SOS',
       'CHECK_IN_EXPIRED' || 'check_in_expired' => 'CHECK_IN_EXPIRED',
       'ROUTE_DEVIATION' || 'route_deviation' => 'ROUTE_DEVIATION',
+      'ROUTE_DEVIATION_TIMEOUT' => 'ROUTE_DEVIATION_TIMEOUT',
+      'ROUTE_DEVIATION_USER_SOS' => 'ROUTE_DEVIATION_USER_SOS',
       'MULTI_TAP' || 'triple_tap' => 'MULTI_TAP',
       _ => nativeSource,
     };
