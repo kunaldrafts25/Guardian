@@ -6,6 +6,7 @@ from aws.agent import tools
 from aws.agent.guardian_agent import (
     _handle_verification_timeout,
     execute_agent_reasoning,
+    execute_authorized_tool,
 )
 from aws.agent.policy_authorization import issue_policy_authorizations
 from aws.agent.safety_policy import evaluate_safety_policy
@@ -267,3 +268,38 @@ def test_per_recipient_local_sms_acceptance_only_skips_that_contact():
     )
     assert result["contacts_skipped_native"] == ["Local Contact"]
     assert result["contacts_notified_cloud"] == ["Cloud Contact"]
+
+
+def test_action_execution_lease_suppresses_concurrent_duplicate_side_effect():
+    incident = create_incident(
+        {
+            "event_id": "phase4-action-lease",
+            "user_id": "phase4-action-user",
+            "event_type": "hardware_power_panic",
+        }
+    )
+    incident_id = incident["incident_id"]
+    calls = []
+
+    def fake_tool(iid, token):
+        calls.append((iid, token))
+        return {"status": "PROVIDER_ACCEPTED"}
+
+    first = execute_authorized_tool(
+        incident_id=incident_id,
+        correlation_id="action-run-a",
+        action="notify_trusted_contact",
+        token=_policy_token(incident_id, "notify_trusted_contact"),
+        tool=fake_tool,
+    )
+    second = execute_authorized_tool(
+        incident_id=incident_id,
+        correlation_id="action-run-b",
+        action="notify_trusted_contact",
+        token=_policy_token(incident_id, "notify_trusted_contact"),
+        tool=fake_tool,
+    )
+
+    assert first["status"] == "PROVIDER_ACCEPTED"
+    assert second["status"] == "ALREADY_PROCESSED_OR_RUNNING"
+    assert len(calls) == 1
