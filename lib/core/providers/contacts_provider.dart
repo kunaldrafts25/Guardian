@@ -210,6 +210,7 @@ class ContactsNotifier extends StateNotifier<ContactsState> {
         .fold<int>(1, (latest, value) => value > latest ? value : latest);
     await SafetyServiceBridge.updateEmergencySnapshot(
       version: latestUpdate,
+      userId: _ownerUserId,
       userName: _authService.currentUser?.displayName ??
           _authService.currentPhone ??
           'Guardian user',
