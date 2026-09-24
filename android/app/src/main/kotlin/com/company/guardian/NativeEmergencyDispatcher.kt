@@ -41,6 +41,9 @@ object NativeEmergencyDispatcher {
 
         val eventId = UUID.randomUUID().toString()
         val snapshot = NativeEmergencyStore.snapshot(context)
+        val cloudAuth = NativeEmergencyStore.cloudAuth(context)
+        val ownerUserId = snapshot?.optString("user_id")?.takeIf { it.isNotBlank() }
+            ?: cloudAuth?.optString("user_id")?.takeIf { it.isNotBlank() }
         val contacts = snapshot?.optJSONArray("contacts") ?: JSONArray()
         val location = SafetyForegroundService.lastKnownLocation
         val userName = snapshot?.optString("user_name")?.takeIf { it.isNotBlank() }
@@ -82,6 +85,7 @@ object NativeEmergencyDispatcher {
         val event = JSONObject().apply {
             put("schema_version", 1)
             put("event_id", eventId)
+            put("owner_user_id", ownerUserId ?: JSONObject.NULL)
             put("source", source)
             put("occurred_at_ms", now)
             put("snapshot_version", snapshot?.optInt("version", 0) ?: 0)
