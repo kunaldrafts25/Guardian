@@ -14,11 +14,8 @@ IMMEDIATE_TRIGGER_TYPES = frozenset(
         "crash_detected",
         "check_in_expired",
         "android_power_gesture",
-        "android_shake",
-        "android_fall",
         "manual_sos",
         "voice_sos",
-        "route_deviation",
         "multi_tap",
     }
 )
@@ -51,6 +48,7 @@ def evaluate_safety_policy(
     incident_state: str,
     is_isolated: bool,
     owner_requested: bool = False,
+    verification_timed_out: bool = False,
 ) -> SafetyPolicyDecision:
     """Return the complete authority envelope without consulting an LLM."""
     normalized_event = event_type.strip().lower()
@@ -69,6 +67,8 @@ def evaluate_safety_policy(
         )
 
     immediate_reasons = []
+    if verification_timed_out:
+        immediate_reasons.append("USER_VERIFICATION_TIMED_OUT")
     if owner_requested:
         immediate_reasons.append("OWNER_REQUESTED_ESCALATION")
     if normalized_event in IMMEDIATE_TRIGGER_TYPES:
@@ -77,13 +77,16 @@ def evaluate_safety_policy(
         immediate_reasons.append("CRITICAL_RISK")
 
     if immediate_reasons:
+        decision = (
+            "VERIFICATION_TIMEOUT_ESCALATION"
+            if verification_timed_out
+            else "OWNER_REQUESTED_ESCALATION"
+            if owner_requested
+            else "ESCALATE_IMMEDIATELY_WITH_COMMUNITY"
+        )
         return SafetyPolicyDecision(
             version=POLICY_VERSION,
-            decision=(
-                "OWNER_REQUESTED_ESCALATION"
-                if owner_requested
-                else "ESCALATE_IMMEDIATELY_WITH_COMMUNITY"
-            ),
+            decision=decision,
             authorized_actions=frozenset(
                 {"notify_trusted_contact", "dispatch_community_alert"}
             ),
