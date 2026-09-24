@@ -80,6 +80,18 @@ def test_inferred_sensor_events_require_verification_but_explicit_panic_is_immed
         "dispatch_community_alert",
     }
 
+    for confirmed_route_event in (
+        "ROUTE_DEVIATION_TIMEOUT",
+        "ROUTE_DEVIATION_USER_SOS",
+    ):
+        confirmed = evaluate_safety_policy(
+            event_type=confirmed_route_event,
+            risk_level="LOW",
+            incident_state="CLOUD_ACCEPTED",
+            is_isolated=False,
+        )
+        assert confirmed.decision == "ESCALATE_IMMEDIATELY_WITH_COMMUNITY"
+
 
 def test_dispatch_starts_stage_one_and_replay_does_not_restart_it():
     incident = create_incident(
