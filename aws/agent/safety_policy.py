@@ -17,6 +17,8 @@ IMMEDIATE_TRIGGER_TYPES = frozenset(
         "manual_sos",
         "voice_sos",
         "multi_tap",
+        "route_deviation_timeout",
+        "route_deviation_user_sos",
     }
 )
 
