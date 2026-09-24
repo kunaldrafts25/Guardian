@@ -613,17 +613,15 @@ class SafetyForegroundService : Service() {
             if (consecutiveDeviations >= 3) {
                 consecutiveDeviations = 0
                 Log.w(TAG, "🚨 CRITICAL ROUTE DEVIATION CONFIRMED (>150m for 3 consecutive fixes)!")
-                if (onRouteDeviation != null) {
-                    // P0-01: ONE canonical trigger path — onRouteDeviation is the authority.
-                    onRouteDeviation?.invoke(minDistanceMeters)
-                    // Supplemental evidence only — no trigger authority.
-                    onAnomalyDetected?.invoke("ROUTE_DEVIATION", mapOf(
-                        "deviation_meters" to minDistanceMeters,
-                        "trigger_authority" to false
-                    ))
-                } else {
-                    handleDurableRouteDeviation(minDistanceMeters)
-                }
+                // One policy regardless of Flutter availability: native owns
+                // the confirmation window and timeout. Flutter receives evidence
+                // only and must not turn mere deviation into an immediate SOS.
+                handleDurableRouteDeviation(minDistanceMeters)
+                onRouteDeviation?.invoke(minDistanceMeters)
+                onAnomalyDetected?.invoke("ROUTE_DEVIATION", mapOf(
+                    "deviation_meters" to minDistanceMeters,
+                    "trigger_authority" to false
+                ))
             }
         } else {
             consecutiveDeviations = 0
