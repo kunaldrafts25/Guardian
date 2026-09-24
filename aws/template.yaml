@@ -389,9 +389,30 @@ Resources:
           Type: Api
           Properties: {Path: '/{proxy+}', Method: any, Auth: {Authorizer: NONE}}
 
+  AgentSchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub guardian-${EnvironmentName}-agent-scheduler-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeGuardianAgent
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:guardian-${EnvironmentName}-agent
+
   GuardianAgentFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub guardian-${EnvironmentName}-agent
       CodeUri: .
       Handler: agent.guardian_agent.lambda_handler
       Environment:
