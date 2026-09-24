@@ -250,14 +250,19 @@ class SafetyServiceBridge {
   }
 
   static Future<bool> updateEmergencyAuth({
-    String? idToken,
-    String? apiEndpoint,
+    required String accessToken,
+    required String sessionId,
+    required String apiEndpoint,
   }) async {
+    if (accessToken.isEmpty || sessionId.isEmpty || apiEndpoint.isEmpty) {
+      return false;
+    }
     try {
       return await _serviceChannel.invokeMethod<bool>(
             'updateEmergencyAuth',
             {
-              'id_token': idToken,
+              'access_token': accessToken,
+              'session_id': sessionId,
               'api_endpoint': apiEndpoint,
             },
           ) ??
