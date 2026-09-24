@@ -197,8 +197,15 @@ class SafetyForegroundService : Service() {
             }
             ACTION_ROUTE_DEVIATION_SOS -> {
                 dismissRouteDeviationAlert()
-                val event = NativeEmergencyDispatcher.trigger(this, "ROUTE_DEVIATION")
-                if (event != null) onSosTrigger?.invoke("ROUTE_DEVIATION")
+                val event = NativeEmergencyDispatcher.trigger(
+                    this,
+                    "ROUTE_DEVIATION_USER_SOS",
+                    sensorEvidence = org.json.JSONObject().apply {
+                        put("detector_version", "route-deviation-v1")
+                        put("user_confirmed_help", true)
+                    },
+                )
+                if (event != null) onSosTrigger?.invoke("ROUTE_DEVIATION_USER_SOS")
                 return START_STICKY
             }
         }
@@ -700,10 +707,10 @@ class SafetyForegroundService : Service() {
             }
             val event = NativeEmergencyDispatcher.trigger(
                 this@SafetyForegroundService,
-                "ROUTE_DEVIATION",
+                "ROUTE_DEVIATION_TIMEOUT",
                 sensorEvidence = evidence,
             )
-            if (event != null) onSosTrigger?.invoke("ROUTE_DEVIATION")
+            if (event != null) onSosTrigger?.invoke("ROUTE_DEVIATION_TIMEOUT")
         }
         routeDeviationHandler.postDelayed(routeDeviationRunnable!!, 60_000L)
     }
