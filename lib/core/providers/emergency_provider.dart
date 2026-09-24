@@ -302,10 +302,13 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
             source: 'initial_sos',
           )
         : null;
+    final cloudLocation = emergencyLocation?.toJson();
+    if (cloudLocation != null) {
+      cloudLocation['timezone_offset'] = DateTime.now().timeZoneOffset.inSeconds;
+    }
     final cloudPayload = <String, dynamic>{
       'event_type': eventType,
-      if (emergencyLocation != null)
-        'location': emergencyLocation.toJson(),
+      if (cloudLocation != null) 'location': cloudLocation,
       'motion_data': evidencedMotionData,
     };
     state = state.copyWith(lifecycleStage: EmergencyLifecycleStage.cloudQueued);
@@ -368,7 +371,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       final incident = await AwsIncidentService.instance.createIncident(
         eventId: alert.id,
         eventType: eventType,
-        location: emergencyLocation?.toJson(),
+        location: cloudLocation,
         motionData: evidencedMotionData,
       );
       final cloudIncidentId = incident['incident_id'] as String?;
