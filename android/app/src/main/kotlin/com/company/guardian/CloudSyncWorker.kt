@@ -5,103 +5,163 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.Instant
 
 /**
- * P1-04: Native Emergency Cloud-Outbox.
- * Synchronizes native-triggered incidents to AWS ApiGateway when the device has network connectivity.
- * 
- * CHALLENGES & LIMITATIONS (Auth Token Lifecycle):
- * Native uploads require a valid AWS Cognito ID token to hit the API Gateway.
- * However, Cognito ID tokens expire after 1 hour. If the app has been killed in the background
- * for >1 hour, the cached `id_token` in NativeEmergencyStore will be expired, and this WorkManager
- * request will receive HTTP 401 Unauthorized. 
- * 
- * Ideally, the native layer would use the `refresh_token` to mint a new `id_token` directly with Cognito.
- * However, implementing the SRP authentication flow or refresh flow in native Kotlin, while 
- * duplicating the Amplify Flutter logic, is out of scope. 
- * For now, this uploads *if* the token is fresh, otherwise relies on Flutter's next startup to reconcile.
+ * Native emergency cloud outbox.
+ *
+ * This worker intentionally uses the same stable event_id, API contract,
+ * Cognito access token, and Guardian session header as the Flutter client.
+ * Flutter import/acknowledgement and cloud synchronisation are independent:
+ * an event may be consumed by Flutter while still requiring native cloud sync.
  */
 class CloudSyncWorker(
-    appContext: Context, 
-    params: WorkerParameters
+    appContext: Context,
+    params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
         val eventId = inputData.getString("event_id") ?: return Result.failure()
-        
-        Log.i("CloudSyncWorker", "Attempting cloud sync for native emergency: $eventId")
-        
-        val allEvents = NativeEmergencyStore.pendingEvents(applicationContext)
-        var targetEvent: JSONObject? = null
-        for (i in 0 until allEvents.length()) {
-            val ev = allEvents.getJSONObject(i)
-            if (ev.optString("event_id") == eventId) {
-                targetEvent = ev
-                break
-            }
-        }
-        
-        if (targetEvent == null || targetEvent.optBoolean("consumed", false)) {
-            Log.i("CloudSyncWorker", "Event $eventId already consumed or missing.")
+        val event = NativeEmergencyStore.eventById(applicationContext, eventId)
+            ?: return Result.success()
+
+        if (event.optBoolean("cloud_synced", false)) {
             return Result.success()
         }
 
-        val snapshot = NativeEmergencyStore.snapshot(applicationContext)
-        val idToken = snapshot?.optString("id_token")
-        val apiEndpoint = snapshot?.optString("api_endpoint")
-        
-        if (idToken.isNullOrBlank() || apiEndpoint.isNullOrBlank()) {
-            Log.w("CloudSyncWorker", "Missing auth token or API endpoint. Cannot sync natively.")
-            return Result.failure()
+        val auth = NativeEmergencyStore.cloudAuth(applicationContext)
+        val accessToken = auth?.optString("access_token")?.takeIf { it.isNotBlank() }
+        val sessionId = auth?.optString("session_id")?.takeIf { it.isNotBlank() }
+        val apiEndpoint = auth?.optString("api_endpoint")?.takeIf { it.isNotBlank() }
+
+        if (accessToken == null || sessionId == null || apiEndpoint == null) {
+            Log.w(TAG, "Cloud credentials unavailable for $eventId; retrying after backoff.")
+            return Result.retry()
         }
-        
+
+        var connection: HttpURLConnection? = null
         return try {
-            val url = URL("$apiEndpoint/incident")
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("Authorization", "Bearer $idToken")
-            conn.doOutput = true
+            val base = apiEndpoint.trimEnd('/')
+            val url = URL("$base/incidents")
+            connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 15_000
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("Authorization", "Bearer $accessToken")
+            connection.setRequestProperty("X-Guardian-Session-ID", sessionId)
+            connection.doOutput = true
 
-            // Construct cloud payload mimicking Flutter's ingestNativeEmergencyEvent
-            val payload = JSONObject().apply {
-                put("event_id", eventId)
-                put("event_type", targetEvent.optString("source", "native_trigger"))
-                put("timestamp", targetEvent.optLong("occurred_at_ms"))
-                
-                val location = JSONObject()
-                if (!targetEvent.isNull("latitude")) {
-                    location.put("latitude", targetEvent.optDouble("latitude"))
-                    location.put("longitude", targetEvent.optDouble("longitude"))
-                    location.put("accuracy", targetEvent.optDouble("accuracy"))
+            val payload = buildIncidentPayload(event)
+            OutputStreamWriter(connection.outputStream).use { writer ->
+                writer.write(payload.toString())
+            }
+
+            val code = connection.responseCode
+            when {
+                code in 200..299 -> {
+                    val responseText = readResponse(connection)
+                    val incidentId = runCatching {
+                        if (responseText.isBlank()) null
+                        else JSONObject(responseText).optString("incident_id").takeIf { it.isNotBlank() }
+                    }.getOrNull()
+                    NativeEmergencyStore.markCloudSynced(
+                        applicationContext,
+                        eventId,
+                        incidentId,
+                    )
+                    Log.i(TAG, "Cloud sync succeeded for $eventId incident=$incidentId")
+                    Result.success()
                 }
-                put("location", location)
-                
-                val motion = targetEvent.optJSONObject("sensor_evidence") ?: JSONObject()
-                motion.put("local_sms_accepted_count", targetEvent.optJSONArray("accepted_phones")?.length() ?: 0)
-                put("motion_data", motion)
+                code == 401 || code == 403 -> {
+                    // Flutter refresh/login will update native cloud auth; WorkManager
+                    // keeps the durable event and retries without manufacturing a
+                    // second incident because event_id is stable.
+                    Log.w(TAG, "Cloud auth rejected for $eventId (HTTP $code); retrying.")
+                    Result.retry()
+                }
+                code == 408 || code == 425 || code == 429 || code >= 500 -> {
+                    Log.w(TAG, "Transient cloud failure for $eventId (HTTP $code); retrying.")
+                    Result.retry()
+                }
+                else -> {
+                    val body = readResponse(connection)
+                    Log.e(TAG, "Permanent cloud request failure for $eventId: HTTP $code $body")
+                    Result.failure()
+                }
             }
-
-            OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()) }
-            
-            val code = conn.responseCode
-            if (code in 200..299) {
-                Log.i("CloudSyncWorker", "Cloud sync successful for $eventId")
-                NativeEmergencyStore.acknowledge(applicationContext, eventId)
-                Result.success()
-            } else if (code == 401 || code == 403) {
-                Log.e("CloudSyncWorker", "Cloud sync auth failed (token likely expired): $code. Retrying later.")
-                Result.retry() // We retry so that if Flutter updates the token, this eventually succeeds
-            } else {
-                Log.e("CloudSyncWorker", "Cloud sync failed with HTTP $code")
-                Result.retry()
-            }
-        } catch (e: Exception) {
-            Log.e("CloudSyncWorker", "Cloud sync exception: ${e.message}")
+        } catch (error: Exception) {
+            Log.e(TAG, "Cloud sync exception for $eventId: ${error.javaClass.simpleName}")
             Result.retry()
+        } finally {
+            connection?.disconnect()
         }
+    }
+
+    private fun buildIncidentPayload(event: JSONObject): JSONObject {
+        val motion = JSONObject()
+        val evidence = event.optJSONObject("sensor_evidence")
+        if (evidence != null) {
+            val keys = evidence.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                motion.put(key, evidence.opt(key))
+            }
+        }
+
+        val occurredAtMs = event.optLong("occurred_at_ms", 0L)
+        if (occurredAtMs > 0L) {
+            motion.put("event_occurred_at", Instant.ofEpochMilli(occurredAtMs).toString())
+        }
+        motion.put("trigger_source", event.optString("source", "native_trigger"))
+        motion.put("native_dispatch", true)
+        motion.put("snapshot_version", event.optInt("snapshot_version", 0))
+        motion.put(
+            "local_sms_accepted_count",
+            event.optJSONArray("accepted_phones")?.length() ?: 0,
+        )
+
+        val payload = JSONObject()
+            .put("event_id", event.optString("event_id"))
+            .put("event_type", event.optString("source", "native_trigger"))
+            .put("motion_data", motion)
+
+        val latitude = event.optDouble("latitude", Double.NaN)
+        val longitude = event.optDouble("longitude", Double.NaN)
+        if (!latitude.isNaN() && !longitude.isNaN()) {
+            val location = JSONObject()
+                .put("latitude", latitude)
+                .put("longitude", longitude)
+                .put("accuracy", event.optDouble("accuracy", 0.0))
+                .put("source", event.optString("location_provider", "native_cached"))
+                .put("received_at", Instant.now().toString())
+
+            val capturedAtMs = event.optLong("location_time_ms", 0L)
+            if (capturedAtMs > 0L) {
+                location.put("captured_at", Instant.ofEpochMilli(capturedAtMs).toString())
+            }
+            payload.put("location", location)
+        }
+
+        return payload
+    }
+
+    private fun readResponse(connection: HttpURLConnection): String {
+        val stream = if (connection.responseCode in 200..299) {
+            connection.inputStream
+        } else {
+            connection.errorStream
+        } ?: return ""
+        return BufferedReader(InputStreamReader(stream)).use { it.readText() }
+    }
+
+    companion object {
+        private const val TAG = "CloudSyncWorker"
     }
 }
