@@ -57,11 +57,13 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Dict, Any, Optional, List
+from datetime import datetime, timezone
 import uuid
 
 from aws.incident_handler.handler import (
     create_incident,
     update_incident_status,
+    update_incident_location,
     get_incident,
     get_incident_timeline,
     IncidentState,
@@ -178,6 +180,38 @@ app.add_middleware(AuthenticationMiddleware)
 # ─────────────────────────────────────────────────────────────────────────────
 # HEALTH CHECK
 # ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/health")
+def api_health():
+    now_iso = datetime.now(timezone.utc).isoformat()
+    db_status = "connected"
+    if os.environ.get("AWS_EXECUTION_ENV"):
+        try:
+            import boto3
+            dynamo = boto3.client("dynamodb", region_name=os.environ.get("AWS_REGION", "ap-south-1"))
+            dynamo.describe_limits()
+            db_status = "connected"
+        except Exception as e:
+            db_status = f"unreachable: {str(e)[:50]}"
+    elif os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true":
+        db_status = "local_simulation"
+    else:
+        db_status = "unconfigured"
+
+    is_healthy = db_status in ("connected", "local_simulation")
+    return {
+        "status": "healthy" if is_healthy else "degraded",
+        "service": "Guardian AWS Full-Stack API",
+        "version": "3.0.0",
+        "timestamp": now_iso,
+        "region": os.environ.get("AWS_DEFAULT_REGION", "ap-south-1"),
+        "checks": {
+            "database": db_status,
+            "auth": "cognito_configured" if os.environ.get("COGNITO_USER_POOL_ID") else "dev_mock",
+            "push": "sns_configured" if os.environ.get("SNS_FCM_PLATFORM_ARN") else "dev_mock",
+        },
+    }
+
 
 @app.get("/")
 def health_check():
@@ -644,6 +678,37 @@ def api_update_incident_status(
         raise HTTPException(status_code=400, detail=str(ve))
 
 
+class IncidentLocationUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    location: Optional[Dict[str, Any]] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    accuracy: Optional[float] = None
+    captured_at: Optional[str] = None
+    source: Optional[str] = None
+
+
+@app.post("/incidents/{incident_id}/location")
+def api_update_incident_location(
+    incident_id: str,
+    req: IncidentLocationUpdateRequest,
+    request: Request,
+):
+    try:
+        user_id = authenticated_user_id(request)
+        loc_payload = req.location or req.model_dump(exclude_none=True)
+        return update_incident_location(
+            incident_id=incident_id,
+            location_payload=loc_payload,
+            user_id=user_id,
+        )
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
+    except ValueError as ve:
+        raise HTTPException(status_code=409, detail=str(ve))
+
+
 @app.get("/incidents/{incident_id}/timeline")
 def api_get_incident_timeline(incident_id: str, request: Request):
     _owned_incident(incident_id, request)
@@ -657,10 +722,15 @@ def api_get_nearby_responders(
     request: Request,
     radius_meters: float = 1200.0,
 ):
-    _owned_incident(incident_id, request)
+    incident = _owned_incident(incident_id, request)
     from aws.agent.tools import find_nearby_responders
     responders = find_nearby_responders(incident_id, radius_meters=radius_meters)
-    return {"incident_id": incident_id, "eligible_responder_count": len(responders)}
+    return {
+        "incident_id": incident_id,
+        "eligible_responder_count": len(responders),
+        "search_stage": incident.get("current_escalation_stage", 1),
+        "radius_meters": radius_meters,
+    }
 
 
 @app.post("/incidents/{incident_id}/accept")
@@ -679,8 +749,8 @@ def api_accept_mission(
         if incident:
             background_push = send_push_to_user(
                 user_id=incident.get("user_id", ""),
-                title="✅ Help is on the way!",
-                body="A verified Guardian helper has accepted your SOS and is navigating to you.",
+                title="✅ Helper Accepted Alert",
+                body="A verified Guardian helper accepted your request. Awaiting route departure.",
                 notification_type="rescue_accepted",
                 data={"incident_id": incident_id, "responder_id": responder_id},
             )
@@ -826,15 +896,77 @@ def api_transition_responder_mission(
 
     _require_role(request, "responder")
     try:
-        return transition_rescue_mission(
+        updated = transition_rescue_mission(
             mission_id,
             authenticated_user_id(request),
             req.status,
         )
+        incident_id = str(updated.get("incident_id", ""))
+        incident = get_incident(incident_id) if incident_id else None
+        if incident and incident.get("user_id"):
+            victim_user_id = incident["user_id"]
+            if req.status == "EN_ROUTE":
+                send_push_to_user(
+                    user_id=victim_user_id,
+                    title="🚗 Helper En Route",
+                    body="A verified Guardian helper is now navigating to your location.",
+                    notification_type="rescue_en_route",
+                    data={"incident_id": incident_id, "mission_id": mission_id},
+                )
+            elif req.status == "ARRIVED":
+                send_push_to_user(
+                    user_id=victim_user_id,
+                    title="📍 Helper Arrived",
+                    body="A verified Guardian helper has reported arrival at your location.",
+                    notification_type="rescue_arrived",
+                    data={"incident_id": incident_id, "mission_id": mission_id},
+                )
+        return updated
     except PermissionError as error:
         raise HTTPException(status_code=403, detail=str(error))
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error))
+
+
+@app.post("/missions/{mission_id}/renew-grant")
+def api_renew_mission_grant(mission_id: str, request: Request):
+    from aws.agent.tools import renew_mission_navigation_grant
+
+    _require_role(request, "responder")
+    responder_id = authenticated_user_id(request)
+    try:
+        return renew_mission_navigation_grant(mission_id, responder_id)
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error))
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@app.post("/incidents/{incident_id}/escalate-dispatch")
+def api_escalate_dispatch(incident_id: str, request: Request):
+    """Progressively advance escalation stage or evaluate redispatch."""
+    _owned_incident(incident_id, request)
+    from aws.agent.tools import advance_incident_escalation
+    try:
+        return advance_incident_escalation(incident_id)
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@app.get("/incidents/{incident_id}/escalation-status")
+def api_get_escalation_status(incident_id: str, request: Request):
+    incident = _owned_incident(incident_id, request)
+    from aws.agent.tools import _incident_missions
+    missions = _incident_missions(incident_id)
+    accepted = [m for m in missions if m.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}]
+    return {
+        "incident_id": incident_id,
+        "current_stage": incident.get("current_escalation_stage", 1),
+        "current_radius_meters": incident.get("current_radius_meters", 1000.0),
+        "dispatched_count": len(incident.get("dispatched_responder_ids") or []),
+        "accepted_count": len(accepted),
+        "escalation_deadline_at": incident.get("escalation_deadline_at"),
+    }
 
 
 @app.post("/incidents/{incident_id}/agent-step")

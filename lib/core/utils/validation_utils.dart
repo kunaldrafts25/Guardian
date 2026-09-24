@@ -182,8 +182,9 @@ class ValidationUtils {
     if (RegExp(r'^\d{5}(-\d{4})?$').hasMatch(zipCode)) return true;
 
     // Canadian postal code (A1A 1A1)
-    if (RegExp(r'^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$').hasMatch(zipCode))
+    if (RegExp(r'^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$').hasMatch(zipCode)) {
       return true;
+    }
 
     return false;
   }

@@ -177,11 +177,12 @@ sam build --template-file aws/template.yaml
 
 Current verified baseline:
 
-- 107 Flutter tests passing.
-- 38 backend tests passing.
+- 145 Flutter tests passing.
+- 71 backend tests passing (pytest).
 - Android signed release APK builds in CI.
 - iOS simulator build passes in CI.
 - SAM template validation and packaging pass in CI.
+- Zero static analysis errors or warnings (`flutter analyze --no-fatal-infos`).
 
 The CI signing key is ephemeral and must never be used for distribution.
 

@@ -8,7 +8,7 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:http/http.dart' as http;
+import 'package:guardian/core/config/map_routing_config.dart';
 import 'package:guardian/core/utils/logger.dart';
 
 /// A place prediction / result
@@ -109,7 +109,7 @@ class PlacesSearchNotifier extends StateNotifier<PlacesSearchState> {
 
     try {
       var urlStr =
-          'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&addressdetails=1&limit=6';
+          '${MapRoutingConfig.nominatimBaseUrl}/search?q=${Uri.encodeComponent(query)}&format=json&addressdetails=1&limit=6';
 
       if (location != null) {
         // Bias search to near user
@@ -120,13 +120,10 @@ class PlacesSearchNotifier extends StateNotifier<PlacesSearchState> {
         urlStr += '&viewbox=$left,$top,$right,$bottom';
       }
 
-      final response = await http.get(
+      final response = await MapRoutingConfig.throttledNominatimGet(
         Uri.parse(urlStr),
-        headers: {
-          'User-Agent': 'GuardianSafetyApp/2.0 (contact@guardian-safety.app)',
-          'Accept-Language': 'en',
-        },
-      ).timeout(const Duration(seconds: 6));
+        timeout: MapRoutingConfig.defaultSearchTimeout,
+      );
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
@@ -173,13 +170,11 @@ class PlacesSearchNotifier extends StateNotifier<PlacesSearchState> {
 
       // Query Nominatim lookup
       final url =
-          'https://nominatim.openstreetmap.org/lookup?osm_ids=N$placeId,W$placeId,R$placeId&format=json';
-      final response = await http.get(
+          '${MapRoutingConfig.nominatimBaseUrl}/lookup?osm_ids=N$placeId,W$placeId,R$placeId&format=json';
+      final response = await MapRoutingConfig.throttledNominatimGet(
         Uri.parse(url),
-        headers: {
-          'User-Agent': 'GuardianSafetyApp/2.0 (contact@guardian-safety.app)',
-        },
-      ).timeout(const Duration(seconds: 5));
+        timeout: MapRoutingConfig.defaultSearchTimeout,
+      );
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);

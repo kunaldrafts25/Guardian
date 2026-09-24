@@ -13,6 +13,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:guardian/app/theme/app_theme.dart';
 import 'package:guardian/core/providers/location_provider.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:guardian/core/config/map_routing_config.dart';
 
 /// Result from the location picker
 class PickedLocation {
@@ -135,8 +136,7 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      urlTemplate: MapRoutingConfig.tilesUrl,
                       userAgentPackageName: 'com.company.guardian',
                     ),
                     if (_selectedLocation != null)

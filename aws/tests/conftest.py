@@ -27,6 +27,8 @@ def seed_development_responder_store():
             "trust_score": trust_score,
             "verification_status": "APPROVED",
             "is_active": True,
+            "availability_expires_at": 2000000000,
+            "geohash": tools._encode_geohash(latitude, longitude, precision=5),
         }
     yield
     tools._LOCAL_RESPONDERS.clear()

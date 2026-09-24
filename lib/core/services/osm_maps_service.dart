@@ -17,6 +17,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:http/http.dart' as http;
+import 'package:guardian/core/config/map_routing_config.dart';
 import 'package:guardian/core/utils/logger.dart';
 
 /// Represents a lat/long coordinate (compatible with flutter_map's LatLng)
@@ -81,15 +82,11 @@ class RouteResult {
 /// Free OpenStreetMap-based Maps Service
 /// Drop-in replacement for Google Maps APIs at zero cost.
 class OsmMapsService {
-  static const String _nominatimBase = 'https://nominatim.openstreetmap.org';
-  static const String _osrmBase = 'https://router.project-osrm.org';
+  static String get _nominatimBase => MapRoutingConfig.nominatimBaseUrl;
+  static String get _osrmBase => MapRoutingConfig.osrmBaseUrl;
   static const String _overpassBase = 'https://overpass-api.de/api/interpreter';
 
-  /// Nominatim requires a User-Agent header to avoid being blocked
-  static const Map<String, String> _nominatimHeaders = {
-    'User-Agent': 'GuardianSafetyApp/2.0 (contact@guardian-safety.app)',
-    'Accept-Language': 'en',
-  };
+
 
   // Simple cache to reduce repeated API hits
   static final Map<String, _CacheEntry> _cache = {};
@@ -107,9 +104,10 @@ class OsmMapsService {
       final url = Uri.parse(
         '$_nominatimBase/search?q=${Uri.encodeComponent(query)}&format=json&limit=1&addressdetails=1',
       );
-      final resp = await http
-          .get(url, headers: _nominatimHeaders)
-          .timeout(const Duration(seconds: 8));
+      final resp = await MapRoutingConfig.throttledNominatimGet(
+        url,
+        timeout: MapRoutingConfig.defaultSearchTimeout,
+      );
 
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body) as List;
@@ -136,9 +134,10 @@ class OsmMapsService {
       final url = Uri.parse(
         '$_nominatimBase/reverse?lat=${point.latitude}&lon=${point.longitude}&format=json&addressdetails=1',
       );
-      final resp = await http
-          .get(url, headers: _nominatimHeaders)
-          .timeout(const Duration(seconds: 8));
+      final resp = await MapRoutingConfig.throttledNominatimGet(
+        url,
+        timeout: MapRoutingConfig.defaultSearchTimeout,
+      );
 
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
@@ -193,7 +192,10 @@ class OsmMapsService {
         '?overview=full&geometries=geojson&steps=false',
       );
 
-      final resp = await http.get(url).timeout(const Duration(seconds: 10));
+      final resp = await MapRoutingConfig.executeWithRetry(
+        () => http.get(url).timeout(MapRoutingConfig.defaultRoutingTimeout),
+        serviceName: 'OSRM',
+      );
 
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
@@ -220,7 +222,14 @@ class OsmMapsService {
         }
       }
     } catch (e) {
-      Logger.warning('OSRM routing error: $e');
+      Logger.warning('OSRM routing error: $e. Returning direct geodesic fallback.');
+      final distM = distanceBetween(origin, destination);
+      return RouteResult(
+        points: [origin, destination],
+        distanceMeters: distM,
+        durationSeconds: ((distM / 80) * 60).round(),
+        summary: '${(distM / 1000).toStringAsFixed(1)} km (direct) — ${((distM / 80)).ceil()} min walk',
+      );
     }
     return null;
   }
@@ -369,8 +378,7 @@ class OsmMapsService {
 
   /// Returns the OSM tile URL template for use with flutter_map's TileLayer.
   /// This replaces Google Maps tile rendering — completely free.
-  static String get osmTileUrl =>
-      'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  static String get osmTileUrl => MapRoutingConfig.tilesUrl;
 
   /// Dark/night map tile — Carto Dark Matter (free)
   static String get darkTileUrl =>

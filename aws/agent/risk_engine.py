@@ -36,19 +36,21 @@ def calculate_movement_risk(event_type: str, motion_data: Optional[Dict[str, Any
     motion = motion_data or {}
     e_type = (event_type or "").lower()
 
-    if "power" in e_type or "hardware" in e_type or "triple" in e_type:
-        return 0.99  # Explicit intentional hardware distress signal
+    if "power" in e_type or "hardware" in e_type or "triple" in e_type or "gesture" in e_type or "manual" in e_type or "tap" in e_type:
+        return 0.99  # Explicit intentional distress signal
     if "fall" in e_type:
         # Check acceleration magnitude spike if available
         g_force = motion.get("g_force", 3.0)
         return min(0.95, 0.80 + (g_force / 20.0))
     if "crash" in e_type:
         return 0.95
+    if "deviation" in e_type:
+        return 0.85
     if "shake" in e_type or "panic" in e_type:
         return 0.80
     if "inactivity" in e_type or motion.get("stationary_seconds", 0) > 60:
         return 0.70
-    if "checkin_timeout" in e_type:
+    if "checkin_timeout" in e_type or "check_in" in e_type:
         return 0.75
     return 0.25
 

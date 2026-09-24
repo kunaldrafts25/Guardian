@@ -1,6 +1,6 @@
 # Guardian Hackathon MVP Tracker
 
-Last updated: 2026-09-21  
+Last updated: 2026-09-24  
 This file tracks only the smallest safe, real, demonstrable MVP. The broader production backlog remains in `docs/PRODUCTION_IMPLEMENTATION_PLAN.md` and is frozen until this list is complete.
 
 ## MVP product promise
@@ -35,8 +35,9 @@ The MVP does not claim public responder onboarding, emergency-service dispatch, 
 - [x] Runtime fake responders and fake acknowledgement/delivery claims removed.
 - [x] BLE/offline-mesh runtime, dependency, permissions, UI, and stale local cache removed; schema v7 upgrade is covered by a migration test.
 - [x] Durable DynamoDB mission acceptance and short-lived navigation grants exist.
-- [x] Backend suite passes: 38 tests after removal of the obsolete legacy handler suite.
-- [x] Flutter suite passes: 107 tests, including semantic theme and 200% text-scale component coverage.
+- [x] Backend suite passes: 71 tests across authentication, sessions, incident state machine, risk engine, progressive escalation, and P0/P1/P2 remediation suites.
+- [x] Flutter suite passes: 145 tests across units, widgets, database, and P2 state machine remediation.
+- [x] P0 (Safety Critical), P1 (Emergency Pipeline), P2 (Lifecycle & Truthfulness), and P3 (Clean Architecture & Drift Elimination) remediation completed.
 - [x] Static analysis has no errors or warnings (informational modernization lint remains).
 - [x] Android release APK builds and verifies with explicit cryptographic signing: 69.7 MB after the UI foundation update.
 - [x] GitHub Android CI is green with an explicit Android SDK setup action and API 36 packages.

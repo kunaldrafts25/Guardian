@@ -2,7 +2,7 @@
  * Guardian 2.0 - Women's Safety App
  * © 2025 All Rights Reserved - Kunal Singh
  * 
- * Safe Route Provider - Route navigation with Google Directions API
+ * Safe Route Provider - Route navigation with OSRM (Open Source Routing Machine)
  */
 
 import 'dart:convert';
@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
+import 'package:guardian/core/config/map_routing_config.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:guardian/core/services/safety_service_bridge.dart';
 
@@ -76,8 +77,6 @@ class SafeRouteState {
 class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
   SafeRouteNotifier() : super(const SafeRouteState());
 
-  static const String _osrmBase = 'https://router.project-osrm.org';
-
   /// Fetch walking route from OSRM (free, no API key needed)
   Future<void> fetchRoute({
     required LatLng origin,
@@ -95,14 +94,17 @@ class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
     try {
       // OSRM uses lon,lat order
       final url = Uri.parse(
-        '$_osrmBase/route/v1/foot/'
+        '${MapRoutingConfig.osrmBaseUrl}/route/v1/foot/'
         '${origin.longitude},${origin.latitude};'
         '${destination.longitude},${destination.latitude}'
         '?overview=full&geometries=geojson&steps=false',
       );
 
-      Logger.info('🗺️ Fetching route from OSRM (free)');
-      final response = await http.get(url).timeout(const Duration(seconds: 10));
+      Logger.info('🗺️ Fetching route from OSRM (${MapRoutingConfig.osrmBaseUrl})');
+      final response = await MapRoutingConfig.executeWithRetry(
+        () => http.get(url).timeout(MapRoutingConfig.defaultRoutingTimeout),
+        serviceName: 'OSRM',
+      );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
@@ -150,16 +152,37 @@ class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
         }
       }
 
-      throw Exception('No route found (OSRM)');
+      throw Exception('No route found (OSRM returned ${response.statusCode})');
     } catch (e) {
-      Logger.warning('OSRM routing failed: $e');
-      state = SafeRouteState(
+      Logger.warning('OSRM routing failed: $e. Activating resilient geodesic direct route fallback.');
+      
+      // Resilient fallback: Straight-line route so safety navigation & deviation tracking do not collapse
+      final polylinePoints = [origin, destination];
+      final distanceM = const Distance().as(LengthUnit.Meter, origin, destination);
+      final distanceText = distanceM < 1000
+          ? '${distanceM.round()} m (direct)'
+          : '${(distanceM / 1000).toStringAsFixed(1)} km (direct)';
+      final durationM = (distanceM / 80).ceil(); // ~4.8 km/h average walk
+
+      final fallbackRoute = RouteInfo(
+        polylinePoints: polylinePoints,
+        distance: distanceText,
+        duration: '$durationM min walk (direct)',
+        startAddress: 'Current Location',
+        endAddress: destinationName ?? 'Destination',
+        steps: [],
+      );
+
+      state = state.copyWith(
         isLoading: false,
-        origin: origin,
-        destination: destination,
-        destinationName: destinationName,
-        errorMessage:
-            'A walking route could not be retrieved. Check your connection and try again.',
+        currentRoute: fallbackRoute,
+        errorMessage: 'Detailed turn-by-turn unavailable; direct emergency line active.',
+      );
+
+      SafetyServiceBridge().setActiveRoute(
+        polylinePoints
+            .map((p) => {'latitude': p.latitude, 'longitude': p.longitude})
+            .toList(),
       );
     }
   }

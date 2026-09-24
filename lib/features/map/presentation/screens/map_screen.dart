@@ -20,6 +20,7 @@ import 'package:guardian/core/services/places_search_service.dart';
 import 'package:guardian/core/providers/settings_provider.dart' as settings;
 import 'package:guardian/app/routes.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:guardian/core/config/map_routing_config.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
@@ -119,7 +120,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate: MapRoutingConfig.tilesUrl,
                 userAgentPackageName: 'com.company.guardian',
               ),
               CircleLayer(circles: circles),
@@ -298,7 +299,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
             ),
             child: const Icon(
-              Icons.turn_right_rounded,
+              Icons.directions_walk_rounded,
               size: 26,
               color: Colors.white,
             ),
@@ -312,9 +313,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               children: [
                 Row(
                   children: [
-                    const Text(
-                      'In 80 m',
-                      style: TextStyle(
+                    Text(
+                      routeState.currentRoute?.distance ?? 'Route active',
+                      style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                         color: Colors.white,
@@ -329,9 +330,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         color: Colors.white.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(999),
                       ),
-                      child: const Text(
-                        'Next 3 min',
-                        style: TextStyle(
+                      child: Text(
+                        routeState.currentRoute?.duration ?? 'Walking route',
+                        style: const TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFFDDE9E1),
@@ -342,7 +343,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Turn right • ${routeState.destinationName ?? "Kearny St"}',
+                  routeState.destinationName ?? routeState.currentRoute?.endAddress ?? 'Pedestrian destination',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -354,12 +355,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 const SizedBox(height: 2),
                 const Row(
                   children: [
-                    Icon(Icons.shield_rounded,
+                    Icon(Icons.directions_walk_rounded,
                         size: 11, color: Color(0xFF82B89D)),
                     SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        'Verified well-lit corridor with active telemetry',
+                        'Pedestrian walking route • OpenStreetMap',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -1366,7 +1367,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Calculates walking paths avoiding unmonitored hazards.',
+                  'Calculates pedestrian walking routes using OpenStreetMap data.',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark
