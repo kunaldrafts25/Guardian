@@ -14,6 +14,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.Constraints
 import androidx.work.NetworkType
 import androidx.work.WorkManager
+import androidx.work.ExistingWorkPolicy
 import androidx.work.Data
 import androidx.work.BackoffPolicy
 import java.util.concurrent.TimeUnit
@@ -81,6 +82,7 @@ object NativeEmergencyDispatcher {
             put("location_provider", location?.provider ?: JSONObject.NULL)
             put("sensor_evidence", sensorEvidence ?: JSONObject.NULL)
             put("consumed", false)
+            put("cloud_synced", false)
         }
         NativeEmergencyStore.appendEvent(context, event)
         acknowledgeOnDevice(context, dispatchResults.values.count { it }, phones.size)
@@ -93,7 +95,11 @@ object NativeEmergencyDispatcher {
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
             .build()
-        WorkManager.getInstance(context).enqueue(workRequest)
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            "guardian-emergency-$eventId",
+            ExistingWorkPolicy.KEEP,
+            workRequest,
+        )
 
         return event
     }
