@@ -281,8 +281,13 @@ def notify_trusted_contact(
     location = ctx.get("location") or {}
     lat = location.get("latitude")
     lng = location.get("longitude")
+    captured_at = location.get("captured_at")
     maps_line = (
-        f"Live GPS Location: https://maps.google.com/?q={lat},{lng}\n\n"
+        (
+            f"Latest recorded location"
+            f"{f' at {captured_at}' if captured_at else ''}: "
+            f"https://maps.google.com/?q={lat},{lng}\n\n"
+        )
         if isinstance(lat, (int, float)) and isinstance(lng, (int, float))
         else "Current location was unavailable.\n\n"
     )
@@ -301,12 +306,27 @@ def notify_trusted_contact(
     skipped = []
     failed = []
 
+    local_delivery = {}
+    for item in (ctx.get("motion_data") or {}).get("local_sms_delivery") or []:
+        if not isinstance(item, dict):
+            continue
+        contact_key = str(item.get("contact_id") or "").strip()
+        state = str(item.get("state") or "").upper()
+        if contact_key:
+            local_delivery[contact_key] = state
+
     for c in targets:
-        # P1-06: Check per-contact delivery state. Skip if already accepted natively.
-        if str(c.get("delivery_state")).upper() == "OS_ACCEPTED":
+        # Per-recipient truth: suppress cloud fallback only for the exact contact
+        # whose local Android dispatch was accepted by the OS.
+        contact_key = str(c.get("id") or "").strip()
+        local_state = local_delivery.get(
+            contact_key,
+            str(c.get("delivery_state") or "").upper(),
+        )
+        if local_state == "OS_ACCEPTED":
             skipped.append(c.get("name", "Unknown"))
             continue
-            
+
         if _dev_mode() and not os.environ.get("AWS_EXECUTION_ENV"):
             notified.append(c.get("name", "Unknown"))
         else:
