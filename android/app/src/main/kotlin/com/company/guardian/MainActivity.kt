@@ -253,6 +253,7 @@ class MainActivity : FlutterActivity() {
                     }
                     "updateEmergencyAuth" -> {
                         val accessToken = call.argument<String>("access_token")
+                        val refreshToken = call.argument<String>("refresh_token")
                         val sessionId = call.argument<String>("session_id")
                         val apiEndpoint = call.argument<String>("api_endpoint")
                         if (accessToken.isNullOrBlank() || sessionId.isNullOrBlank() || apiEndpoint.isNullOrBlank()) {
@@ -266,6 +267,9 @@ class MainActivity : FlutterActivity() {
                                 this,
                                 JSONObject().apply {
                                     put("access_token", accessToken)
+                                    if (!refreshToken.isNullOrBlank()) {
+                                        put("refresh_token", refreshToken)
+                                    }
                                     put("session_id", sessionId)
                                     put("api_endpoint", apiEndpoint)
                                     put("updated_at_ms", System.currentTimeMillis())
