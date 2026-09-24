@@ -291,6 +291,14 @@ def execute_agent_reasoning(
     # P1-03: Atomic agent execution lease to prevent duplicate SMS/responder dispatch.
     if not acquire_agent_lease(incident_id, correlation_id):
         existing = get_incident(incident_id)
+        execution_state = str(
+            (existing or {}).get("agent_execution_state") or ""
+        ).upper()
+        status = (
+            "AGENT_LEASE_BUSY"
+            if execution_state == "RUNNING"
+            else "ALREADY_EXECUTED"
+        )
         return {
             "incident_id": incident_id,
             "decision": existing.get("agent_decision") if existing else "UNKNOWN",
@@ -298,7 +306,7 @@ def execute_agent_reasoning(
             "provider": existing.get("agent_provider", "") if existing else "",
             "risk_level": existing.get("risk_level") if existing else None,
             "risk_score": existing.get("risk_score") if existing else None,
-            "action_result": {"status": "ALREADY_EXECUTED_OR_RUNNING"},
+            "action_result": {"status": status},
             "correlation_id": correlation_id,
         }
 
@@ -691,6 +699,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 incident_id,
                 correlation_id=correlation_id,
             )
+            if (result.get("action_result", {}).get("status") == "AGENT_LEASE_BUSY":
+                raise RuntimeError("Agent execution lease is currently held; retry event")
         return {"statusCode": 200, "body": result}
     except Exception:
         # Only initial reasoning owns the initial-agent lease. Timeout workflows
