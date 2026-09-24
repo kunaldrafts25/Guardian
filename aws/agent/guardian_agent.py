@@ -38,12 +38,17 @@ from aws.agent.tools import (
     ask_user_confirmation,
     notify_trusted_contact,
     dispatch_community_alert,
+    process_incident_redispatch_eval,
 )
 from aws.incident_handler.handler import (
     get_incident,
+    get_dynamo_resource,
     acquire_agent_lease,
+    finish_agent_run,
+    append_incident_event,
     update_incident_status,
     IncidentState,
+    DYNAMODB_INCIDENTS_TABLE,
     AWS_REGION,
 )
 from aws.agent.ledger import append_agent_event
@@ -220,6 +225,19 @@ def _query_bedrock_llm(context: Dict[str, Any], risk_info: Dict[str, Any]) -> Op
     return None
 
 
+def _record_agent_event(**kwargs: Any) -> None:
+    """Best-effort audit write; ledger outages must not block authorized safety actions."""
+    try:
+        append_agent_event(**kwargs)
+    except Exception as error:
+        logger.error(
+            "Agent ledger write failed for %s/%s: %s",
+            kwargs.get("incident_id"),
+            kwargs.get("event_type"),
+            type(error).__name__,
+        )
+
+
 def execute_authorized_tool(
     *,
     incident_id: str,
@@ -240,19 +258,19 @@ def execute_authorized_tool(
         "action": action,
         "authorization_id": authorization["authorization_id"],
     }
-    append_agent_event(event_type="ACTION_AUTHORIZED", **ledger_context)
-    append_agent_event(event_type="TOOL_REQUESTED", **ledger_context)
+    _record_agent_event(event_type="ACTION_AUTHORIZED", **ledger_context)
+    _record_agent_event(event_type="TOOL_REQUESTED", **ledger_context)
     try:
         result = tool(incident_id, token)
     except Exception as error:
-        append_agent_event(
+        _record_agent_event(
             event_type="TOOL_FAILED",
             outcome="FAILED",
             evidence={"error_type": type(error).__name__, "retryable": True},
             **ledger_context,
         )
         raise
-    append_agent_event(
+    _record_agent_event(
         event_type="TOOL_COMPLETED",
         outcome="COMPLETED",
         evidence=result,
@@ -287,6 +305,7 @@ def execute_agent_reasoning(
     # 1. Gather Context
     context = get_incident_context(incident_id)
     if "error" in context:
+        finish_agent_run(incident_id, correlation_id, success=False)
         return {"error": context["error"]}
 
     # 2. Baseline Deterministic Risk Assessment
@@ -294,7 +313,7 @@ def execute_agent_reasoning(
     risk_level = risk_info.get("level", "MEDIUM")
     risk_score = risk_info.get("score", 0.5)
     reasons = risk_info.get("reasons", [])
-    append_agent_event(
+    _record_agent_event(
         incident_id=incident_id,
         correlation_id=correlation_id,
         event_type="CONTEXT_ASSESSED",
@@ -330,7 +349,7 @@ def execute_agent_reasoning(
         if bedrock_result
         else "Deterministic policy v1"
     )
-    append_agent_event(
+    _record_agent_event(
         incident_id=incident_id,
         correlation_id=correlation_id,
         event_type="ACTION_PROPOSED",
@@ -341,7 +360,7 @@ def execute_agent_reasoning(
     )
 
     if bedrock_result:
-        append_agent_event(
+        _record_agent_event(
             incident_id=incident_id,
             correlation_id=correlation_id,
             event_type="MODEL_ADVISORY_VALIDATED",
@@ -367,7 +386,7 @@ def execute_agent_reasoning(
         else:
             rationale = f"Low risk score ({risk_score}). Telemetry within acceptable threshold. Continuing passive monitoring."
 
-    append_agent_event(
+    _record_agent_event(
         incident_id=incident_id,
         correlation_id=correlation_id,
         event_type="POLICY_DECIDED",
@@ -426,7 +445,7 @@ def execute_agent_reasoning(
     elif decision == "REQUEST_USER_VERIFICATION":
         action_result = ask_user_confirmation(incident_id, timeout_seconds=15)
 
-    append_agent_event(
+    _record_agent_event(
         incident_id=incident_id,
         correlation_id=correlation_id,
         event_type="AGENT_RUN_COMPLETED",
@@ -468,6 +487,8 @@ def execute_agent_reasoning(
             except Exception as dyn_err:
                 logger.warning(f"DynamoDB sync skipped: {dyn_err}")
 
+    finish_agent_run(incident_id, correlation_id, success=True)
+
     return {
         "incident_id": incident_id,
         "provider": provider_name,
@@ -483,17 +504,183 @@ def execute_agent_reasoning(
     }
 
 
+def _claim_verification_timeout(incident_id: str) -> bool:
+    """Atomically move a pending verification to TIMED_OUT once."""
+    incident = get_incident(incident_id)
+    if not incident:
+        return False
+    if incident.get("verification_status") != "PENDING":
+        return False
+    if incident.get("agent_decision") != "REQUEST_USER_VERIFICATION":
+        return False
+    if incident.get("state") in {
+        IncidentState.RESOLVED.value,
+        IncidentState.CANCELLED.value,
+        IncidentState.EXPIRED.value,
+    }:
+        return False
+
+    dynamo = get_dynamo_resource()
+    now = datetime.now(timezone.utc).isoformat()
+    if dynamo:
+        try:
+            dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+                Key={"incident_id": incident_id},
+                UpdateExpression=(
+                    "SET verification_status = :timed_out, "
+                    "verification_completed_at = :now"
+                ),
+                ConditionExpression=(
+                    "verification_status = :pending "
+                    "AND agent_decision = :verification"
+                ),
+                ExpressionAttributeValues={
+                    ":timed_out": "TIMED_OUT",
+                    ":pending": "PENDING",
+                    ":verification": "REQUEST_USER_VERIFICATION",
+                    ":now": now,
+                },
+            )
+            return True
+        except Exception as error:
+            code = getattr(error, "response", {}).get("Error", {}).get("Code")
+            if code == "ConditionalCheckFailedException":
+                return False
+            raise
+
+    # Local test mode uses the same semantic claim without DynamoDB.
+    incident["verification_status"] = "TIMED_OUT"
+    incident["verification_completed_at"] = now
+    return True
+
+
+def _handle_verification_timeout(
+    incident_id: str,
+    correlation_id: str,
+) -> Dict[str, Any]:
+    if not _claim_verification_timeout(incident_id):
+        return {
+            "incident_id": incident_id,
+            "status": "VERIFICATION_TIMEOUT_NOOP",
+        }
+
+    incident = get_incident(incident_id) or {}
+    policy = evaluate_safety_policy(
+        event_type=str(incident.get("event_type", "")),
+        risk_level=str((incident.get("risk_assessment") or {}).get("level", "MEDIUM")),
+        incident_state=str(incident.get("state", "")),
+        is_isolated=bool((incident.get("location") or {}).get("is_isolated", False)),
+        verification_timed_out=True,
+    )
+    authorizations = issue_policy_authorizations(
+        incident_id=incident_id,
+        actions=policy.authorized_actions,
+        decision=policy.decision,
+        correlation_id=correlation_id,
+        actor="guardian_verification_timeout",
+        action_constraints={
+            action: policy.constraints_for(action)
+            for action in policy.authorized_actions
+        },
+    )
+
+    contact_result: Dict[str, Any] = {"status": "NOT_ATTEMPTED"}
+    community_result: Dict[str, Any] = {"status": "NOT_ATTEMPTED"}
+    try:
+        contact_result = execute_authorized_tool(
+            incident_id=incident_id,
+            correlation_id=correlation_id,
+            action="notify_trusted_contact",
+            token=authorizations["notify_trusted_contact"],
+            tool=notify_trusted_contact,
+        )
+    except Exception as error:
+        logger.error("Verification-timeout contact action failed: %s", type(error).__name__)
+        contact_result = {"status": "FAILED", "error_type": type(error).__name__}
+
+    try:
+        community_result = execute_authorized_tool(
+            incident_id=incident_id,
+            correlation_id=correlation_id,
+            action="dispatch_community_alert",
+            token=authorizations["dispatch_community_alert"],
+            tool=dispatch_community_alert,
+        )
+    except Exception as error:
+        logger.error("Verification-timeout responder action failed: %s", type(error).__name__)
+        community_result = {"status": "FAILED", "error_type": type(error).__name__}
+
+    append_incident_event(
+        incident_id,
+        "verification_timeout_escalated",
+        "SYSTEM",
+        "User verification deadline expired; deterministic timeout policy executed.",
+    )
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression=(
+                "SET agent_decision = :decision, agent_rationale = :rationale"
+            ),
+            ExpressionAttributeValues={
+                ":decision": "VERIFICATION_TIMEOUT_ESCALATION",
+                ":rationale": (
+                    "User verification deadline expired without a safe response; "
+                    "deterministic policy escalated independent emergency channels."
+                ),
+            },
+        )
+    else:
+        incident["agent_decision"] = "VERIFICATION_TIMEOUT_ESCALATION"
+        incident["agent_rationale"] = (
+            "User verification deadline expired without a safe response; "
+            "deterministic policy escalated independent emergency channels."
+        )
+
+    return {
+        "incident_id": incident_id,
+        "status": "VERIFICATION_TIMEOUT_ESCALATED",
+        "contact_alert": contact_result,
+        "community_dispatch": community_result,
+    }
+
+
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    detail = event.get("detail", {})
+    detail = event.get("detail", {}) or {}
     incident_id = detail.get("incident_id") or event.get("incident_id")
     timeout_type = detail.get("timeout_type")
-    
     if not incident_id:
         return {"statusCode": 400, "error": "incident_id missing in event"}
 
-    correlation_id = getattr(context, "aws_request_id", None) if context else None
-    result = execute_agent_reasoning(incident_id, correlation_id=correlation_id, timeout_type=timeout_type)
-    return {
-        "statusCode": 200,
-        "body": result,
-    }
+    correlation_id = (
+        getattr(context, "aws_request_id", None)
+        if context
+        else None
+    ) or str(uuid.uuid4())
+
+    try:
+        if timeout_type == "USER_VERIFICATION":
+            result = _handle_verification_timeout(incident_id, correlation_id)
+        elif timeout_type == "ESCALATION_CHECK":
+            result = process_incident_redispatch_eval(incident_id)
+        elif timeout_type:
+            return {
+                "statusCode": 400,
+                "error": f"unsupported timeout_type: {timeout_type}",
+            }
+        else:
+            result = execute_agent_reasoning(
+                incident_id,
+                correlation_id=correlation_id,
+            )
+        return {"statusCode": 200, "body": result}
+    except Exception:
+        # Only initial reasoning owns the initial-agent lease. Timeout workflows
+        # have independent idempotency claims and must not mutate that lease.
+        if not timeout_type:
+            try:
+                finish_agent_run(incident_id, correlation_id, success=False)
+            except Exception:
+                logger.exception("Failed to release agent lease after execution error")
+        raise
