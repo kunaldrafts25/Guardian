@@ -129,6 +129,28 @@ class CloudSyncWorker(
             "local_sms_accepted_count",
             event.optJSONArray("accepted_phones")?.length() ?: 0,
         )
+        val localDelivery = org.json.JSONArray()
+        val acceptedContactIds = event.optJSONArray("accepted_contact_ids")
+        if (acceptedContactIds != null) {
+            for (index in 0 until acceptedContactIds.length()) {
+                localDelivery.put(
+                    JSONObject()
+                        .put("contact_id", acceptedContactIds.optString(index))
+                        .put("state", "OS_ACCEPTED"),
+                )
+            }
+        }
+        val failedContactIds = event.optJSONArray("failed_contact_ids")
+        if (failedContactIds != null) {
+            for (index in 0 until failedContactIds.length()) {
+                localDelivery.put(
+                    JSONObject()
+                        .put("contact_id", failedContactIds.optString(index))
+                        .put("state", "FAILED"),
+                )
+            }
+        }
+        motion.put("local_sms_delivery", localDelivery)
 
         val payload = JSONObject()
             .put("event_id", event.optString("event_id"))
