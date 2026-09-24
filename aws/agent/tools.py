@@ -1511,7 +1511,10 @@ def _dispatch_escalation_stage(
             inc["escalation_deadline_at"] = invitation_expiry
             inc["updated_at"] = now.isoformat()
 
-    if created_missions and ctx.get("state") == IncidentState.CLOUD_ACCEPTED.value:
+    if created_missions and ctx.get("state") in {
+        IncidentState.CLOUD_ACCEPTED.value,
+        IncidentState.CONTACTS_NOTIFIED.value,
+    }:
         try:
             update_incident_status(
                 incident_id,
@@ -1639,6 +1642,28 @@ def advance_incident_escalation(
         stage_index += 1
         policy_constraints = None
 
+    now_iso = datetime.now(timezone.utc).isoformat()
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression=(
+                "SET current_escalation_stage = :stage, "
+                "current_radius_meters = :radius, updated_at = :now"
+            ),
+            ExpressionAttributeValues={
+                ":stage": stage_count,
+                ":radius": 10000.0,
+                ":now": now_iso,
+            },
+        )
+    elif _dev_mode():
+        from aws.incident_handler.handler import _LOCAL_INCIDENTS
+        inc = _LOCAL_INCIDENTS.get(incident_id)
+        if inc:
+            inc["current_escalation_stage"] = stage_count
+            inc["current_radius_meters"] = 10000.0
+            inc["updated_at"] = now_iso
     append_incident_event(
         incident_id,
         "max_radius_reached",
