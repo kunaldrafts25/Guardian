@@ -43,7 +43,14 @@ class CloudSyncWorker(
             return Result.retry()
         }
 
-        return uploadEvent(event, auth!!, allowRefresh = true)
+        val eventOwner = event.optString("owner_user_id").takeIf { it.isNotBlank() }
+        val authOwner = auth!!.optString("user_id").takeIf { it.isNotBlank() }
+        if (eventOwner == null || authOwner == null || eventOwner != authOwner) {
+            Log.e(TAG, "Refusing cross-account native emergency upload for $eventId.")
+            return Result.failure()
+        }
+
+        return uploadEvent(event, auth, allowRefresh = true)
     }
 
     private fun uploadEvent(
@@ -164,6 +171,7 @@ class CloudSyncWorker(
                 ?: sessionId
 
             val refreshed = JSONObject()
+                .put("user_id", currentAuth.optString("user_id"))
                 .put("access_token", accessToken)
                 .put("refresh_token", refreshToken)
                 .put("session_id", returnedSessionId)
@@ -181,7 +189,8 @@ class CloudSyncWorker(
 
     private fun hasUsableAccessContext(auth: JSONObject?): Boolean {
         if (auth == null) return false
-        return auth.optString("access_token").isNotBlank() &&
+        return auth.optString("user_id").isNotBlank() &&
+            auth.optString("access_token").isNotBlank() &&
             auth.optString("session_id").isNotBlank() &&
             auth.optString("api_endpoint").isNotBlank()
     }
