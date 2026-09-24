@@ -43,9 +43,18 @@ def calculate_movement_risk(event_type: str, motion_data: Optional[Dict[str, Any
     if "power" in e_type or "hardware" in e_type or "triple" in e_type or "gesture" in e_type or "manual" in e_type or "tap" in e_type:
         return 0.99  # Explicit intentional distress signal
     if "fall" in e_type:
-        # Check acceleration magnitude spike if available
-        g_force = motion.get("g_force", 3.0)
-        return min(0.95, 0.80 + (g_force / 20.0))
+        # Prefer explicit g-force. Native Android emits peak_acceleration in
+        # m/s², so derive an approximate g-force when that is the only signal.
+        g_force = motion.get("g_force")
+        if g_force is None:
+            peak_acceleration = motion.get("peak_acceleration")
+            if isinstance(peak_acceleration, (int, float)) and math.isfinite(float(peak_acceleration)):
+                g_force = max(0.0, float(peak_acceleration) / 9.80665)
+        try:
+            g_value = max(0.0, float(g_force)) if g_force is not None else 1.0
+        except (TypeError, ValueError):
+            g_value = 1.0
+        return min(0.95, 0.80 + (g_value / 20.0))
     if "crash" in e_type:
         return 0.95
     if "deviation" in e_type:
