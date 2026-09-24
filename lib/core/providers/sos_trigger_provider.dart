@@ -115,8 +115,8 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
     };
     _bridge!.onRouteDeviation = (deviationMeters) {
       Logger.warning(
-          '🚨 Route deviation received: ${deviationMeters.round()}m');
-      _triggerSosIfNotActive(SosTriggerSource.routeDeviation);
+          '⚠️ Route deviation evidence received: ${deviationMeters.round()}m. '
+          'Native confirmation policy owns escalation.');
     };
     _bridge!.onAnomalyDetected = (type, data) {
       Logger.warning('🚨 Anomaly detected: $type, data: $data');
