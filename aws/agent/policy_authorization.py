@@ -27,6 +27,9 @@ DECISION_ACTIONS = {
     "OWNER_REQUESTED_ESCALATION": frozenset(
         {"notify_trusted_contact", "dispatch_community_alert"}
     ),
+    "VERIFICATION_TIMEOUT_ESCALATION": frozenset(
+        {"notify_trusted_contact", "dispatch_community_alert"}
+    ),
 }
 _DEV_KEY = secrets.token_bytes(32)
 _REPLAY_LOCK = threading.RLock()
