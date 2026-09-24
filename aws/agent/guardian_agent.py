@@ -532,12 +532,19 @@ def _claim_verification_timeout(incident_id: str) -> bool:
                 ),
                 ConditionExpression=(
                     "verification_status = :pending "
-                    "AND agent_decision = :verification"
+                    "AND agent_decision = :verification "
+                    "AND #state <> :resolved "
+                    "AND #state <> :cancelled "
+                    "AND #state <> :expired"
                 ),
+                ExpressionAttributeNames={"#state": "state"},
                 ExpressionAttributeValues={
                     ":timed_out": "TIMED_OUT",
                     ":pending": "PENDING",
                     ":verification": "REQUEST_USER_VERIFICATION",
+                    ":resolved": IncidentState.RESOLVED.value,
+                    ":cancelled": IncidentState.CANCELLED.value,
+                    ":expired": IncidentState.EXPIRED.value,
                     ":now": now,
                 },
             )
@@ -565,6 +572,16 @@ def _handle_verification_timeout(
         }
 
     incident = get_incident(incident_id) or {}
+    if incident.get("state") in {
+        IncidentState.RESOLVED.value,
+        IncidentState.CANCELLED.value,
+        IncidentState.EXPIRED.value,
+    }:
+        return {
+            "incident_id": incident_id,
+            "status": "VERIFICATION_TIMEOUT_NOOP_TERMINAL",
+        }
+
     policy = evaluate_safety_policy(
         event_type=str(incident.get("event_type", "")),
         risk_level=str((incident.get("risk_assessment") or {}).get("level", "MEDIUM")),
