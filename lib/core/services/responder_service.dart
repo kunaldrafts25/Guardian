@@ -49,18 +49,70 @@ class ResponderMission {
       const {'COMPLETED', 'WITHDRAWN', 'CANCELLED', 'EXPIRED'}.contains(status);
 }
 
+enum LocationFreshnessQuality { fresh, aging, stale, unavailable }
+
 class AuthorizedMissionLocation {
   final double latitude;
   final double longitude;
   final double? accuracy;
   final DateTime expiresAt;
+  final DateTime? capturedAt;
+  final DateTime? receivedAt;
+  final double? ageSeconds;
+  final String source;
+  final String freshness;
 
   const AuthorizedMissionLocation({
     required this.latitude,
     required this.longitude,
     required this.accuracy,
     required this.expiresAt,
+    this.capturedAt,
+    this.receivedAt,
+    this.ageSeconds,
+    this.source = 'DEVICE_GPS',
+    this.freshness = 'FRESH',
   });
+
+  LocationFreshnessQuality get quality {
+    final lower = freshness.toLowerCase();
+    if (lower == 'fresh') return LocationFreshnessQuality.fresh;
+    if (lower == 'aging') return LocationFreshnessQuality.aging;
+    if (lower == 'stale') {
+      if (ageSeconds != null && ageSeconds! <= 120.0) {
+        return LocationFreshnessQuality.aging;
+      }
+      return LocationFreshnessQuality.stale;
+    }
+    if (lower == 'unavailable') return LocationFreshnessQuality.unavailable;
+    if (ageSeconds == null) return LocationFreshnessQuality.unavailable;
+    if (ageSeconds! <= 30.0) return LocationFreshnessQuality.fresh;
+    if (ageSeconds! <= 120.0) return LocationFreshnessQuality.aging;
+    return LocationFreshnessQuality.stale;
+  }
+
+  bool get isFresh => quality == LocationFreshnessQuality.fresh;
+  bool get isAging => quality == LocationFreshnessQuality.aging;
+  bool get isStale => quality == LocationFreshnessQuality.stale;
+  bool get isUnavailable => quality == LocationFreshnessQuality.unavailable;
+
+  factory AuthorizedMissionLocation.fromJson(Map<String, dynamic> response) {
+    final expiry = (response['grant_expires_at'] as num).toInt();
+    final capStr = response['captured_at'] as String?;
+    final recStr = response['received_at'] as String?;
+    return AuthorizedMissionLocation(
+      latitude: (response['latitude'] as num).toDouble(),
+      longitude: (response['longitude'] as num).toDouble(),
+      accuracy: (response['accuracy'] as num?)?.toDouble(),
+      expiresAt:
+          DateTime.fromMillisecondsSinceEpoch(expiry * 1000, isUtc: true),
+      capturedAt: capStr != null ? DateTime.tryParse(capStr) : null,
+      receivedAt: recStr != null ? DateTime.tryParse(recStr) : null,
+      ageSeconds: (response['age_seconds'] as num?)?.toDouble(),
+      source: response['source'] as String? ?? 'DEVICE_GPS',
+      freshness: response['freshness'] as String? ?? 'FRESH',
+    );
+  }
 }
 
 class MissionAcceptance {
@@ -128,27 +180,58 @@ class ResponderService {
     return mission;
   }
 
+  Future<Map<String, dynamic>> sendHeartbeat({
+    required double latitude,
+    required double longitude,
+    required bool isActive,
+  }) async {
+    return await _api.post('/responders/heartbeat', {
+      'latitude': latitude,
+      'longitude': longitude,
+      'is_active': isActive,
+    });
+  }
+
+  Future<String> renewGrant(String missionId) async {
+    final response = await _api.post(
+      '/missions/${Uri.encodeComponent(missionId)}/renew-grant',
+      const {},
+    );
+    final newGrant = response['navigation_grant'] as String;
+    await _storage.write(key: _grantKey(missionId), value: newGrant);
+    return newGrant;
+  }
+
   Future<AuthorizedMissionLocation> getAuthorizedLocation(
     ResponderMission mission,
   ) async {
-    final grant = await _storage.read(key: _grantKey(mission.missionId));
+    var grant = await _storage.read(key: _grantKey(mission.missionId));
     if (grant == null || grant.isEmpty) {
-      throw StateError(
-        'The navigation grant is unavailable. Reopen the original acceptance on this device.',
-      );
+      if (mission.status == 'ACCEPTED' || mission.status == 'EN_ROUTE') {
+        grant = await renewGrant(mission.missionId);
+      } else {
+        throw StateError(
+          'The navigation grant is unavailable. Reopen the original acceptance on this device.',
+        );
+      }
     }
-    final response = await _api.post(
-      '/incidents/${Uri.encodeComponent(mission.incidentId)}/authorized-location',
-      {'navigation_grant': grant},
-    );
-    final expiry = (response['grant_expires_at'] as num).toInt();
-    return AuthorizedMissionLocation(
-      latitude: (response['latitude'] as num).toDouble(),
-      longitude: (response['longitude'] as num).toDouble(),
-      accuracy: (response['accuracy'] as num?)?.toDouble(),
-      expiresAt:
-          DateTime.fromMillisecondsSinceEpoch(expiry * 1000, isUtc: true),
-    );
+    try {
+      final response = await _api.post(
+        '/incidents/${Uri.encodeComponent(mission.incidentId)}/authorized-location',
+        {'navigation_grant': grant},
+      );
+      return AuthorizedMissionLocation.fromJson(response);
+    } catch (e) {
+      if (mission.status == 'ACCEPTED' || mission.status == 'EN_ROUTE') {
+        final renewedGrant = await renewGrant(mission.missionId);
+        final retryResponse = await _api.post(
+          '/incidents/${Uri.encodeComponent(mission.incidentId)}/authorized-location',
+          {'navigation_grant': renewedGrant},
+        );
+        return AuthorizedMissionLocation.fromJson(retryResponse);
+      }
+      rethrow;
+    }
   }
 
   List<ResponderMission> _decodeList(Object? value) {

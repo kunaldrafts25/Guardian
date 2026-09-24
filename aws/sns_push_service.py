@@ -223,7 +223,11 @@ def send_sms_alert(
             },
         )
         logger.info(f"SMS sent to {phone}: MessageId={resp['MessageId']}")
-        return {"success": True, "message_id": resp["MessageId"]}
+        return {
+            "success": True,
+            "message_id": resp["MessageId"],
+            "delivery_state": "PROVIDER_ACCEPTED",
+        }
     except ClientError as ce:
         logger.error(f"SNS SMS failed: {ce}")
         return {"success": False, "error": str(ce)}

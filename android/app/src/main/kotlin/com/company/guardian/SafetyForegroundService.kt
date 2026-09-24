@@ -43,6 +43,21 @@ class SafetyForegroundService : Service() {
         const val ACTION_START = "com.guardian.START_SAFETY"
         const val ACTION_STOP = "com.guardian.STOP_SAFETY"
         const val ACTION_TRIGGER_SOS = "com.guardian.TRIGGER_SOS"
+        const val ACTION_ROUTE_DEVIATION_SAFE = "com.guardian.ROUTE_DEVIATION_SAFE"
+        const val ACTION_ROUTE_DEVIATION_SOS = "com.guardian.ROUTE_DEVIATION_SOS"
+        const val ROUTE_DEVIATION_NOTIFICATION_ID = 4301
+
+        const val PREFS_SETTINGS = "guardian_safety_settings"
+        const val KEY_SHAKE_ENABLED = "shake_enabled"
+        const val KEY_FALL_ENABLED = "fall_enabled"
+
+        @Volatile
+        var isShakeEnabled: Boolean = true
+            private set
+
+        @Volatile
+        var isFallEnabled: Boolean = true
+            private set
 
         // Static last-known location — readable from anywhere without binding
         @Volatile
@@ -58,7 +73,7 @@ class SafetyForegroundService : Service() {
         var activeRoutePoints: List<Pair<Double, Double>> = emptyList()
 
         // Callbacks registered by Flutter method channel
-        var onLocationUpdate: ((Double, Double, Float) -> Unit)? = null
+        var onLocationUpdate: ((Double, Double, Float, Long, String) -> Unit)? = null
         var onSosTrigger: ((String) -> Unit)? = null
         var onRouteDeviation: ((Double) -> Unit)? = null
         var onAnomalyDetected: ((String, Map<String, Any>) -> Unit)? = null
@@ -71,6 +86,24 @@ class SafetyForegroundService : Service() {
         fun clearActiveRoute() {
             activeRoutePoints = emptyList()
             Log.i(TAG, "Active route cleared")
+        }
+
+        fun updateSettings(context: Context, shakeEnabled: Boolean, fallEnabled: Boolean) {
+            isShakeEnabled = shakeEnabled
+            isFallEnabled = fallEnabled
+            context.getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_SHAKE_ENABLED, shakeEnabled)
+                .putBoolean(KEY_FALL_ENABLED, fallEnabled)
+                .apply()
+            Log.i(TAG, "Safety settings updated: shake=$shakeEnabled, fall=$fallEnabled")
+        }
+
+        fun loadSettings(context: Context) {
+            val prefs = context.getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE)
+            isShakeEnabled = prefs.getBoolean(KEY_SHAKE_ENABLED, true)
+            isFallEnabled = prefs.getBoolean(KEY_FALL_ENABLED, true)
+            Log.i(TAG, "Safety settings loaded: shake=$isShakeEnabled, fall=$isFallEnabled")
         }
 
         fun start(context: Context) {
@@ -141,6 +174,7 @@ class SafetyForegroundService : Service() {
         // Acquire WakeLock to survive Doze mode
         acquireWakeLock()
 
+        loadSettings(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         createNotificationChannel()
         registerScreenStateReceiver()
@@ -157,6 +191,16 @@ class SafetyForegroundService : Service() {
                 val event = NativeEmergencyDispatcher.trigger(this, "service_trigger")
                 if (event != null) onSosTrigger?.invoke("service_trigger")
             }
+            ACTION_ROUTE_DEVIATION_SAFE -> {
+                dismissRouteDeviationAlert()
+                return START_STICKY
+            }
+            ACTION_ROUTE_DEVIATION_SOS -> {
+                dismissRouteDeviationAlert()
+                val event = NativeEmergencyDispatcher.trigger(this, "ROUTE_DEVIATION")
+                if (event != null) onSosTrigger?.invoke("ROUTE_DEVIATION")
+                return START_STICKY
+            }
         }
 
         // Start as foreground with persistent notification
@@ -171,6 +215,7 @@ class SafetyForegroundService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        dismissRouteDeviationAlert()
         stopLocationTracking()
         stopSensorMonitoring()
         unregisterScreenStateReceiver()
@@ -258,6 +303,7 @@ class SafetyForegroundService : Service() {
     }
 
     private fun processShake(magnitude: Double, now: Long) {
+        if (!isShakeEnabled) return
         if (now - lastShakeTriggerTimestamp < 5000L) return
 
         if (magnitude > 14.0) {
@@ -269,16 +315,17 @@ class SafetyForegroundService : Service() {
                 Log.w(TAG, "🚨 NATIVE SHAKE SOS DETECTED in background!")
                 shakeTimestamps.clear()
                 lastShakeTriggerTimestamp = now
-                val event = NativeEmergencyDispatcher.trigger(this@SafetyForegroundService, "shake_sos")
+                val event = NativeEmergencyDispatcher.trigger(this@SafetyForegroundService, "ANDROID_SHAKE")
                 if (event != null) {
-                    onSosTrigger?.invoke("shake_sos")
-                    onAnomalyDetected?.invoke("shake_sos", mapOf("magnitude" to magnitude))
+                    onSosTrigger?.invoke("ANDROID_SHAKE")
+                    onAnomalyDetected?.invoke("ANDROID_SHAKE", mapOf("magnitude" to magnitude))
                 }
             }
         }
     }
 
     private fun processFall(magnitude: Double, now: Long) {
+        if (!isFallEnabled) return
         // Freefall detection: near weightlessness (< 3.0 m/s^2)
         if (magnitude < 3.0) {
             lastFreeFallTimestamp = now
@@ -304,11 +351,11 @@ class SafetyForegroundService : Service() {
                 } else if (now - stillStartTime >= 2500L) {
                     isMonitoringStillness = false
                     Log.w(TAG, "🚨 CONFIRMED FALL / COLLAPSE DETECTED BY NATIVE ACCELEROMETER!")
-                    val event = NativeEmergencyDispatcher.trigger(this@SafetyForegroundService, "fall_detected")
+                    val event = NativeEmergencyDispatcher.trigger(this@SafetyForegroundService, "ANDROID_FALL")
                     if (event != null) {
-                        onSosTrigger?.invoke("fall_detected")
+                        onSosTrigger?.invoke("ANDROID_FALL")
                         onAnomalyDetected?.invoke(
-                            "fall_detected",
+                            "ANDROID_FALL",
                             mapOf("impact_magnitude" to magnitude, "stillness_ms" to (now - stillStartTime))
                         )
                     }
@@ -340,9 +387,9 @@ class SafetyForegroundService : Service() {
                         screenToggleTimestamps.clear()
                         val event = NativeEmergencyDispatcher.trigger(
                             this@SafetyForegroundService,
-                            "hardware_power_panic",
+                            "ANDROID_POWER_GESTURE",
                         )
-                        if (event != null) onSosTrigger?.invoke("hardware_power_panic")
+                        if (event != null) onSosTrigger?.invoke("ANDROID_POWER_GESTURE")
                     }
                 }
             }
@@ -455,8 +502,14 @@ class SafetyForegroundService : Service() {
         locationListener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
                 lastKnownLocation = location
-                onLocationUpdate?.invoke(location.latitude, location.longitude, location.accuracy)
-                Log.d(TAG, "Location updated (accuracy: ${location.accuracy}m)")
+                onLocationUpdate?.invoke(
+                    location.latitude,
+                    location.longitude,
+                    location.accuracy,
+                    location.time,
+                    location.provider ?: "unknown"
+                )
+                Log.d(TAG, "Location updated (accuracy: ${location.accuracy}m, time: ${location.time})")
 
                 // Monitor route deviation
                 checkRouteDeviation(location)
@@ -536,8 +589,12 @@ class SafetyForegroundService : Service() {
             if (consecutiveDeviations >= 3) {
                 consecutiveDeviations = 0
                 Log.w(TAG, "🚨 CRITICAL ROUTE DEVIATION CONFIRMED (>150m for 3 consecutive fixes)!")
-                onRouteDeviation?.invoke(minDistanceMeters)
-                onAnomalyDetected?.invoke("route_deviation", mapOf("deviation_meters" to minDistanceMeters))
+                if (onRouteDeviation != null) {
+                    onRouteDeviation?.invoke(minDistanceMeters)
+                    onAnomalyDetected?.invoke("ROUTE_DEVIATION", mapOf("deviation_meters" to minDistanceMeters))
+                } else {
+                    handleDurableRouteDeviation(minDistanceMeters)
+                }
             }
         } else {
             consecutiveDeviations = 0
@@ -568,4 +625,59 @@ class SafetyForegroundService : Service() {
         val dy = py - projY
         return sqrt(dx * dx + dy * dy)
     }
+
+    private val routeDeviationHandler = Handler(Looper.getMainLooper())
+    private var routeDeviationRunnable: Runnable? = null
+
+    private fun handleDurableRouteDeviation(deviationMeters: Double) {
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        val safeIntent = Intent(this, SafetyForegroundService::class.java).apply {
+            action = ACTION_ROUTE_DEVIATION_SAFE
+        }
+        val safePending = PendingIntent.getService(
+            this, 2, safeIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val sosIntent = Intent(this, SafetyForegroundService::class.java).apply {
+            action = ACTION_ROUTE_DEVIATION_SOS
+        }
+        val sosPending = PendingIntent.getService(
+            this, 3, sosIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val body = "You are ${deviationMeters.roundToInt()}m off your planned route. Confirm you are safe or emergency alert will be dispatched in 60s."
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("⚠️ Route Deviation Detected")
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setSmallIcon(R.drawable.ic_notification_guardian)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(false)
+            .setOngoing(true)
+            .addAction(0, "I'm Safe", safePending)
+            .addAction(0, "Emergency SOS", sosPending)
+            .build()
+
+        notificationManager?.notify(ROUTE_DEVIATION_NOTIFICATION_ID, notification)
+
+        routeDeviationRunnable?.let { routeDeviationHandler.removeCallbacks(it) }
+        routeDeviationRunnable = Runnable {
+            Log.w(TAG, "🚨 Route deviation unacknowledged after 60s — escalating to native emergency dispatcher!")
+            dismissRouteDeviationAlert()
+            val event = NativeEmergencyDispatcher.trigger(this@SafetyForegroundService, "ROUTE_DEVIATION")
+            if (event != null) onSosTrigger?.invoke("ROUTE_DEVIATION")
+        }
+        routeDeviationHandler.postDelayed(routeDeviationRunnable!!, 60_000L)
+    }
+
+    private fun dismissRouteDeviationAlert() {
+        routeDeviationRunnable?.let {
+            routeDeviationHandler.removeCallbacks(it)
+            routeDeviationRunnable = null
+        }
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager?.cancel(ROUTE_DEVIATION_NOTIFICATION_ID)
+    }
+
 }

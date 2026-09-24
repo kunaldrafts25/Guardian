@@ -51,13 +51,15 @@ class MainActivity : FlutterActivity() {
         setupServiceChannel(flutterEngine)
 
         // Register location callback from foreground service → Flutter
-        SafetyForegroundService.onLocationUpdate = { lat, lng, accuracy ->
+        SafetyForegroundService.onLocationUpdate = { lat, lng, accuracy, timeMs, provider ->
             Handler(Looper.getMainLooper()).post {
                 MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SERVICE_CHANNEL)
                     .invokeMethod("onLocationUpdate", mapOf(
                         "latitude" to lat,
                         "longitude" to lng,
-                        "accuracy" to accuracy
+                        "accuracy" to accuracy,
+                        "time_ms" to timeMs,
+                        "provider" to provider
                     ))
             }
         }
@@ -67,13 +69,18 @@ class MainActivity : FlutterActivity() {
         // 'service_trigger'     → onServiceSosTrigger (standard notification SOS)
         SafetyForegroundService.onSosTrigger = { source ->
             Handler(Looper.getMainLooper()).post {
-                val methodName = if (source == "hardware_power_panic" || source == "fall_detected") "onHardwarePanic" else "onServiceSosTrigger"
                 val pending = NativeEmergencyStore.pendingEvents(this)
                 val latest = if (pending.length() > 0) {
                     jsonObjectToMap(pending.getJSONObject(pending.length() - 1))
                 } else {
                     mapOf("source" to source)
                 }
+                val isHighPriority = source in setOf(
+                    "ANDROID_POWER_GESTURE", "hardware_power_panic",
+                    "ANDROID_FALL", "fall_detected",
+                    "ROUTE_DEVIATION", "CHECK_IN_EXPIRED"
+                )
+                val methodName = if (isHighPriority) "onHardwarePanic" else "onServiceSosTrigger"
                 MethodChannel(flutterEngine.dartExecutor.binaryMessenger, EMERGENCY_CHANNEL)
                     .invokeMethod(methodName, latest)
             }
@@ -172,7 +179,8 @@ class MainActivity : FlutterActivity() {
                                 result.success(mapOf(
                                     "sent" to successCount,
                                     "total" to phones.size,
-                                    "allSuccess" to (successCount == phones.size)
+                                    "allSuccess" to (successCount == phones.size),
+                                    "deliveryState" to "OS_ACCEPTED"
                                 ))
                             }
                         }.start()
@@ -199,6 +207,19 @@ class MainActivity : FlutterActivity() {
                         SafetyForegroundService.stop(this)
                         result.success(true)
                     }
+                    "updateSafetySettings" -> {
+                        val shake = call.argument<Boolean>("shake_enabled") ?: true
+                        val fall = call.argument<Boolean>("fall_enabled") ?: true
+                        SafetyForegroundService.updateSettings(this, shake, fall)
+                        result.success(true)
+                    }
+                    "getSafetySettings" -> {
+                        val prefs = getSharedPreferences(SafetyForegroundService.PREFS_SETTINGS, Context.MODE_PRIVATE)
+                        result.success(mapOf(
+                            "shake_enabled" to prefs.getBoolean(SafetyForegroundService.KEY_SHAKE_ENABLED, true),
+                            "fall_enabled" to prefs.getBoolean(SafetyForegroundService.KEY_FALL_ENABLED, true)
+                        ))
+                    }
                     "isServiceRunning" -> result.success(SafetyForegroundService.isRunning)
                     "isBatteryOptimizationIgnored" -> {
                         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -207,7 +228,13 @@ class MainActivity : FlutterActivity() {
                     "getLastLocation" -> {
                         val loc = SafetyForegroundService.lastKnownLocation
                         result.success(loc?.let {
-                            mapOf("latitude" to it.latitude, "longitude" to it.longitude, "accuracy" to it.accuracy)
+                            mapOf(
+                                "latitude" to it.latitude,
+                                "longitude" to it.longitude,
+                                "accuracy" to it.accuracy,
+                                "time_ms" to it.time,
+                                "provider" to (it.provider ?: "cached")
+                            )
                         })
                     }
                     "updateEmergencySnapshot" -> {
@@ -390,7 +417,7 @@ class MainActivity : FlutterActivity() {
                         Log.d(TAG, "Triple tap SOS detected")
                         clicks.clear()
                         MethodChannel(flutterEngine!!.dartExecutor.binaryMessenger, EMERGENCY_CHANNEL)
-                            .invokeMethod("onTripleTap", null)
+                            .invokeMethod("onTripleTap", mapOf("source" to "MULTI_TAP"))
                     }
                 }
             }

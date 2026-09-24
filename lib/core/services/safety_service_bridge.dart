@@ -10,6 +10,7 @@
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:guardian/core/models/emergency_location.dart';
 import 'package:guardian/core/utils/logger.dart';
 
 // ═══════════════════════════════════════════════════════
@@ -31,13 +32,28 @@ class ServiceLocation {
   final double longitude;
   final double accuracy;
   final DateTime timestamp;
+  final DateTime? capturedAt;
+  final String source;
+  final LocationFreshness freshness;
 
   const ServiceLocation({
     required this.latitude,
     required this.longitude,
     required this.accuracy,
     required this.timestamp,
+    this.capturedAt,
+    this.source = 'native_service',
+    this.freshness = LocationFreshness.fresh,
   });
+
+  EmergencyLocation toEmergencyLocation() => EmergencyLocation.fromFix(
+        latitude: latitude,
+        longitude: longitude,
+        accuracy: accuracy,
+        capturedAt: capturedAt ?? timestamp,
+        receivedAt: DateTime.now().toUtc(),
+        source: source,
+      );
 
   String get googleMapsLink =>
       'https://maps.google.com/?q=$latitude,$longitude';
@@ -165,6 +181,49 @@ class SafetyServiceBridge {
     }
   }
 
+  /// Synchronize trigger settings with the native platform service
+  static Future<bool> syncSafetySettings({
+    required bool shakeEnabled,
+    required bool fallEnabled,
+  }) async {
+    try {
+      return await _serviceChannel.invokeMethod<bool>(
+            'updateSafetySettings',
+            {
+              'shake_enabled': shakeEnabled,
+              'fall_enabled': fallEnabled,
+            },
+          ) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } catch (e) {
+      Logger.error('Failed to sync safety settings to native', e);
+      return false;
+    }
+  }
+
+  /// Get trigger settings cached on the native platform service
+  static Future<Map<String, bool>> getSafetySettings() async {
+    try {
+      final result = await _serviceChannel.invokeMapMethod<String, dynamic>(
+        'getSafetySettings',
+      );
+      if (result != null) {
+        return {
+          'shake_enabled': result['shake_enabled'] == true,
+          'fall_enabled': result['fall_enabled'] == true,
+        };
+      }
+      return {'shake_enabled': true, 'fall_enabled': true};
+    } on MissingPluginException {
+      return {'shake_enabled': true, 'fall_enabled': true};
+    } catch (e) {
+      Logger.error('Failed to get native safety settings', e);
+      return {'shake_enabled': true, 'fall_enabled': true};
+    }
+  }
+
   static Future<bool> updateEmergencySnapshot({
     required int version,
     required String userName,
@@ -283,11 +342,25 @@ class SafetyServiceBridge {
     try {
       final result = await _serviceChannel.invokeMethod<Map>('getLastLocation');
       if (result != null) {
+        final timeMs = result['time_ms'] as num?;
+        final rx = DateTime.now().toUtc();
+        final cap = timeMs != null
+            ? DateTime.fromMillisecondsSinceEpoch(timeMs.toInt(), isUtc: true)
+            : rx;
+        final accuracy = (result['accuracy'] as num).toDouble();
+        final freshness = EmergencyLocation.calculateFreshness(
+          capturedAt: timeMs != null ? cap : null,
+          receivedAt: rx,
+          accuracy: accuracy,
+        );
         _lastLocation = ServiceLocation(
           latitude: (result['latitude'] as num).toDouble(),
           longitude: (result['longitude'] as num).toDouble(),
-          accuracy: (result['accuracy'] as num).toDouble(),
-          timestamp: DateTime.now(),
+          accuracy: accuracy,
+          timestamp: cap,
+          capturedAt: cap,
+          source: (result['provider'] as String?) ?? 'cached',
+          freshness: freshness,
         );
         return _lastLocation;
       }
@@ -308,11 +381,25 @@ class SafetyServiceBridge {
     switch (call.method) {
       case 'onLocationUpdate':
         final args = call.arguments as Map;
+        final timeMs = args['time_ms'] as num?;
+        final rx = DateTime.now().toUtc();
+        final cap = timeMs != null
+            ? DateTime.fromMillisecondsSinceEpoch(timeMs.toInt(), isUtc: true)
+            : rx;
+        final accuracy = (args['accuracy'] as num).toDouble();
+        final freshness = EmergencyLocation.calculateFreshness(
+          capturedAt: timeMs != null ? cap : null,
+          receivedAt: rx,
+          accuracy: accuracy,
+        );
         _lastLocation = ServiceLocation(
           latitude: (args['latitude'] as num).toDouble(),
           longitude: (args['longitude'] as num).toDouble(),
-          accuracy: (args['accuracy'] as num).toDouble(),
-          timestamp: DateTime.now(),
+          accuracy: accuracy,
+          timestamp: cap,
+          capturedAt: cap,
+          source: (args['provider'] as String?) ?? 'gps',
+          freshness: freshness,
         );
         onLocationUpdate?.call(_lastLocation!);
         break;
@@ -347,6 +434,13 @@ class SafetyServiceBridge {
 
   Future<void> _handleEmergencyCall(MethodCall call) async {
     switch (call.method) {
+      case 'onNativeEmergencyEvent':
+        final event = Map<String, dynamic>.from(call.arguments as Map? ?? {});
+        final source = event['source'] as String? ?? 'unknown';
+        Logger.info('🚨 Native emergency event received: $source');
+        onSosTrigger?.call(event);
+        break;
+
       case 'onHardwarePanic':
         Logger.info(
             '🚨 Hardware power button 3-tap panic received from native!');
@@ -356,9 +450,10 @@ class SafetyServiceBridge {
         break;
 
       case 'onTripleTap':
-        // Legacy triple-tap from PowerButtonReceiver
-        Logger.info('🚨 Triple tap SOS from PowerButtonReceiver');
-        onSosTrigger?.call(const {'source': 'triple_tap'});
+        final args = call.arguments as Map?;
+        final src = args?['source'] as String? ?? 'MULTI_TAP';
+        Logger.info('🚨 Multi-tap SOS from PowerButtonReceiver: $src');
+        onSosTrigger?.call({'source': src});
         break;
 
       default:

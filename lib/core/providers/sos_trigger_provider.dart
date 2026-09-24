@@ -97,12 +97,18 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
       Logger.info('🚨 Native service SOS trigger: $source');
       if (event['event_id'] != null) {
         unawaited(_ingestNativeEvent(event));
-      } else if (source == 'hardware_power_panic' ||
+      } else if (source == 'ANDROID_POWER_GESTURE' ||
+          source == 'hardware_power_panic' ||
+          source == 'ANDROID_FALL' ||
           source == 'fall_detected') {
         unawaited(
             _ref.read(emergencyProvider.notifier).triggerFromHardwarePanic());
-      } else if (source == 'shake_sos') {
+      } else if (source == 'ANDROID_SHAKE' || source == 'shake_sos') {
         _triggerSosIfNotActive(SosTriggerSource.shake);
+      } else if (source == 'ROUTE_DEVIATION' || source == 'route_deviation') {
+        _triggerSosIfNotActive(SosTriggerSource.routeDeviation);
+      } else if (source == 'MULTI_TAP' || source == 'triple_tap') {
+        _triggerSosIfNotActive(SosTriggerSource.multiTap);
       } else {
         _triggerSosIfNotActive(SosTriggerSource.button);
       }
@@ -110,15 +116,17 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
     _bridge!.onRouteDeviation = (deviationMeters) {
       Logger.warning(
           '🚨 Route deviation received: ${deviationMeters.round()}m');
-      _triggerSosIfNotActive(SosTriggerSource.button);
+      _triggerSosIfNotActive(SosTriggerSource.routeDeviation);
     };
     _bridge!.onAnomalyDetected = (type, data) {
       Logger.warning('🚨 Anomaly detected: $type, data: $data');
-      if (type == 'fall_detected') {
+      if (type == 'ANDROID_FALL' || type == 'fall_detected') {
         unawaited(
             _ref.read(emergencyProvider.notifier).triggerFromHardwarePanic());
-      } else if (type == 'shake_sos') {
+      } else if (type == 'ANDROID_SHAKE' || type == 'shake_sos') {
         _triggerSosIfNotActive(SosTriggerSource.shake);
+      } else if (type == 'ROUTE_DEVIATION' || type == 'route_deviation') {
+        _triggerSosIfNotActive(SosTriggerSource.routeDeviation);
       }
     };
     unawaited(_replayNativeEvents());
@@ -293,6 +301,20 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
       case SosTriggerSource.voiceCommand:
         _ref.read(emergencyProvider.notifier).triggerEmergency(
               source: SosTriggerSource.voiceCommand,
+            );
+        break;
+      case SosTriggerSource.fall:
+        unawaited(
+            _ref.read(emergencyProvider.notifier).triggerFromHardwarePanic());
+        break;
+      case SosTriggerSource.routeDeviation:
+        _ref.read(emergencyProvider.notifier).triggerEmergency(
+              source: SosTriggerSource.routeDeviation,
+            );
+        break;
+      case SosTriggerSource.multiTap:
+        _ref.read(emergencyProvider.notifier).triggerEmergency(
+              source: SosTriggerSource.multiTap,
             );
         break;
       default:

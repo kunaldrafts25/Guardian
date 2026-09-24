@@ -7,11 +7,13 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:guardian/core/services/safety_service_bridge.dart';
 import 'package:guardian/core/utils/logger.dart';
 
 /// SOS Settings state
 class SosSettings {
   final bool shakeToSosEnabled;
+  final bool fallDetectionEnabled;
   final int countdownSeconds;
   final bool soundEnabled;
   final bool vibrationEnabled;
@@ -21,6 +23,7 @@ class SosSettings {
 
   const SosSettings({
     this.shakeToSosEnabled = true,
+    this.fallDetectionEnabled = true,
     this.countdownSeconds = 3,
     this.soundEnabled = true,
     this.vibrationEnabled = true,
@@ -31,6 +34,7 @@ class SosSettings {
 
   SosSettings copyWith({
     bool? shakeToSosEnabled,
+    bool? fallDetectionEnabled,
     int? countdownSeconds,
     bool? soundEnabled,
     bool? vibrationEnabled,
@@ -40,6 +44,7 @@ class SosSettings {
   }) {
     return SosSettings(
       shakeToSosEnabled: shakeToSosEnabled ?? this.shakeToSosEnabled,
+      fallDetectionEnabled: fallDetectionEnabled ?? this.fallDetectionEnabled,
       countdownSeconds: countdownSeconds ?? this.countdownSeconds,
       soundEnabled: soundEnabled ?? this.soundEnabled,
       vibrationEnabled: vibrationEnabled ?? this.vibrationEnabled,
@@ -68,6 +73,7 @@ class SosSettingsNotifier extends StateNotifier<SosSettings> {
   }
 
   static const String _keyShakeEnabled = 'sos_shake_enabled';
+  static const String _keyFallEnabled = 'sos_fall_enabled';
   static const String _keyCountdown = 'sos_countdown';
   static const String _keySoundEnabled = 'sos_sound_enabled';
   static const String _keyVibrationEnabled = 'sos_vibration_enabled';
@@ -82,6 +88,7 @@ class SosSettingsNotifier extends StateNotifier<SosSettings> {
 
       state = SosSettings(
         shakeToSosEnabled: prefs.getBool(_keyShakeEnabled) ?? true,
+        fallDetectionEnabled: prefs.getBool(_keyFallEnabled) ?? true,
         countdownSeconds: prefs.getInt(_keyCountdown) ?? 3,
         soundEnabled: prefs.getBool(_keySoundEnabled) ?? true,
         vibrationEnabled: prefs.getBool(_keyVibrationEnabled) ?? true,
@@ -90,7 +97,13 @@ class SosSettingsNotifier extends StateNotifier<SosSettings> {
         emergencyNumber: prefs.getString(_keyEmergencyNumber) ?? '112',
       );
 
-      Logger.info('⚙️ SOS settings loaded');
+      // Sync settings to native Android service
+      await SafetyServiceBridge.syncSafetySettings(
+        shakeEnabled: state.shakeToSosEnabled,
+        fallEnabled: state.fallDetectionEnabled,
+      );
+
+      Logger.info('⚙️ SOS settings loaded & synced to native');
     } catch (e) {
       Logger.error('Failed to load SOS settings', e);
     }
@@ -117,7 +130,22 @@ class SosSettingsNotifier extends StateNotifier<SosSettings> {
   Future<void> setShakeToSosEnabled(bool enabled) async {
     state = state.copyWith(shakeToSosEnabled: enabled);
     await _saveSetting(_keyShakeEnabled, enabled);
-    Logger.info('⚙️ Shake-to-SOS ${enabled ? "enabled" : "disabled"}');
+    await SafetyServiceBridge.syncSafetySettings(
+      shakeEnabled: enabled,
+      fallEnabled: state.fallDetectionEnabled,
+    );
+    Logger.info('⚙️ Shake-to-SOS ${enabled ? "enabled" : "disabled"} (synced to native)');
+  }
+
+  /// Toggle fall detection
+  Future<void> setFallDetectionEnabled(bool enabled) async {
+    state = state.copyWith(fallDetectionEnabled: enabled);
+    await _saveSetting(_keyFallEnabled, enabled);
+    await SafetyServiceBridge.syncSafetySettings(
+      shakeEnabled: state.shakeToSosEnabled,
+      fallEnabled: enabled,
+    );
+    Logger.info('⚙️ Fall detection ${enabled ? "enabled" : "disabled"} (synced to native)');
   }
 
   /// Set countdown duration
@@ -164,6 +192,7 @@ class SosSettingsNotifier extends StateNotifier<SosSettings> {
   Future<void> resetToDefaults() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyShakeEnabled);
+    await prefs.remove(_keyFallEnabled);
     await prefs.remove(_keyCountdown);
     await prefs.remove(_keySoundEnabled);
     await prefs.remove(_keyVibrationEnabled);
@@ -172,6 +201,10 @@ class SosSettingsNotifier extends StateNotifier<SosSettings> {
     await prefs.remove(_keyEmergencyNumber);
 
     state = const SosSettings();
+    await SafetyServiceBridge.syncSafetySettings(
+      shakeEnabled: state.shakeToSosEnabled,
+      fallEnabled: state.fallDetectionEnabled,
+    );
     Logger.info('⚙️ SOS settings reset to defaults');
   }
 }
@@ -185,6 +218,11 @@ final sosSettingsProvider =
 /// Shake-to-SOS enabled provider
 final shakeToSosEnabledProvider = Provider<bool>((ref) {
   return ref.watch(sosSettingsProvider).shakeToSosEnabled;
+});
+
+/// Fall detection enabled provider
+final fallDetectionEnabledProvider = Provider<bool>((ref) {
+  return ref.watch(sosSettingsProvider).fallDetectionEnabled;
 });
 
 /// Countdown seconds provider

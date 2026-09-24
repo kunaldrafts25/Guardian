@@ -60,6 +60,8 @@ object NativeEmergencyDispatcher {
             put("latitude", location?.latitude ?: JSONObject.NULL)
             put("longitude", location?.longitude ?: JSONObject.NULL)
             put("accuracy", location?.accuracy ?: JSONObject.NULL)
+            put("location_time_ms", location?.time ?: JSONObject.NULL)
+            put("location_provider", location?.provider ?: JSONObject.NULL)
             put("consumed", false)
         }
         NativeEmergencyStore.appendEvent(context, event)

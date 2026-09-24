@@ -57,16 +57,10 @@ def get_incident_context(incident_id: str) -> Dict[str, Any]:
         profile = get_user_profile(incident.get("user_id"))
         contacts = (profile or {}).get("emergency_contacts", [])
 
-    return {
-        "incident_id": incident_id,
-        "user_id": incident.get("user_id"),
-        "state": incident.get("state"),
-        "event_type": incident.get("event_type"),
-        "location": incident.get("location"),
-        "motion_data": incident.get("motion_data"),
-        "contacts": contacts,
-        "created_at": incident.get("created_at"),
-    }
+    res = {**incident}
+    if contacts is not None:
+        res["contacts"] = contacts
+    return res
 
 
 def assess_risk(incident_id: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -308,6 +302,42 @@ def _geohash_neighbors(geohash: str) -> List[str]:
     return list(set(neighbors))
 
 
+def _geohash_cells_for_radius(
+    center_lat: float, center_lng: float, radius_meters: float, precision: int = 5
+) -> List[str]:
+    """Compute all geohash cells covering the circle of given radius across all cardinal and diagonal directions."""
+    center_gh = _encode_geohash(center_lat, center_lng, precision=precision)
+    lat_int, lng_int = _decode_geohash_bbox(center_gh)
+    lat_height = max(1e-6, lat_int[1] - lat_int[0])
+    lng_width = max(1e-6, lng_int[1] - lng_int[0])
+
+    meters_per_lat = 111320.0
+    lat_cos = math.cos(math.radians(center_lat))
+    meters_per_lng = max(1000.0, 111320.0 * abs(lat_cos))
+
+    lat_radius_deg = (radius_meters / meters_per_lat) * 1.05
+    lng_radius_deg = (radius_meters / meters_per_lng) * 1.05
+
+    step_lat = max(1, math.ceil(lat_radius_deg / lat_height))
+    step_lng = max(1, math.ceil(lng_radius_deg / lng_width))
+
+    cells = set()
+    for d_lat in range(-step_lat, step_lat + 1):
+        for d_lng in range(-step_lng, step_lng + 1):
+            n_lat = center_lat + d_lat * lat_height
+            n_lng = center_lng + d_lng * lng_width
+            if n_lat > 90.0:
+                n_lat = 90.0
+            elif n_lat < -90.0:
+                n_lat = -90.0
+            if n_lng > 180.0:
+                n_lng = n_lng - 360.0
+            elif n_lng < -180.0:
+                n_lng = n_lng + 360.0
+            cells.add(_encode_geohash(n_lat, n_lng, precision))
+    return list(cells)
+
+
 def _haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Accurate great-circle distance between two GPS coordinates in meters."""
     r = 6371000.0
@@ -398,6 +428,7 @@ def register_responder_heartbeat(
 
 def _get_responder_records(geohash_filter: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     dynamo = get_dynamo_resource()
+    now_epoch = int(datetime.now(timezone.utc).timestamp())
     if dynamo:
         table = dynamo.Table(DYNAMODB_RESPONDERS_TABLE)
         if geohash_filter:
@@ -406,12 +437,20 @@ def _get_responder_records(geohash_filter: Optional[List[str]] = None) -> List[D
                 try:
                     resp = table.query(
                         IndexName="GeohashIndex",
-                        KeyConditionExpression="geohash = :gh",
-                        ExpressionAttributeValues={":gh": gh},
+                        KeyConditionExpression="geohash = :gh AND availability_expires_at > :now",
+                        ExpressionAttributeValues={":gh": gh, ":now": now_epoch},
                     )
                     items.extend(resp.get("Items", []))
                 except Exception:
-                    pass
+                    try:
+                        resp = table.query(
+                            IndexName="GeohashIndex",
+                            KeyConditionExpression="geohash = :gh",
+                            ExpressionAttributeValues={":gh": gh},
+                        )
+                        items.extend(resp.get("Items", []))
+                    except Exception:
+                        pass
             if items:
                 return items
             try:
@@ -459,18 +498,20 @@ def find_nearby_responders(incident_id: str, radius_meters: float = 1200.0) -> L
 
     eligible_responders = []
     now_epoch = int(datetime.now(timezone.utc).timestamp())
-    center_geohash = _encode_geohash(float(lat1), float(lng1), precision=5)
-    candidate_geohashes = [center_geohash] + _geohash_neighbors(center_geohash)
+    candidate_geohashes = _geohash_cells_for_radius(
+        float(lat1), float(lng1), radius_meters=radius_meters, precision=5
+    )
     responder_pool = _get_responder_records(geohash_filter=candidate_geohashes)
 
     for resp in responder_pool:
         if not resp.get("is_active"):
             continue
 
-        if not _dev_mode() and (
-            resp.get("verification_status") != "APPROVED"
-            or int(resp.get("availability_expires_at", 0)) <= now_epoch
-        ):
+        if resp.get("verification_status") != "APPROVED":
+            continue
+
+        expiry = resp.get("availability_expires_at")
+        if expiry is not None and int(expiry) <= now_epoch:
             continue
 
         # Anti-Abuse Check 1: Trust Score minimum threshold
@@ -701,6 +742,37 @@ def _record_invitation_delivery(
         raise RuntimeError("Mission store is unavailable")
 
 
+def _persist_mission_expired(mission: Dict[str, Any]) -> None:
+    """Durably transition an expired INVITED mission to EXPIRED."""
+    mission_id = mission.get("mission_id")
+    if not mission_id:
+        return
+    now_iso = datetime.now(timezone.utc).isoformat()
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        try:
+            dynamo.Table(DYNAMODB_MISSIONS_TABLE).update_item(
+                Key={"mission_id": mission_id},
+                UpdateExpression="SET #status = :expired, updated_at = :now REMOVE navigation_grant_hash, navigation_grant_expires_at",
+                ConditionExpression="#status = :invited AND (invitation_expires_at <= :now_ts OR expires_at <= :now_ts)",
+                ExpressionAttributeNames={"#status": "status"},
+                ExpressionAttributeValues={
+                    ":expired": "EXPIRED",
+                    ":invited": "INVITED",
+                    ":now": now_iso,
+                    ":now_ts": now_ts,
+                },
+            )
+        except Exception:
+            pass
+    if mission_id in _LOCAL_MISSIONS:
+        _LOCAL_MISSIONS[mission_id]["status"] = "EXPIRED"
+        _LOCAL_MISSIONS[mission_id]["updated_at"] = now_iso
+    mission["status"] = "EXPIRED"
+    mission["updated_at"] = now_iso
+
+
 def _responder_missions(responder_id: str) -> List[Dict[str, Any]]:
     """Load missions by authenticated responder using the declared GSI."""
     now = int(datetime.now(timezone.utc).timestamp())
@@ -726,7 +798,7 @@ def _responder_missions(responder_id: str) -> List[Dict[str, Any]]:
         if mission.get("status") == "INVITED" and int(
             mission.get("invitation_expires_at", mission.get("expires_at", 0))
         ) <= now:
-            mission["status"] = "EXPIRED"
+            _persist_mission_expired(mission)
     return missions
 
 
@@ -762,6 +834,17 @@ def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]
         not _dev_mode() and resp.get("verification_status") != "APPROVED"
     ):
         raise PermissionError(f"Responder {responder_id} does not meet trust score criteria.")
+
+    from aws.agent.escalation_policy import MAX_ACCEPTED_RESPONDERS
+    active_accepted = [
+        m for m in _incident_missions(incident_id)
+        if m.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}
+        and m.get("responder_id") != responder_id
+    ]
+    if len(active_accepted) >= MAX_ACCEPTED_RESPONDERS:
+        raise PermissionError(
+            f"The maximum responder capacity ({MAX_ACCEPTED_RESPONDERS}) for this incident has been reached."
+        )
 
     ctx = get_incident_context(incident_id)
     now = datetime.now(timezone.utc)
@@ -829,6 +912,8 @@ def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]
         if existing.get("status") != "INVITED" or existing.get(
             "invitation_expires_at", existing.get("expires_at", 0)
         ) <= int(now.timestamp()):
+            if existing.get("status") == "INVITED":
+                _persist_mission_expired(existing)
             raise PermissionError("Mission invitation is unavailable or expired")
         _LOCAL_MISSIONS[mission_id] = {**existing, **acceptance_record}
     else:
@@ -888,14 +973,32 @@ def get_authorized_incident_location(
         IncidentState.EXPIRED.value,
     }:
         raise PermissionError("The incident is closed")
-    location = incident.get("location")
+    location = incident.get("current_emergency_location") or incident.get("location")
     if not location:
         raise ValueError("Incident location is unavailable")
+    freshness = location.get("freshness", "UNKNOWN")
+    age_seconds = location.get("age_seconds")
+    if location.get("captured_at"):
+        try:
+            cap_dt = datetime.fromisoformat(str(location["captured_at"]))
+            if cap_dt.tzinfo is None:
+                cap_dt = cap_dt.replace(tzinfo=timezone.utc)
+            computed_age = max(0.0, (datetime.now(timezone.utc) - cap_dt).total_seconds())
+            age_seconds = round(computed_age, 1)
+            freshness = "FRESH" if computed_age <= 30.0 else "STALE"
+        except Exception:
+            freshness = "UNKNOWN"
+
     return {
         "incident_id": incident_id,
         "latitude": location["latitude"],
         "longitude": location["longitude"],
         "accuracy": location.get("accuracy"),
+        "captured_at": location.get("captured_at"),
+        "received_at": location.get("received_at") or incident.get("updated_at"),
+        "source": location.get("source") or "DEVICE_GPS",
+        "freshness": freshness,
+        "age_seconds": age_seconds,
         "grant_expires_at": mission["navigation_grant_expires_at"],
     }
 
@@ -919,6 +1022,11 @@ def get_responder_mission(mission_id: str, responder_id: str) -> Dict[str, Any]:
         raise RuntimeError("Mission store is unavailable")
     if not mission or mission.get("responder_id") != responder_id:
         raise PermissionError("Mission is unavailable to this responder")
+    now = int(datetime.now(timezone.utc).timestamp())
+    if mission.get("status") == "INVITED" and int(
+        mission.get("invitation_expires_at", mission.get("expires_at", 0))
+    ) <= now:
+        _persist_mission_expired(mission)
     return _public_mission(mission)
 
 
@@ -1008,11 +1116,19 @@ def transition_rescue_mission(
             "COMMUNITY_RESPONDER",
             f"Responder mission {mission_id} changed from {current} to {target}.",
         )
+    if target == "WITHDRAWN":
+        remaining = [
+            m for m in _incident_missions(incident_id)
+            if m.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}
+            and m.get("mission_id") != mission_id
+        ]
+        if not remaining:
+            process_incident_redispatch_eval(incident_id)
     return _public_mission(updated)
 
 
-def cancel_incident_missions(incident_id: str, reason: str) -> int:
-    """Revoke active mission grants when an incident becomes terminal."""
+def _incident_missions(incident_id: str) -> List[Dict[str, Any]]:
+    """Load missions for an incident using declared IncidentMissionsIndex or local store."""
     dynamo = get_dynamo_resource()
     if dynamo:
         missions = dynamo.Table(DYNAMODB_MISSIONS_TABLE).query(
@@ -1028,7 +1144,21 @@ def cancel_incident_missions(incident_id: str, reason: str) -> int:
         ]
     else:
         raise RuntimeError("Mission store is unavailable")
+
+    now = int(datetime.now(timezone.utc).timestamp())
+    for mission in missions:
+        if mission.get("status") == "INVITED" and int(
+            mission.get("invitation_expires_at", mission.get("expires_at", 0))
+        ) <= now:
+            _persist_mission_expired(mission)
+    return missions
+
+
+def cancel_incident_missions(incident_id: str, reason: str) -> int:
+    """Revoke active mission grants when an incident becomes terminal."""
+    missions = _incident_missions(incident_id)
     cancelled = 0
+    dynamo = get_dynamo_resource()
     for mission in missions:
         if mission.get("status") not in {"INVITED", "ACCEPTED", "EN_ROUTE", "ARRIVED"}:
             continue
@@ -1060,4 +1190,323 @@ def cancel_incident_missions(incident_id: str, reason: str) -> int:
             mission.pop("navigation_grant_expires_at", None)
         cancelled += 1
     return cancelled
+
+
+def renew_mission_navigation_grant(
+    mission_id: str,
+    responder_id: str,
+) -> Dict[str, Any]:
+    """
+    Secure renewal model for active rescue mission navigation grants.
+    Validates responder authorization, active mission state, and active incident state.
+    Issues a fresh short-lived HMAC grant (+900s cap) and audits the issuance.
+    """
+    responder = _get_responder(responder_id)
+    if not responder or responder.get("trust_score", 0) < 70 or (
+        not _dev_mode() and responder.get("verification_status") != "APPROVED"
+    ):
+        raise PermissionError("Responder is not approved or does not meet trust requirements")
+
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        mission = dynamo.Table(DYNAMODB_MISSIONS_TABLE).get_item(
+            Key={"mission_id": mission_id}, ConsistentRead=True
+        ).get("Item")
+    elif _dev_mode():
+        mission = _LOCAL_MISSIONS.get(mission_id)
+    else:
+        raise RuntimeError("Mission store is unavailable")
+
+    if not mission or mission.get("responder_id") != responder_id:
+        raise PermissionError("Mission does not belong to caller")
+
+    incident_id = str(mission["incident_id"])
+    incident = get_incident_context(incident_id)
+    if incident.get("state") in {
+        IncidentState.RESOLVED.value,
+        IncidentState.CANCELLED.value,
+        IncidentState.EXPIRED.value,
+    }:
+        raise PermissionError("Incident is closed; navigation grant cannot be renewed")
+
+    current_status = mission.get("status")
+    if current_status not in {"ACCEPTED", "EN_ROUTE"}:
+        raise PermissionError(f"Cannot renew grant for mission in state {current_status}")
+
+    now = datetime.now(timezone.utc)
+    new_grant = secrets.token_urlsafe(32)
+    new_grant_hash = hashlib.sha256(new_grant.encode("utf-8")).hexdigest()
+    new_expiry = int(now.timestamp()) + 900  # Cap at +15 minutes per renewal
+    renewal_count = int(mission.get("grant_renewal_count", 0)) + 1
+
+    if dynamo:
+        dynamo.Table(DYNAMODB_MISSIONS_TABLE).update_item(
+            Key={"mission_id": mission_id},
+            UpdateExpression=(
+                "SET navigation_grant_hash = :gh, "
+                "navigation_grant_expires_at = :exp, "
+                "grant_renewal_count = :rc, "
+                "updated_at = :updated"
+            ),
+            ConditionExpression="responder_id = :responder AND #s IN (:acc, :enr)",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={
+                ":gh": new_grant_hash,
+                ":exp": new_expiry,
+                ":rc": renewal_count,
+                ":updated": now.isoformat(),
+                ":responder": responder_id,
+                ":acc": "ACCEPTED",
+                ":enr": "EN_ROUTE",
+            },
+        )
+    elif _dev_mode():
+        mission["navigation_grant_hash"] = new_grant_hash
+        mission["navigation_grant_expires_at"] = new_expiry
+        mission["grant_renewal_count"] = renewal_count
+        mission["updated_at"] = now.isoformat()
+
+    # Timeline audit
+    append_incident_event(
+        incident_id,
+        "navigation_grant_renewed",
+        "COMMUNITY_RESPONDER",
+        f"Navigation grant renewed for responder {responder_id} (renewal #{renewal_count}).",
+    )
+
+    return {
+        "mission_id": mission_id,
+        "incident_id": incident_id,
+        "navigation_grant": new_grant,
+        "grant_expires_at": new_expiry,
+        "grant_renewal_count": renewal_count,
+    }
+
+
+def advance_incident_escalation(
+    incident_id: str,
+    target_stage: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    Progressively widen search radius (1km -> 2km -> 5km -> 10km) according to escalation policy.
+    Durable across process restarts and Lambda invocations. Prevents duplicate notifications.
+    """
+    ctx = get_incident_context(incident_id)
+    state = str(ctx.get("state", ""))
+
+    # Terminal check: stop widening immediately if incident is closed
+    if state in {
+        IncidentState.RESOLVED.value,
+        IncidentState.CANCELLED.value,
+        IncidentState.EXPIRED.value,
+    }:
+        return {
+            "incident_id": incident_id,
+            "status": "INCIDENT_CLOSED",
+            "message": "Incident is already terminal; no escalation performed.",
+            "current_stage": ctx.get("current_escalation_stage", 1),
+            "dispatched_count": 0,
+        }
+
+    # Check active accepted responders: if at least 1 responder is already en route or arrived, pause widening
+    accepted_missions = [
+        m for m in _incident_missions(incident_id)
+        if m.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}
+    ]
+    if len(accepted_missions) >= 1:
+        return {
+            "incident_id": incident_id,
+            "status": "ESCALATION_PAUSED_ACCEPTED",
+            "message": f"Help is already active ({len(accepted_missions)} responder accepted); radius expansion paused.",
+            "current_stage": ctx.get("current_escalation_stage", 1),
+            "dispatched_count": 0,
+        }
+
+    from aws.agent.escalation_policy import get_escalation_stage, get_stage_count
+
+    current_stage = int(ctx.get("current_escalation_stage", 0))
+    next_stage = target_stage if target_stage is not None else (current_stage + 1)
+
+    if current_stage >= get_stage_count() and target_stage is None:
+        return {
+            "incident_id": incident_id,
+            "status": "MAX_RADIUS_REACHED",
+            "message": "Maximum perimeter (10 km) reached; incident remains open for emergency services.",
+            "current_stage": current_stage,
+            "dispatched_count": 0,
+        }
+
+    stage_config = get_escalation_stage(next_stage)
+    radius_meters = stage_config.radius_meters
+
+    all_candidates = find_nearby_responders(incident_id, radius_meters=radius_meters)
+
+    # Duplicate responder prevention: filter out responders invited in earlier stages
+    dispatched_history = set(ctx.get("dispatched_responder_ids") or [])
+    new_candidates = [r for r in all_candidates if r["responder_id"] not in dispatched_history]
+    selected_responders = new_candidates[:stage_config.max_candidates]
+
+    now = datetime.now(timezone.utc)
+    invitation_expiry = int(now.timestamp()) + stage_config.invitation_timeout_seconds
+    dynamo = get_dynamo_resource()
+    created_missions = []
+
+    location = ctx.get("location") or {}
+    precision = 2
+
+    for responder in selected_responders:
+        m_id = _mission_id(incident_id, responder["responder_id"])
+        approximate_location = {
+            "latitude": round(float(location.get("latitude", 0.0)), precision),
+            "longitude": round(float(location.get("longitude", 0.0)), precision),
+        }
+        mission = {
+            "mission_id": m_id,
+            "incident_id": incident_id,
+            "responder_id": responder["responder_id"],
+            "status": "INVITED",
+            "invited_at": now.isoformat(),
+            "invitation_expires_at": invitation_expiry,
+            "expires_at": int(now.timestamp()) + 30 * 24 * 60 * 60,
+            "updated_at": now.isoformat(),
+            "approximate_location": approximate_location,
+            "invitation_delivery_status": "PENDING",
+            "escalation_stage": stage_config.stage_index,
+            "radius_meters": radius_meters,
+        }
+        created = False
+        if dynamo:
+            try:
+                dynamo.Table(DYNAMODB_MISSIONS_TABLE).put_item(
+                    Item=mission,
+                    ConditionExpression="attribute_not_exists(mission_id)",
+                )
+                created = True
+            except Exception as error:
+                code = getattr(error, "response", {}).get("Error", {}).get("Code")
+                if code != "ConditionalCheckFailedException":
+                    raise
+        elif _dev_mode():
+            if m_id not in _LOCAL_MISSIONS:
+                _LOCAL_MISSIONS[m_id] = mission
+                created = True
+        else:
+            raise RuntimeError("Mission store is unavailable")
+
+        if created:
+            created_missions.append(mission)
+            dispatched_history.add(responder["responder_id"])
+            send_push_to_user(
+                responder["responder_id"],
+                "Guardian safety request nearby",
+                f"Assistance requested within {int(radius_meters/1000)} km. Open Guardian to review.",
+                data={
+                    "incident_id": incident_id,
+                    "mission_id": m_id,
+                    "invitation_expires_at": invitation_expiry,
+                    "stage": stage_config.stage_index,
+                },
+                notification_type="rescue_invitation",
+            )
+
+    new_dispatched_list = list(dispatched_history)
+    deadline_epoch = invitation_expiry
+    if dynamo:
+        dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression=(
+                "SET current_escalation_stage = :stage, "
+                "current_radius_meters = :radius, "
+                "dispatched_responder_ids = :dispatched, "
+                "escalation_deadline_at = :deadline, "
+                "updated_at = :now"
+            ),
+            ExpressionAttributeValues={
+                ":stage": stage_config.stage_index,
+                ":radius": radius_meters,
+                ":dispatched": new_dispatched_list,
+                ":deadline": deadline_epoch,
+                ":now": now.isoformat(),
+            },
+        )
+    elif _dev_mode():
+        from aws.incident_handler.handler import _LOCAL_INCIDENTS
+        inc = _LOCAL_INCIDENTS.get(incident_id)
+        if inc:
+            inc["current_escalation_stage"] = stage_config.stage_index
+            inc["current_radius_meters"] = radius_meters
+            inc["dispatched_responder_ids"] = new_dispatched_list
+            inc["escalation_deadline_at"] = deadline_epoch
+            inc["updated_at"] = now.isoformat()
+
+    append_incident_event(
+        incident_id,
+        "escalation_dispatched",
+        "SYSTEM",
+        f"Stage {stage_config.stage_index} ({int(radius_meters/1000)} km) activated: "
+        f"{len(created_missions)} new responders invited (timeout {stage_config.invitation_timeout_seconds}s).",
+    )
+
+    if state == IncidentState.CLOUD_ACCEPTED.value and created_missions:
+        try:
+            update_incident_status(
+                incident_id,
+                IncidentState.COMMUNITY_OFFERED.value,
+                actor="SYSTEM",
+                note=f"Escalation stage {stage_config.stage_index} dispatched.",
+            )
+        except Exception:
+            pass
+
+    return {
+        "incident_id": incident_id,
+        "stage": stage_config.stage_index,
+        "radius_meters": radius_meters,
+        "new_invitations": len(created_missions),
+        "total_dispatched": len(new_dispatched_list),
+        "status": "STAGE_DISPATCHED",
+        "invitation_expires_at": invitation_expiry,
+    }
+
+
+def process_incident_redispatch_eval(incident_id: str) -> Dict[str, Any]:
+    """
+    Evaluate incident dispatch state:
+    If zero responders accepted and invitations expired or declined, advance escalation stage.
+    If an accepted responder withdraws and 0 remain, triggers redispatch.
+    """
+    ctx = get_incident_context(incident_id)
+    state = str(ctx.get("state", ""))
+
+    if state in {
+        IncidentState.RESOLVED.value,
+        IncidentState.CANCELLED.value,
+        IncidentState.EXPIRED.value,
+    }:
+        return {"incident_id": incident_id, "status": "INCIDENT_CLOSED"}
+
+    missions = _incident_missions(incident_id)
+    accepted = [m for m in missions if m.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}]
+    if len(accepted) >= 1:
+        return {
+            "incident_id": incident_id,
+            "status": "ACCEPTED_ACTIVE",
+            "accepted_count": len(accepted),
+        }
+
+    now = int(datetime.now(timezone.utc).timestamp())
+    pending_live = [
+        m for m in missions
+        if m.get("status") == "INVITED" and int(m.get("invitation_expires_at", 0)) > now
+    ]
+
+    if not pending_live:
+        # All invitations have expired or been withdrawn/declined with 0 acceptances
+        return advance_incident_escalation(incident_id)
+
+    return {
+        "incident_id": incident_id,
+        "status": "WAITING_RESPONSE",
+        "pending_count": len(pending_live),
+    }
 
