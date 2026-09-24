@@ -182,7 +182,7 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         # Emit to EventBridge
         eb = get_eventbridge_client()
         if eb:
-            eb.put_events(
+            response = eb.put_events(
                 Entries=[
                     {
                         "Source": "guardian.incident",
@@ -192,6 +192,12 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
                     }
                 ]
             )
+            if response.get("FailedEntryCount", 0) > 0:
+                import logging
+                logger = logging.getLogger(__name__)
+                error_msg = response["Entries"][0].get("ErrorMessage", "Unknown EventBridge error")
+                logger.error("Failed to emit incident to EventBridge: %s", error_msg)
+                raise RuntimeError(f"EventBridge delivery failed: {error_msg}")
     else:
         _require_local_store()
         _LOCAL_INCIDENTS[incident_id] = incident_record
@@ -302,6 +308,38 @@ def get_incident(incident_id: str) -> Optional[Dict[str, Any]]:
     _require_local_store()
     return _LOCAL_INCIDENTS.get(incident_id)
 
+
+
+def acquire_agent_lease(incident_id: str, correlation_id: str) -> bool:
+    dynamo = get_dynamo_resource()
+    if not dynamo:
+        _require_local_store()
+        inc = _LOCAL_INCIDENTS.get(incident_id)
+        if not inc:
+            return False
+        if inc.get("agent_decision") not in (None, "", "PENDING_REASONING"):
+            return False
+        inc["agent_decision"] = "PENDING_REASONING"
+        inc["agent_run_id"] = correlation_id
+        return True
+
+    table = dynamo.Table(DYNAMODB_INCIDENTS_TABLE)
+    try:
+        table.update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression="SET agent_decision = :pending, agent_run_id = :run_id",
+            ConditionExpression="attribute_not_exists(agent_decision) OR agent_decision = :empty",
+            ExpressionAttributeValues={
+                ":pending": "PENDING_REASONING",
+                ":run_id": correlation_id,
+                ":empty": "",
+            }
+        )
+        return True
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise
 
 def get_incident_timeline(incident_id: str) -> list:
     dynamo = get_dynamo_resource()

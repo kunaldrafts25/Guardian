@@ -179,11 +179,9 @@ class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
         errorMessage: 'Detailed turn-by-turn unavailable; direct emergency line active.',
       );
 
-      SafetyServiceBridge().setActiveRoute(
-        polylinePoints
-            .map((p) => {'latitude': p.latitude, 'longitude': p.longitude})
-            .toList(),
-      );
+      // P0-07: Do NOT send geodesic fallbacks to the native deviation engine.
+      // A straight line is not routable and will trigger false positive deviations.
+      SafetyServiceBridge().clearActiveRoute();
     }
   }
 

@@ -784,6 +784,45 @@ def api_authorized_incident_location(
         raise HTTPException(status_code=403, detail=str(error))
 
 
+class AbuseReportRequest(BaseModel):
+    reason: str = Field(min_length=2)
+    description: str = Field(min_length=5)
+
+@app.post("/incidents/{incident_id}/report")
+def api_report_incident(incident_id: str, req: AbuseReportRequest, request: Request):
+    """P1-03: Submit abuse report and freeze trust score."""
+    from aws.incident_handler.handler import get_dynamo_resource
+    from aws.agent.tools import DYNAMODB_INCIDENTS_TABLE, DYNAMODB_RESPONDERS_TABLE, _dev_mode
+    user_id = authenticated_user_id(request)
+    
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        try:
+            dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+                Key={"incident_id": incident_id},
+                UpdateExpression="SET moderation_status = :flagged, reported_by = :reporter, moderation_reason = :reason",
+                ExpressionAttributeValues={
+                    ":flagged": "NEEDS_REVIEW",
+                    ":reporter": user_id,
+                    ":reason": req.reason
+                }
+            )
+            
+            # Freeze the responder pending review
+            dynamo.Table(DYNAMODB_RESPONDERS_TABLE).update_item(
+                Key={"responder_id": user_id},
+                UpdateExpression="SET verification_status = :frozen",
+                ExpressionAttributeValues={
+                    ":frozen": "FROZEN_PENDING_REVIEW"
+                }
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    elif not _dev_mode():
+        raise HTTPException(status_code=500, detail="Database unavailable")
+        
+    return {"status": "REPORT_RECEIVED"}
+
 @app.post("/incidents/{incident_id}/dispatch-community")
 def api_dispatch_community(
     incident_id: str,
@@ -828,6 +867,39 @@ def api_dispatch_community(
 # ─────────────────────────────────────────────────────────────────────────────
 # RESPONDER / AGENT
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+class ResponderEnrollmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id_document_hash: str = Field(min_length=10)
+    selfie_hash: str = Field(min_length=10)
+    real_name: str = Field(min_length=2)
+
+@app.post("/responders/enroll")
+def api_responder_enroll(req: ResponderEnrollmentRequest, request: Request):
+    """P0-01: Submit KYC documents for responder enrollment."""
+    user_id = authenticated_user_id(request)
+    from aws.incident_handler.handler import get_dynamo_resource
+    from aws.agent.tools import DYNAMODB_RESPONDERS_TABLE, _dev_mode, _LOCAL_RESPONDERS
+    
+    record = {
+        "responder_id": user_id,
+        "name": req.real_name,
+        "verification_status": "PENDING_MANUAL_REVIEW", # Explicit block for dispatch
+        "trust_score": 0,
+        "enrolled_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        table = dynamo.Table(DYNAMODB_RESPONDERS_TABLE)
+        table.put_item(Item=record)
+    elif _dev_mode():
+        _LOCAL_RESPONDERS[user_id] = record
+    else:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+        
+    return {"status": "ENROLLMENT_PENDING", "responder_id": user_id}
 
 class ResponderHeartbeatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")

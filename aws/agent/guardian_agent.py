@@ -41,6 +41,7 @@ from aws.agent.tools import (
 )
 from aws.incident_handler.handler import (
     get_incident,
+    acquire_agent_lease,
     update_incident_status,
     IncidentState,
     AWS_REGION,
@@ -269,18 +270,17 @@ def execute_agent_reasoning(
     """
     correlation_id = correlation_id or str(uuid.uuid4())
 
-    # Agent execution is idempotent. API Gateway/background retries must never
-    # resend contact or community notifications for the same incident.
-    existing = get_incident(incident_id)
-    if existing and existing.get("agent_decision") not in (None, "", "PENDING_REASONING"):
+    # P1-03: Atomic agent execution lease to prevent duplicate SMS/responder dispatch.
+    if not acquire_agent_lease(incident_id, correlation_id):
+        existing = get_incident(incident_id)
         return {
             "incident_id": incident_id,
-            "decision": existing["agent_decision"],
-            "rationale": existing.get("agent_rationale", ""),
-            "provider": existing.get("agent_provider", ""),
-            "risk_level": existing.get("risk_level"),
-            "risk_score": existing.get("risk_score"),
-            "action_result": {"status": "ALREADY_EXECUTED"},
+            "decision": existing.get("agent_decision") if existing else "UNKNOWN",
+            "rationale": existing.get("agent_rationale", "") if existing else "",
+            "provider": existing.get("agent_provider", "") if existing else "",
+            "risk_level": existing.get("risk_level") if existing else None,
+            "risk_score": existing.get("risk_score") if existing else None,
+            "action_result": {"status": "ALREADY_EXECUTED_OR_RUNNING"},
             "correlation_id": correlation_id,
         }
 
@@ -310,7 +310,11 @@ def execute_agent_reasoning(
         bedrock_threat = bedrock_result.get("threat_level", "MEDIUM")
         confidence = float(bedrock_result.get("confidence_score", 0.0))
         if bedrock_threat == "CRITICAL" and confidence >= 0.85:
-            effective_risk_level = "CRITICAL"
+            # P1-08: Bedrock cannot unilaterally elevate to CRITICAL for immediate dispatch unless deterministic is already HIGH.
+            if risk_info.get("level") in ("HIGH", "CRITICAL"):
+                effective_risk_level = "CRITICAL"
+            else:
+                effective_risk_level = "HIGH"
         elif bedrock_threat == "HIGH" and effective_risk_level not in ("CRITICAL", "HIGH") and confidence >= 0.80:
             effective_risk_level = "HIGH"
 
@@ -391,20 +395,30 @@ def execute_agent_reasoning(
                 for action in policy.authorized_actions
             },
         )
-        contact_res = execute_authorized_tool(
-            incident_id=incident_id,
-            correlation_id=correlation_id,
-            action="notify_trusted_contact",
-            token=authorizations["notify_trusted_contact"],
-            tool=notify_trusted_contact,
-        )
-        community_res = execute_authorized_tool(
-            incident_id=incident_id,
-            correlation_id=correlation_id,
-            action="dispatch_community_alert",
-            token=authorizations["dispatch_community_alert"],
-            tool=dispatch_community_alert,
-        )
+        contact_res = {"status": "NOT_ATTEMPTED"}
+        try:
+            contact_res = execute_authorized_tool(
+                incident_id=incident_id,
+                correlation_id=correlation_id,
+                action="notify_trusted_contact",
+                token=authorizations["notify_trusted_contact"],
+                tool=notify_trusted_contact,
+            )
+        except Exception as e:
+            logger.error("Failed to notify trusted contacts: %s", e)
+            contact_res = {"status": "FAILED", "error": str(e)}
+        community_res = {"status": "NOT_ATTEMPTED"}
+        try:
+            community_res = execute_authorized_tool(
+                incident_id=incident_id,
+                correlation_id=correlation_id,
+                action="dispatch_community_alert",
+                token=authorizations["dispatch_community_alert"],
+                tool=dispatch_community_alert,
+            )
+        except Exception as e:
+            logger.error("Failed to dispatch community alert: %s", e)
+            community_res = {"status": "FAILED", "error": str(e)}
         action_result = {
             "contact_alert": contact_res,
             "community_dispatch": community_res,
@@ -472,11 +486,13 @@ def execute_agent_reasoning(
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     detail = event.get("detail", {})
     incident_id = detail.get("incident_id") or event.get("incident_id")
+    timeout_type = detail.get("timeout_type")
+    
     if not incident_id:
         return {"statusCode": 400, "error": "incident_id missing in event"}
 
     correlation_id = getattr(context, "aws_request_id", None) if context else None
-    result = execute_agent_reasoning(incident_id, correlation_id=correlation_id)
+    result = execute_agent_reasoning(incident_id, correlation_id=correlation_id, timeout_type=timeout_type)
     return {
         "statusCode": 200,
         "body": result,

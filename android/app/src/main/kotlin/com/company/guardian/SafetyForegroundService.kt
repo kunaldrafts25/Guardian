@@ -313,12 +313,23 @@ class SafetyForegroundService : Service() {
             }
             if (shakeTimestamps.size >= 3) {
                 Log.w(TAG, "🚨 NATIVE SHAKE SOS DETECTED in background!")
+                val sensorData = JSONObject().apply {
+                    put("peak_count", shakeTimestamps.size)
+                    put("peak_magnitudes", org.json.JSONArray(listOf(magnitude)))
+                    put("gesture_duration_ms", now - shakeTimestamps.first)
+                }
                 shakeTimestamps.clear()
                 lastShakeTriggerTimestamp = now
-                val event = NativeEmergencyDispatcher.trigger(this@SafetyForegroundService, "ANDROID_SHAKE")
+                val event = NativeEmergencyDispatcher.trigger(this@SafetyForegroundService, "ANDROID_SHAKE", null, sensorData)
                 if (event != null) {
+                    // P0-01: ONE canonical trigger callback. onSosTrigger is the authority.
                     onSosTrigger?.invoke("ANDROID_SHAKE")
-                    onAnomalyDetected?.invoke("ANDROID_SHAKE", mapOf("magnitude" to magnitude))
+                    // Supplemental evidence only — no trigger authority.
+                    onAnomalyDetected?.invoke("ANDROID_SHAKE", mapOf(
+                        "magnitude" to magnitude,
+                        "trigger_authority" to false,
+                        "event_id" to (event.optString("event_id", ""))
+                    ))
                 }
             }
         }
@@ -351,12 +362,25 @@ class SafetyForegroundService : Service() {
                 } else if (now - stillStartTime >= 2500L) {
                     isMonitoringStillness = false
                     Log.w(TAG, "🚨 CONFIRMED FALL / COLLAPSE DETECTED BY NATIVE ACCELEROMETER!")
-                    val event = NativeEmergencyDispatcher.trigger(this@SafetyForegroundService, "ANDROID_FALL")
+                    val sensorData = JSONObject().apply {
+                        put("detector_version", "v1.1")
+                        put("free_fall_duration_ms", lastImpactTimestamp - lastFreeFallTimestamp)
+                        put("peak_acceleration", magnitude)
+                        put("post_impact_stillness_ms", now - stillStartTime)
+                    }
+                    val event = NativeEmergencyDispatcher.trigger(this@SafetyForegroundService, "ANDROID_FALL", null, sensorData)
                     if (event != null) {
+                        // P0-01: ONE canonical trigger callback. onSosTrigger is the authority.
                         onSosTrigger?.invoke("ANDROID_FALL")
+                        // Supplemental evidence only — no trigger authority.
                         onAnomalyDetected?.invoke(
                             "ANDROID_FALL",
-                            mapOf("impact_magnitude" to magnitude, "stillness_ms" to (now - stillStartTime))
+                            mapOf(
+                                "impact_magnitude" to magnitude,
+                                "stillness_ms" to (now - stillStartTime),
+                                "trigger_authority" to false,
+                                "event_id" to (event.optString("event_id", ""))
+                            )
                         )
                     }
                 }
@@ -590,8 +614,13 @@ class SafetyForegroundService : Service() {
                 consecutiveDeviations = 0
                 Log.w(TAG, "🚨 CRITICAL ROUTE DEVIATION CONFIRMED (>150m for 3 consecutive fixes)!")
                 if (onRouteDeviation != null) {
+                    // P0-01: ONE canonical trigger path — onRouteDeviation is the authority.
                     onRouteDeviation?.invoke(minDistanceMeters)
-                    onAnomalyDetected?.invoke("ROUTE_DEVIATION", mapOf("deviation_meters" to minDistanceMeters))
+                    // Supplemental evidence only — no trigger authority.
+                    onAnomalyDetected?.invoke("ROUTE_DEVIATION", mapOf(
+                        "deviation_meters" to minDistanceMeters,
+                        "trigger_authority" to false
+                    ))
                 } else {
                     handleDurableRouteDeviation(minDistanceMeters)
                 }

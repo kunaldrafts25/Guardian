@@ -84,6 +84,36 @@ def ask_user_confirmation(incident_id: str, timeout_seconds: int = 15) -> Dict[s
     Tool 3: Request confirmation without inventing a separate incident state.
     """
     incident = get_incident_context(incident_id)
+    
+    # P1-01: Create durable backend timeout
+    if BOTO3_AVAILABLE and os.environ.get("AWS_EXECUTION_ENV") and os.environ.get("SCHEDULER_ROLE_ARN"):
+        try:
+            scheduler = boto3.client("scheduler", region_name=AWS_REGION)
+            sts = boto3.client("sts", region_name=AWS_REGION)
+            account_id = sts.get_caller_identity()["Account"]
+            lambda_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
+            
+            target_time = datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
+            schedule_expr = f"at({target_time.strftime('%Y-%m-%dT%H:%M:%S')})"
+            
+            scheduler.create_schedule(
+                Name=f"timeout-verification-{incident_id[-10:]}-{uuid.uuid4().hex[:6]}",
+                ScheduleExpression=schedule_expr,
+                FlexibleTimeWindow={"Mode": "OFF"},
+                Target={
+                    "Arn": f"arn:aws:lambda:{AWS_REGION}:{account_id}:function:{lambda_name}",
+                    "RoleArn": os.environ.get("SCHEDULER_ROLE_ARN"),
+                    "Input": json.dumps({
+                        "detail": {
+                            "incident_id": incident_id,
+                            "timeout_type": "USER_VERIFICATION"
+                        }
+                    })
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to schedule user verification timeout: {e}")
+            
     return {
         "incident_id": incident_id,
         "status": "CONFIRMATION_REQUESTED",
@@ -124,35 +154,11 @@ def notify_trusted_contact(
             "state": ctx.get("state"),
         }
     contacts = ctx.get("contacts", [])
-    local_accepted = int((ctx.get("motion_data") or {}).get("local_sms_accepted_count", 0))
-    if local_accepted > 0:
-        res = update_incident_status(
-            incident_id=incident_id,
-            new_state=IncidentState.CONTACTS_NOTIFIED.value,
-            actor="DEVICE",
-            note=(
-                f"The user's device recorded {local_accepted} provider-accepted SMS "
-                "dispatch attempt(s); cloud duplicate suppressed."
-            ),
-        )
-        return {
-            "incident_id": incident_id,
-            "delivery_status": "LOCAL_PROVIDER_ACCEPTED",
-            "accepted_count": local_accepted,
-            "state": res.get("state"),
-        }
     
-    target_contact = None
-    if contact_id:
-        target_contact = next((c for c in contacts if c.get("id") == contact_id), None)
-    if not target_contact and contacts:
-        target_contact = contacts[0]
+    targets = [c for c in contacts if c.get("id") == contact_id] if contact_id else contacts
+    if not targets:
+        raise PermissionError(f"No authorized contacts found for dispatch.")
 
-    # Policy Check: Is the recipient in the user's authorized contacts list?
-    if not target_contact:
-        raise PermissionError(f"Contact {contact_id} is not authorized for emergency alerts.")
-
-    # Publish to AWS SNS
     location = ctx.get("location") or {}
     lat = location.get("latitude")
     lng = location.get("longitude")
@@ -172,34 +178,41 @@ def notify_trusted_contact(
         f"The user did not respond to safety verification. Immediate assistance requested."
     )
 
-    if _dev_mode() and not os.environ.get("AWS_EXECUTION_ENV"):
-        return {
-            "incident_id": incident_id,
-            "contact_notified": None,
-            "sns_message_id": None,
-            "delivery_status": "DEV_MODE_NOT_SENT",
-            "state": ctx.get("state"),
-        }
-    else:
-        dispatch = send_sms_alert(str(target_contact.get("phone", "")), alert_message)
-        if not dispatch.get("success"):
-            raise RuntimeError("AWS SNS SMS was not accepted; emergency alert was not sent")
-        sns_message_id = dispatch.get("message_id")
-        delivery_status = "PROVIDER_ACCEPTED"
+    notified = []
+    skipped = []
+    failed = []
 
-    # Record the distinct contact-delivery lifecycle state.
+    for c in targets:
+        # P1-06: Check per-contact delivery state. Skip if already accepted natively.
+        if str(c.get("delivery_state")).upper() == "OS_ACCEPTED":
+            skipped.append(c.get("name", "Unknown"))
+            continue
+            
+        if _dev_mode() and not os.environ.get("AWS_EXECUTION_ENV"):
+            notified.append(c.get("name", "Unknown"))
+        else:
+            dispatch = send_sms_alert(str(c.get("phone", "")), alert_message)
+            if dispatch.get("success"):
+                notified.append(c.get("name", "Unknown"))
+            else:
+                failed.append(c.get("name", "Unknown"))
+
+    if not notified and not skipped:
+        raise RuntimeError(f"AWS SNS SMS failed for all {len(failed)} targets.")
+
     res = update_incident_status(
         incident_id=incident_id,
         new_state=IncidentState.CONTACTS_NOTIFIED.value,
         actor="AGENT",
-        note=f"Escalated to trusted contact {target_contact.get('name')} ({target_contact.get('email', target_contact.get('phone'))}) via SNS.",
+        note=f"Escalated via SNS to {len(notified)} contacts ({len(skipped)} already notified natively).",
     )
 
     return {
         "incident_id": incident_id,
-        "contact_notified": target_contact.get("name"),
-        "sns_message_id": sns_message_id,
-        "delivery_status": delivery_status,
+        "contacts_notified_cloud": notified,
+        "contacts_skipped_native": skipped,
+        "contacts_failed": failed,
+        "delivery_status": "PROVIDER_ACCEPTED" if notified else "LOCAL_PROVIDER_ACCEPTED",
         "state": res.get("state"),
     }
 
@@ -386,7 +399,7 @@ def register_responder_heartbeat(
         "longitude": longitude,
         "is_active": is_active,
         "last_seen": datetime.now(timezone.utc).isoformat(),
-        "availability_expires_at": int(datetime.now(timezone.utc).timestamp()) + 300,
+        "availability_expires_at": int(datetime.now(timezone.utc).timestamp()) + 1800, # P2-01: 30 min expiry
         "geohash": _encode_geohash(latitude, longitude, precision=5),
     }
     if name is not None:
@@ -700,6 +713,36 @@ def dispatch_community_alert(
             f"nearby responders; provider accepted {provider_accepted_count}."
         ),
     )
+
+    # P1-02: Create durable escalation timer
+    if BOTO3_AVAILABLE and os.environ.get("AWS_EXECUTION_ENV") and os.environ.get("SCHEDULER_ROLE_ARN"):
+        try:
+            scheduler = boto3.client("scheduler", region_name=AWS_REGION)
+            sts = boto3.client("sts", region_name=AWS_REGION)
+            account_id = sts.get_caller_identity()["Account"]
+            lambda_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
+            
+            # Wait 60 seconds for community responder acceptance
+            target_time = datetime.now(timezone.utc) + timedelta(seconds=60)
+            schedule_expr = f"at({target_time.strftime('%Y-%m-%dT%H:%M:%S')})"
+            
+            scheduler.create_schedule(
+                Name=f"timeout-escalation-{incident_id[-10:]}-{uuid.uuid4().hex[:6]}",
+                ScheduleExpression=schedule_expr,
+                FlexibleTimeWindow={"Mode": "OFF"},
+                Target={
+                    "Arn": f"arn:aws:lambda:{AWS_REGION}:{account_id}:function:{lambda_name}",
+                    "RoleArn": os.environ.get("SCHEDULER_ROLE_ARN"),
+                    "Input": json.dumps({
+                        "detail": {
+                            "incident_id": incident_id,
+                            "timeout_type": "ESCALATION_CHECK"
+                        }
+                    })
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to schedule escalation timeout: {e}")
 
     return {
         "incident_id": incident_id,

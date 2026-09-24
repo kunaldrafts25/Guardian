@@ -13,6 +13,7 @@ object NativeEmergencyStore {
     private const val SNAPSHOT_KEY = "snapshot"
     private const val EVENTS_KEY = "events"
     private const val LAST_TRIGGER_AT_KEY = "last_trigger_at"
+    private const val LAST_TRIGGER_PRIORITY_KEY = "last_trigger_priority"
     private const val CHECK_IN_SCHEDULE_KEY = "check_in_schedule"
     private const val CHECK_IN_ACTIONS_KEY = "check_in_actions"
     private const val MAX_EVENTS = 32
@@ -41,11 +42,32 @@ object NativeEmergencyStore {
     }
 
     @Synchronized
-    fun claimTrigger(context: Context, now: Long, refractoryMs: Long): Boolean {
+    fun clearSnapshot(context: Context) {
+        preferences(context).edit().remove(SNAPSHOT_KEY).commit()
+    }
+
+    @Synchronized
+    fun claimTrigger(context: Context, now: Long, refractoryMs: Long, priority: Int = 0, operationId: String? = null): Boolean {
         val prefs = preferences(context)
+        
+        // P1-05: Check-in/operation specific deduplication
+        if (operationId != null) {
+            val opKey = "claim_op_$operationId"
+            if (prefs.contains(opKey)) return false
+            prefs.edit().putLong(opKey, now).commit()
+            return true
+        }
+
+        // P0-02: Priority-aware arbitration
         val previous = prefs.getLong(LAST_TRIGGER_AT_KEY, 0L)
-        if (previous > 0L && now - previous < refractoryMs) return false
-        return prefs.edit().putLong(LAST_TRIGGER_AT_KEY, now).commit()
+        val prevPriority = prefs.getInt(LAST_TRIGGER_PRIORITY_KEY, 0)
+        
+        if (previous > 0L && (now - previous < refractoryMs) && priority <= prevPriority) return false
+        
+        return prefs.edit()
+            .putLong(LAST_TRIGGER_AT_KEY, now)
+            .putInt(LAST_TRIGGER_PRIORITY_KEY, priority)
+            .commit()
     }
 
     @Synchronized

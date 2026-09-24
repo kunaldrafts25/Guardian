@@ -47,17 +47,17 @@ class ResponderHeartbeatNotifier
     extends StateNotifier<ResponderAvailabilityState> {
   final ResponderService _service;
   Timer? _heartbeatTimer;
+  StreamSubscription<Position>? _positionStream;
 
-  static const Duration heartbeatInterval = Duration(seconds: 60);
+  // P2-01: Throttle time-based heartbeat to 15 mins to save battery
+  static const Duration heartbeatInterval = Duration(minutes: 15);
 
   ResponderHeartbeatNotifier({ResponderService? service})
       : _service = service ?? ResponderService.instance,
         super(const ResponderAvailabilityState());
 
-  /// Explicitly toggle availability
   Future<void> setAvailability(bool available) async {
     if (state.isAvailable == available) return;
-
     if (!available) {
       await stopHeartbeat();
     } else {
@@ -65,24 +65,44 @@ class ResponderHeartbeatNotifier
     }
   }
 
-  /// Start availability heartbeat
   Future<void> startHeartbeat() async {
     _heartbeatTimer?.cancel();
+    await _positionStream?.cancel();
     state = state.copyWith(isAvailable: true, lastError: null);
 
-    // Send immediate first heartbeat
     await _sendHeartbeatTick(isActive: true);
 
-    // Repeat every 60 seconds
     _heartbeatTimer = Timer.periodic(heartbeatInterval, (_) {
       _sendHeartbeatTick(isActive: true);
     });
+
+    // P2-01: Add distance filter (500m) for responsive but battery-friendly updates
+    final locationSettings = const LocationSettings(
+      accuracy: LocationAccuracy.medium,
+      distanceFilter: 500,
+    );
+    
+    _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) {
+      _service.sendHeartbeat(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        isActive: true,
+      ).then((_) {
+        if (mounted) {
+          state = state.copyWith(
+            lastHeartbeatSentAt: DateTime.now(),
+            availabilityExpiresAt: DateTime.now().add(const Duration(minutes: 30)),
+          );
+        }
+      });
+    });
   }
 
-  /// Stop availability heartbeat and inform backend immediately
   Future<void> stopHeartbeat() async {
     _heartbeatTimer?.cancel();
+    await _positionStream?.cancel();
     _heartbeatTimer = null;
+    _positionStream = null;
 
     state = state.copyWith(
       isAvailable: false,
@@ -90,7 +110,6 @@ class ResponderHeartbeatNotifier
       availabilityExpiresAt: null,
     );
 
-    // Send final deactivation heartbeat if location is known
     try {
       final loc = await _resolveCurrentLocation();
       if (loc != null) {
@@ -101,104 +120,57 @@ class ResponderHeartbeatNotifier
         );
       }
     } catch (e) {
-      Logger.warning('Failed to send deactivation heartbeat: $e');
+      Logger.e('Failed to send deactivation heartbeat: $e');
     }
   }
 
   Future<void> _sendHeartbeatTick({required bool isActive}) async {
-    if (!state.isAvailable && isActive) return;
-
-    state = state.copyWith(isSendingHeartbeat: true);
+    if (!mounted) return;
+    state = state.copyWith(isSendingHeartbeat: true, lastError: null);
     try {
       final loc = await _resolveCurrentLocation();
-      if (loc == null) {
-        state = state.copyWith(
-          isSendingHeartbeat: false,
-          lastError: 'Location unavailable for responder heartbeat',
-        );
-        return;
-      }
+      if (loc == null) throw Exception('Location unavailable');
 
-      final res = await _service.sendHeartbeat(
+      await _service.sendHeartbeat(
         latitude: loc.latitude,
         longitude: loc.longitude,
         isActive: isActive,
       );
 
-      final now = DateTime.now();
-      final expirySeconds = (res['availability_expires_at'] as num?)?.toInt();
-      final expiryDate = expirySeconds != null
-          ? DateTime.fromMillisecondsSinceEpoch(expirySeconds * 1000,
-              isUtc: true)
-          : now.add(const Duration(seconds: 300));
-
-      state = state.copyWith(
-        isSendingHeartbeat: false,
-        lastHeartbeatSentAt: now,
-        availabilityExpiresAt: expiryDate,
-        lastError: null,
-      );
-      Logger.info('✅ Responder heartbeat dispatched successfully');
+      if (mounted) {
+        state = state.copyWith(
+          isSendingHeartbeat: false,
+          lastHeartbeatSentAt: DateTime.now(),
+          availabilityExpiresAt:
+              DateTime.now().add(const Duration(minutes: 30)),
+        );
+      }
     } catch (e) {
-      Logger.warning('Responder heartbeat failed: $e');
-      state = state.copyWith(
-        isSendingHeartbeat: false,
-        lastError: e.toString(),
-      );
+      if (mounted) {
+        state = state.copyWith(
+          isSendingHeartbeat: false,
+          lastError: e.toString(),
+        );
+      }
     }
   }
 
   Future<Position?> _resolveCurrentLocation() async {
-    // 1. Try native foreground service cached location
-    final cached = await SafetyServiceBridge().getLastServiceLocation();
-    if (cached != null) {
-      final lat = cached.latitude;
-      final lng = cached.longitude;
-      final acc = cached.accuracy;
-      final timeMs = cached.capturedAt?.millisecondsSinceEpoch ?? 0;
-      final age = DateTime.now().millisecondsSinceEpoch - timeMs;
-      if (age < 120000) {
-        return Position(
-          latitude: lat,
-          longitude: lng,
-          accuracy: acc,
-          altitude: 0,
-          heading: 0,
-          speed: 0,
-          speedAccuracy: 0,
-          altitudeAccuracy: 0,
-          headingAccuracy: 0,
-          timestamp: cached.capturedAt ?? DateTime.now(),
-        );
-      }
-    }
-
-    // 2. Query Geolocator with fallback to last known
     try {
-      final perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
-        return null;
-      }
-      return await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 5),
-        ),
-      );
-    } catch (_) {
-      return await Geolocator.getLastKnownPosition();
-    }
-  }
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return null;
 
-  @override
-  void dispose() {
-    _heartbeatTimer?.cancel();
-    super.dispose();
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return null;
+      }
+      if (permission == LocationPermission.deniedForever) return null;
+
+      return await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium);
+    } catch (_) {
+      return null;
+    }
   }
 }
-
-final responderHeartbeatProvider = StateNotifierProvider<
-    ResponderHeartbeatNotifier, ResponderAvailabilityState>((ref) {
-  return ResponderHeartbeatNotifier();
-});

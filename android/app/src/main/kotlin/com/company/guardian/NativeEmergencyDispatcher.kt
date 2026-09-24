@@ -10,16 +10,33 @@ import androidx.core.app.NotificationCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import androidx.work.WorkManager
+import androidx.work.Data
+import androidx.work.BackoffPolicy
+import java.util.concurrent.TimeUnit
 
 /** Executes the minimum emergency path without requiring an Activity or Dart VM. */
 object NativeEmergencyDispatcher {
     private const val CHANNEL_ID = "guardian_native_emergency"
     private const val REFRACTORY_MS = 15_000L
 
+    private fun getPriorityForSource(source: String): Int {
+        return when (source) {
+            "ANDROID_POWER_GESTURE", "MULTI_TAP", "hardware_power_panic" -> 100 // EXPLICIT_DISTRESS
+            "ANDROID_FALL", "fall_detected", "ROUTE_DEVIATION", "CHECK_IN_EXPIRED" -> 50 // AUTO_HIGH
+            "ANDROID_SHAKE", "shake_sos" -> 20 // AUTO_PROBABLE
+            else -> 10
+        }
+    }
+
     @Synchronized
-    fun trigger(context: Context, source: String): JSONObject? {
+    fun trigger(context: Context, source: String, operationId: String? = null, sensorEvidence: JSONObject? = null): JSONObject? {
         val now = System.currentTimeMillis()
-        if (!NativeEmergencyStore.claimTrigger(context, now, REFRACTORY_MS)) return null
+        val priority = getPriorityForSource(source)
+        if (!NativeEmergencyStore.claimTrigger(context, now, REFRACTORY_MS, priority, operationId)) return null
 
         val eventId = UUID.randomUUID().toString()
         val snapshot = NativeEmergencyStore.snapshot(context)
@@ -62,10 +79,22 @@ object NativeEmergencyDispatcher {
             put("accuracy", location?.accuracy ?: JSONObject.NULL)
             put("location_time_ms", location?.time ?: JSONObject.NULL)
             put("location_provider", location?.provider ?: JSONObject.NULL)
+            put("sensor_evidence", sensorEvidence ?: JSONObject.NULL)
             put("consumed", false)
         }
         NativeEmergencyStore.appendEvent(context, event)
         acknowledgeOnDevice(context, dispatchResults.values.count { it }, phones.size)
+
+        // P1-04: Queue resilient cloud upload using WorkManager
+        val workData = Data.Builder().putString("event_id", eventId).build()
+        val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+        val workRequest = OneTimeWorkRequestBuilder<CloudSyncWorker>()
+            .setInputData(workData)
+            .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+            .build()
+        WorkManager.getInstance(context).enqueue(workRequest)
+
         return event
     }
 

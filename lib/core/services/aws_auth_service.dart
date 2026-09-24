@@ -12,6 +12,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:guardian/core/utils/logger.dart';
+import 'package:guardian/core/services/safety_service_bridge.dart';
 
 /// Storage keys
 const _kUserId = 'aws_user_id';
@@ -382,6 +383,13 @@ class AwsAuthService {
         await _storage.write(key: _kAccessToken, value: _accessToken);
         await _storage.write(key: _kIdToken, value: resp['id_token'] ?? '');
         Logger.info('AwsAuthService: tokens refreshed');
+        // P1-04: Sync ID token to native snapshot for WorkManager uploads
+        try {
+          await SafetyServiceBridge.updateEmergencyAuth(
+            idToken: resp['id_token'],
+            apiEndpoint: baseUrl,
+          );
+        } catch (_) {}
         return true;
       }
     } catch (e) {
@@ -407,6 +415,9 @@ class AwsAuthService {
     await _clearLocalSession();
     _authStateController.add(null);
     Logger.info('AwsAuthService: signed out');
+
+    // P0-06: Clear native emergency snapshot so previous user's contacts aren't notified on SOS
+    await SafetyServiceBridge.clearEmergencySnapshot();
   }
 
   Future<List<AuthenticatedSession>> listSessions() async {

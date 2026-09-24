@@ -120,6 +120,15 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
     };
     _bridge!.onAnomalyDetected = (type, data) {
       Logger.warning('🚨 Anomaly detected: $type, data: $data');
+      
+      // P0-01: Native now emits trigger_authority=false for onAnomalyDetected to prevent double triggers.
+      // Canonical trigger is handled by onSosTrigger.
+      final bool hasAuthority = data['trigger_authority'] as bool? ?? true;
+      if (!hasAuthority) {
+        Logger.info('ℹ️ Anomaly evidence only — skipping emergency trigger');
+        return;
+      }
+
       if (type == 'ANDROID_FALL' || type == 'fall_detected') {
         unawaited(
             _ref.read(emergencyProvider.notifier).triggerFromHardwarePanic());
@@ -268,7 +277,7 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
     if (newCount >= _tapsRequired) {
       Logger.info('🚨🚨🚨 MULTI-TAP TRIGGERED ($newCount taps)!');
       state = state.copyWith(tapCount: 0, lastTapTime: null);
-      _triggerSosIfNotActive(SosTriggerSource.button);
+      _triggerSosIfNotActive(SosTriggerSource.multiTap);
     }
   }
 

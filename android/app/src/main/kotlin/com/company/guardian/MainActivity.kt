@@ -250,6 +250,22 @@ class MainActivity : FlutterActivity() {
                             }
                         }
                     }
+                    "updateEmergencyAuth" -> {
+                        val idToken = call.argument<String>("id_token")
+                        val apiEndpoint = call.argument<String>("api_endpoint")
+                        val currentSnapshot = NativeEmergencyStore.snapshot(this) ?: org.json.JSONObject()
+                        currentSnapshot.put("id_token", idToken)
+                        currentSnapshot.put("api_endpoint", apiEndpoint)
+                        if (currentSnapshot.optInt("version", 0) == 0) {
+                            currentSnapshot.put("version", 1)
+                        }
+                        NativeEmergencyStore.saveSnapshot(this, currentSnapshot)
+                        result.success(true)
+                    }
+                    "clearEmergencySnapshot" -> {
+                        NativeEmergencyStore.clearSnapshot(this)
+                        result.success(true)
+                    }
                     "getPendingNativeEmergencyEvents" -> {
                         val pending = NativeEmergencyStore.pendingEvents(this)
                         result.success((0 until pending.length()).map {

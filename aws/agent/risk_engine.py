@@ -9,15 +9,19 @@ from typing import Dict, Any, List, Optional
 import math
 
 
-def calculate_time_risk(dt: Optional[datetime] = None) -> float:
+def calculate_time_risk(dt: Optional[datetime] = None, tz_offset_seconds: int = 0) -> float:
     """
     Time of day risk factor:
     - 20:00 - 05:00 (Night): 0.85
     - 05:00 - 07:00, 18:00 - 20:00 (Twilight/Evening): 0.50
     - Daytime: 0.20
     """
-    now = dt or datetime.now()
-    hour = now.hour
+    if dt is None:
+        return 0.40 # P1-09: unknown time -> neutral baseline
+    
+    from datetime import timedelta
+    local_time = dt + timedelta(seconds=tz_offset_seconds)
+    hour = local_time.hour
     if hour >= 20 or hour < 5:
         return 0.85
     if (5 <= hour < 7) or (18 <= hour < 20):
@@ -65,28 +69,9 @@ def calculate_location_risk(location: Optional[Dict[str, Any]] = None, unsafe_zo
     lat = location.get("latitude", 0.0)
     lng = location.get("longitude", 0.0)
     
-    # If explicitly in a designated safe zone
-    if location.get("is_safe_zone") is True:
-        return 0.10
-
-    # Distance check against unsafe / incident hotspots if provided
-    if unsafe_zones:
-        for zone in unsafe_zones:
-            z_lat = zone.get("latitude", 0.0)
-            z_lng = zone.get("longitude", 0.0)
-            radius = zone.get("radius_meters", 300)
-            
-            # Simple Euclidean approx for localized distance in meters
-            d_lat = (lat - z_lat) * 111320
-            d_lng = (lng - z_lng) * 111320 * math.cos(math.radians(lat))
-            dist = math.sqrt(d_lat**2 + d_lng**2)
-            if dist <= radius:
-                return 0.90
-
-    # High isolation indicator
-    if location.get("is_isolated") is True:
-        return 0.75
-
+    # P1-10: Mark placeholder signals as UNAVAILABLE and use a neutral score (0.30)
+    # The client doesn't send is_safe_zone, unsafe_zones, or is_isolated.
+    # We remove the false references to unsafe zones.
     return 0.30
 
 
@@ -101,7 +86,8 @@ def assess_incident_risk(
     Unified multi-factor risk assessment.
     Returns composite score (0.0 - 1.0), risk level enum, and human/agent readable reasons.
     """
-    t_factor = calculate_time_risk(timestamp)
+    tz_offset = location.get("timezone_offset", 0) if location else 0
+    t_factor = calculate_time_risk(timestamp, tz_offset)
     m_factor = calculate_movement_risk(event_type, motion_data)
     l_factor = calculate_location_risk(location, unsafe_zones)
 

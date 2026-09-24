@@ -249,6 +249,38 @@ class SafetyServiceBridge {
     }
   }
 
+  static Future<bool> updateEmergencyAuth({
+    String? idToken,
+    String? apiEndpoint,
+  }) async {
+    try {
+      return await _serviceChannel.invokeMethod<bool>(
+            'updateEmergencyAuth',
+            {
+              'id_token': idToken,
+              'api_endpoint': apiEndpoint,
+            },
+          ) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } catch (error) {
+      Logger.error('Failed to update native emergency auth', error);
+      return false;
+    }
+  }
+
+  static Future<bool> clearEmergencySnapshot() async {
+    try {
+      return await _serviceChannel.invokeMethod<bool>('clearEmergencySnapshot') ?? false;
+    } on MissingPluginException {
+      return false;
+    } catch (error) {
+      Logger.error('Failed to clear native emergency snapshot', error);
+      return false;
+    }
+  }
+
   static Future<NativeCheckInScheduleResult> scheduleCheckIn({
     required String operationId,
     required DateTime deadline,

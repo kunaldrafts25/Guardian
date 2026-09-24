@@ -664,6 +664,11 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       'MULTI_TAP' || 'triple_tap' => 'MULTI_TAP',
       _ => nativeSource,
     };
+    final locationTimeMs = (event['location_time_ms'] as num?)?.toInt();
+    final capturedAt = locationTimeMs != null && locationTimeMs > 0
+        ? DateTime.fromMillisecondsSinceEpoch(locationTimeMs)
+        : occurredAt;
+
     final position = latitude != null && longitude != null
         ? Position(
             latitude: latitude,
@@ -675,7 +680,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
             speedAccuracy: 0,
             altitudeAccuracy: 0,
             headingAccuracy: 0,
-            timestamp: occurredAt,
+            timestamp: capturedAt, // P0-03: Use actual GPS capture time, not SOS trigger time
           )
         : null;
     final alert = SosAlert(
@@ -688,13 +693,21 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       contactStatuses: contacts.map((contact) {
         final phone = _normalizedPhone(contact.phone);
         final wasAccepted = accepted.contains(phone);
+        final wasFailed = failed.contains(phone);
+        
+        // P2-01: Accurately reconstruct SmsDeliveryState
         return ContactAlertStatus(
           contact: contact,
-          smsSent: wasAccepted,
-          sentAt: wasAccepted ? occurredAt : null,
+          smsAcceptedByDevice: wasAccepted,
+          deliveryState: wasAccepted
+              ? SmsDeliveryState.osAccepted
+              : (wasFailed
+                  ? SmsDeliveryState.failed
+                  : SmsDeliveryState.notAttempted),
+          dispatchedAt: wasAccepted ? occurredAt : null,
           error: wasAccepted
               ? null
-              : (failed.contains(phone)
+              : (wasFailed
                   ? 'native_sms_dispatch_failed'
                   : 'not_in_native_snapshot'),
         );
