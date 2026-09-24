@@ -9,6 +9,7 @@ import sys
 import json
 import logging
 import math
+import time
 import uuid
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
@@ -238,6 +239,123 @@ def _record_agent_event(**kwargs: Any) -> None:
         )
 
 
+def _action_field(action: str, suffix: str) -> str:
+    safe_action = "".join(
+        char if char.isalnum() or char == "_" else "_"
+        for char in action.lower()
+    )
+    return f"agent_action_{safe_action}_{suffix}"
+
+
+def _acquire_action_execution(
+    incident_id: str,
+    action: str,
+    run_id: str,
+    *,
+    lease_seconds: int = 90,
+) -> bool:
+    """Prevent concurrent workflows from executing the same external action."""
+    now_epoch = int(time.time())
+    lease_until = now_epoch + max(30, int(lease_seconds))
+    state_field = _action_field(action, "state")
+    run_field = _action_field(action, "run_id")
+    lease_field = _action_field(action, "lease_expires_at")
+
+    dynamo = get_dynamo_resource()
+    if not dynamo:
+        incident = get_incident(incident_id)
+        if not incident:
+            return False
+        state = str(incident.get(state_field) or "PENDING")
+        expiry = int(incident.get(lease_field) or 0)
+        if state == "COMPLETED":
+            return False
+        if state == "RUNNING" and expiry >= now_epoch:
+            return False
+        incident[state_field] = "RUNNING"
+        incident[run_field] = run_id
+        incident[lease_field] = lease_until
+        return True
+
+    try:
+        dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression=(
+                "SET #action_state = :running, #action_run = :run_id, "
+                "#action_lease = :lease_until"
+            ),
+            ConditionExpression=(
+                "attribute_not_exists(#action_state) "
+                "OR #action_state = :failed "
+                "OR (#action_state = :running AND #action_lease < :now)"
+            ),
+            ExpressionAttributeNames={
+                "#action_state": state_field,
+                "#action_run": run_field,
+                "#action_lease": lease_field,
+            },
+            ExpressionAttributeValues={
+                ":running": "RUNNING",
+                ":failed": "FAILED",
+                ":run_id": run_id,
+                ":lease_until": lease_until,
+                ":now": now_epoch,
+            },
+        )
+        return True
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise
+
+
+def _finish_action_execution(
+    incident_id: str,
+    action: str,
+    run_id: str,
+    *,
+    success: bool,
+) -> None:
+    state_field = _action_field(action, "state")
+    run_field = _action_field(action, "run_id")
+    lease_field = _action_field(action, "lease_expires_at")
+    final_state = "COMPLETED" if success else "FAILED"
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    dynamo = get_dynamo_resource()
+    if not dynamo:
+        incident = get_incident(incident_id)
+        if incident and incident.get(run_field) == run_id:
+            incident[state_field] = final_state
+            incident[_action_field(action, "completed_at")] = now_iso
+            incident.pop(lease_field, None)
+        return
+
+    try:
+        dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression=(
+                "SET #action_state = :state, #completed = :now "
+                "REMOVE #action_lease"
+            ),
+            ConditionExpression="#action_run = :run_id",
+            ExpressionAttributeNames={
+                "#action_state": state_field,
+                "#action_run": run_field,
+                "#action_lease": lease_field,
+                "#completed": _action_field(action, "completed_at"),
+            },
+            ExpressionAttributeValues={
+                ":state": final_state,
+                ":now": now_iso,
+                ":run_id": run_id,
+            },
+        )
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+            raise
+
+
 def execute_authorized_tool(
     *,
     incident_id: str,
@@ -258,11 +376,30 @@ def execute_authorized_tool(
         "action": action,
         "authorization_id": authorization["authorization_id"],
     }
+    action_run_id = f"{correlation_id}:{action}"
+    if not _acquire_action_execution(incident_id, action, action_run_id):
+        _record_agent_event(
+            event_type="TOOL_DUPLICATE_SUPPRESSED",
+            outcome="ALREADY_PROCESSED_OR_RUNNING",
+            **ledger_context,
+        )
+        return {
+            "incident_id": incident_id,
+            "status": "ALREADY_PROCESSED_OR_RUNNING",
+            "action": action,
+        }
+
     _record_agent_event(event_type="ACTION_AUTHORIZED", **ledger_context)
     _record_agent_event(event_type="TOOL_REQUESTED", **ledger_context)
     try:
         result = tool(incident_id, token)
     except Exception as error:
+        _finish_action_execution(
+            incident_id,
+            action,
+            action_run_id,
+            success=False,
+        )
         _record_agent_event(
             event_type="TOOL_FAILED",
             outcome="FAILED",
@@ -270,6 +407,12 @@ def execute_authorized_tool(
             **ledger_context,
         )
         raise
+    _finish_action_execution(
+        incident_id,
+        action,
+        action_run_id,
+        success=True,
+    )
     _record_agent_event(
         event_type="TOOL_COMPLETED",
         outcome="COMPLETED",
