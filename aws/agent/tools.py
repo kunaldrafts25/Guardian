@@ -178,14 +178,26 @@ def get_incident_context(incident_id: str) -> Dict[str, Any]:
 
 
 def assess_risk(incident_id: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """
-    Tool 2: Execute deterministic risk assessment using multidimensional metrics.
-    """
+    """Execute deterministic risk assessment with victim-event time when available."""
     ctx = context or get_incident_context(incident_id)
+    motion = ctx.get("motion_data") or {}
+    event_time = None
+    raw_event_time = motion.get("event_occurred_at")
+    if raw_event_time:
+        try:
+            event_time = datetime.fromisoformat(
+                str(raw_event_time).replace("Z", "+00:00")
+            )
+            if event_time.tzinfo is None:
+                event_time = event_time.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            event_time = None
+
     assessment = assess_incident_risk(
         event_type=ctx.get("event_type", "unknown"),
         location=ctx.get("location"),
-        motion_data=ctx.get("motion_data"),
+        motion_data=motion,
+        timestamp=event_time,
     )
     return {
         "incident_id": incident_id,
