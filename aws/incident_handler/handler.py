@@ -11,7 +11,9 @@ import json
 import os
 import uuid
 import hashlib
+import logging
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
@@ -36,6 +38,7 @@ _LOCAL_INCIDENTS: Dict[str, Dict[str, Any]] = {}
 _LOCAL_EVENTS: Dict[str, list] = {}
 _LOCAL_IDEMPOTENCY: Dict[str, str] = {}
 _LOCAL_STORE_LOCK = threading.RLock()
+logger = logging.getLogger(__name__)
 
 
 def _local_store_enabled() -> bool:
@@ -57,6 +60,69 @@ def get_eventbridge_client():
     if BOTO3_AVAILABLE and os.environ.get("AWS_EXECUTION_ENV"):
         return boto3.client("events", region_name=AWS_REGION)
     return None
+
+
+def _set_orchestration_event_state(
+    incident_id: str,
+    state: str,
+    *,
+    error: Optional[str] = None,
+) -> None:
+    """Persist whether incident.created was accepted by EventBridge."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        values = {":state": state, ":now": now_iso}
+        expression = "SET orchestration_event_state = :state, updated_at = :now"
+        if error:
+            expression += ", orchestration_event_error = :error"
+            values[":error"] = str(error)[:500]
+        else:
+            expression += " REMOVE orchestration_event_error"
+        dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression=expression,
+            ExpressionAttributeValues=values,
+        )
+        return
+    if _local_store_enabled():
+        with _LOCAL_STORE_LOCK:
+            inc = _LOCAL_INCIDENTS.get(incident_id)
+            if inc:
+                inc["orchestration_event_state"] = state
+                inc["updated_at"] = now_iso
+                if error:
+                    inc["orchestration_event_error"] = str(error)[:500]
+                else:
+                    inc.pop("orchestration_event_error", None)
+
+
+def _emit_incident_created(incident_record: Dict[str, Any]) -> bool:
+    """Emit incident.created and record delivery state for retry/reconciliation."""
+    eb = get_eventbridge_client()
+    if not eb:
+        return False
+    incident_id = str(incident_record["incident_id"])
+    response = eb.put_events(
+        Entries=[
+            {
+                "Source": "guardian.incident",
+                "DetailType": "incident.created",
+                "Detail": json.dumps(incident_record),
+                "EventBusName": EVENTBUS_NAME,
+            }
+        ]
+    )
+    if response.get("FailedEntryCount", 0) > 0:
+        entry = (response.get("Entries") or [{}])[0]
+        error_msg = entry.get("ErrorMessage", "Unknown EventBridge error")
+        _set_orchestration_event_state(incident_id, "FAILED", error=error_msg)
+        logger.error("Failed to emit incident %s to EventBridge: %s", incident_id, error_msg)
+        raise RuntimeError(f"EventBridge delivery failed: {error_msg}")
+    _set_orchestration_event_state(incident_id, "EMITTED")
+    incident_record["orchestration_event_state"] = "EMITTED"
+    incident_record.pop("orchestration_event_error", None)
+    return True
 
 
 def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -141,6 +207,8 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         "created_at": now_iso,
         "updated_at": now_iso,
         "agent_decision": "PENDING_REASONING",
+        "agent_execution_state": "PENDING",
+        "orchestration_event_state": "PENDING",
         "agent_rationale": "Initial anomaly observed. Awaiting autonomous agent evaluation.",
     }
     if "contacts" in payload:
@@ -173,31 +241,20 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
                 ConsistentRead=True,
             ).get("Item")
             if existing:
+                # If persistence succeeded previously but EventBridge delivery did
+                # not, an idempotent mobile retry repairs orchestration instead of
+                # silently returning a stranded incident.
+                if existing.get("orchestration_event_state") != "EMITTED":
+                    _emit_incident_created(existing)
                 return existing
             raise
-        
+
         events_table = dynamo.Table(DYNAMODB_EVENTS_TABLE)
         events_table.put_item(Item=timeline_entry)
 
-        # Emit to EventBridge
-        eb = get_eventbridge_client()
-        if eb:
-            response = eb.put_events(
-                Entries=[
-                    {
-                        "Source": "guardian.incident",
-                        "DetailType": "incident.created",
-                        "Detail": json.dumps(incident_record),
-                        "EventBusName": EVENTBUS_NAME,
-                    }
-                ]
-            )
-            if response.get("FailedEntryCount", 0) > 0:
-                import logging
-                logger = logging.getLogger(__name__)
-                error_msg = response["Entries"][0].get("ErrorMessage", "Unknown EventBridge error")
-                logger.error("Failed to emit incident to EventBridge: %s", error_msg)
-                raise RuntimeError(f"EventBridge delivery failed: {error_msg}")
+        # Event emission is part of durable incident ingestion. A failed emit is
+        # persisted as FAILED and retried on the next idempotent create request.
+        _emit_incident_created(incident_record)
     else:
         _require_local_store()
         _LOCAL_INCIDENTS[incident_id] = incident_record
@@ -310,36 +367,113 @@ def get_incident(incident_id: str) -> Optional[Dict[str, Any]]:
 
 
 
-def acquire_agent_lease(incident_id: str, correlation_id: str) -> bool:
+def acquire_agent_lease(
+    incident_id: str,
+    correlation_id: str,
+    *,
+    lease_seconds: int = 90,
+) -> bool:
+    """Atomically acquire the initial-agent execution lease.
+
+    Business decision state (agent_decision) is deliberately separate from the
+    distributed execution lock. A crashed RUNNING lease may be reclaimed only
+    after expiry; COMPLETED executions are never replayed.
+    """
+    now_epoch = int(time.time())
+    lease_until = now_epoch + max(30, int(lease_seconds))
     dynamo = get_dynamo_resource()
     if not dynamo:
         _require_local_store()
-        inc = _LOCAL_INCIDENTS.get(incident_id)
-        if not inc:
-            return False
-        if inc.get("agent_decision") not in (None, "", "PENDING_REASONING"):
-            return False
-        inc["agent_decision"] = "PENDING_REASONING"
-        inc["agent_run_id"] = correlation_id
-        return True
+        with _LOCAL_STORE_LOCK:
+            inc = _LOCAL_INCIDENTS.get(incident_id)
+            if not inc:
+                return False
+            state = str(inc.get("agent_execution_state") or "PENDING")
+            expiry = int(inc.get("agent_lease_expires_at") or 0)
+            if state == "COMPLETED":
+                return False
+            if state == "RUNNING" and expiry >= now_epoch:
+                return False
+            inc["agent_execution_state"] = "RUNNING"
+            inc["agent_run_id"] = correlation_id
+            inc["agent_lease_expires_at"] = lease_until
+            return True
 
     table = dynamo.Table(DYNAMODB_INCIDENTS_TABLE)
     try:
         table.update_item(
             Key={"incident_id": incident_id},
-            UpdateExpression="SET agent_decision = :pending, agent_run_id = :run_id",
-            ConditionExpression="attribute_not_exists(agent_decision) OR agent_decision = :empty",
+            UpdateExpression=(
+                "SET agent_execution_state = :running, "
+                "agent_run_id = :run_id, agent_lease_expires_at = :lease_until"
+            ),
+            ConditionExpression=(
+                "attribute_not_exists(agent_execution_state) "
+                "OR agent_execution_state = :pending "
+                "OR agent_execution_state = :failed "
+                "OR (agent_execution_state = :running "
+                "AND agent_lease_expires_at < :now)"
+            ),
             ExpressionAttributeValues={
-                ":pending": "PENDING_REASONING",
+                ":running": "RUNNING",
+                ":pending": "PENDING",
+                ":failed": "FAILED",
                 ":run_id": correlation_id,
-                ":empty": "",
-            }
+                ":lease_until": lease_until,
+                ":now": now_epoch,
+            },
         )
         return True
-    except ClientError as e:
-        if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
             return False
         raise
+
+
+def finish_agent_run(
+    incident_id: str,
+    correlation_id: str,
+    *,
+    success: bool,
+) -> None:
+    """Release the matching lease as COMPLETED or FAILED."""
+    final_state = "COMPLETED" if success else "FAILED"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    dynamo = get_dynamo_resource()
+    if not dynamo:
+        _require_local_store()
+        with _LOCAL_STORE_LOCK:
+            inc = _LOCAL_INCIDENTS.get(incident_id)
+            if inc and inc.get("agent_run_id") == correlation_id:
+                inc["agent_execution_state"] = final_state
+                inc["agent_completed_at"] = now_iso
+                inc.pop("agent_lease_expires_at", None)
+        return
+
+    try:
+        dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression=(
+                "SET agent_execution_state = :state, agent_completed_at = :now "
+                "REMOVE agent_lease_expires_at"
+            ),
+            ConditionExpression="agent_run_id = :run_id",
+            ExpressionAttributeValues={
+                ":state": final_state,
+                ":now": now_iso,
+                ":run_id": correlation_id,
+            },
+        )
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            logger.warning(
+                "Agent lease completion ignored for stale run %s on %s",
+                correlation_id,
+                incident_id,
+            )
+            return
+        raise
+
 
 def get_incident_timeline(incident_id: str) -> list:
     dynamo = get_dynamo_resource()
