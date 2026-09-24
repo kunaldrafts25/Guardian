@@ -388,7 +388,14 @@ def acquire_agent_lease(
             inc = _LOCAL_INCIDENTS.get(incident_id)
             if not inc:
                 return False
-            state = str(inc.get("agent_execution_state") or "PENDING")
+            raw_state = inc.get("agent_execution_state")
+            if raw_state is None and inc.get("agent_decision") not in (
+                None,
+                "",
+                "PENDING_REASONING",
+            ):
+                return False
+            state = str(raw_state or "PENDING")
             expiry = int(inc.get("agent_lease_expires_at") or 0)
             if state == "COMPLETED":
                 return False
@@ -408,7 +415,10 @@ def acquire_agent_lease(
                 "agent_run_id = :run_id, agent_lease_expires_at = :lease_until"
             ),
             ConditionExpression=(
-                "attribute_not_exists(agent_execution_state) "
+                "(attribute_not_exists(agent_execution_state) "
+                "AND (attribute_not_exists(agent_decision) "
+                "OR agent_decision = :pending_decision "
+                "OR agent_decision = :empty)) "
                 "OR agent_execution_state = :pending "
                 "OR agent_execution_state = :failed "
                 "OR (agent_execution_state = :running "
@@ -418,6 +428,8 @@ def acquire_agent_lease(
                 ":running": "RUNNING",
                 ":pending": "PENDING",
                 ":failed": "FAILED",
+                ":pending_decision": "PENDING_REASONING",
+                ":empty": "",
                 ":run_id": correlation_id,
                 ":lease_until": lease_until,
                 ":now": now_epoch,
