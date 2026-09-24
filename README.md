@@ -18,6 +18,7 @@ Guardian combines a Flutter mobile client, Android-native emergency handling, an
 - Durable local incident journal and retry queue for interrupted or offline requests.
 - Android foreground protection service with a configurable rapid screen/power-toggle panic gesture.
 - Android direct-SMS fallback to configured trusted contacts when permission and cellular service are available.
+- Android native emergency cloud outbox using WorkManager, encrypted account-bound credentials, stable event IDs, and backend session enforcement; expired access tokens are refreshed through Guardian's existing refresh endpoint.
 - Phone-number authentication through Amazon Cognito custom challenges.
 - Authenticated incident, session, contact, device, and responder APIs.
 - Targeted push delivery through Amazon SNS: FCM on Android and native APNs on iOS.
@@ -38,7 +39,8 @@ Guardian intentionally does not claim capabilities the operating systems or curr
 - iOS does not permit third-party apps to intercept arbitrary power-button presses. iOS activation must use supported system surfaces or the in-app SOS flow.
 - The responder network is not a public marketplace. Responders must be manually reviewed and approved.
 - Bedrock is advisory. It cannot suppress or downgrade deterministic handling of an explicit panic event.
-- A push or SMS submission is not represented as delivered unless real delivery evidence exists.
+- A push or SMS submission is not represented as delivered unless real delivery evidence exists. The current Android SMS path proves API/OS submission acceptance, not handset delivery.
+- Voice SOS and screen multi-tap helpers exist in code but are not product-wired/background-qualified features and must not be relied on as active emergency triggers.
 - BLE mesh relaying, wearable integration, and fall-detection ML are outside the current product scope.
 
 ## Architecture
@@ -84,7 +86,7 @@ The key authority boundary is simple: the model may recommend and explain, but d
 | --- | --- |
 | Mobile | Flutter, Dart, Riverpod, go_router |
 | Local durability | Drift and SQLite |
-| Android native | Kotlin foreground service, encrypted emergency snapshot, SMS fallback |
+| Android native | Kotlin foreground service, encrypted account-bound emergency snapshot/auth, SMS fallback, WorkManager emergency outbox |
 | Maps and location | flutter_map, OpenStreetMap, geolocator |
 | API | FastAPI on AWS Lambda through Mangum and API Gateway |
 | Identity | Amazon Cognito phone custom challenge |
