@@ -168,9 +168,20 @@ def test_redispatch_advances_to_next_stage_when_no_reachable_invitation_remains(
     # Dev transport is intentionally not delivered, so it is not a reachable
     # live invitation and the deterministic evaluator may widen immediately.
     second = tools.process_incident_redispatch_eval(incident_id)
-    assert second["status"] == "MAX_RADIUS_REACHED"
-    assert get_incident(incident_id)["current_escalation_stage"] == 4
+    assert second["status"] == "INVITATIONS_CREATED"
+    assert second["stage"] == 2
     assert "stage2" in get_incident(incident_id)["dispatched_responder_ids"]
+
+    # Local dev intentionally creates mission rows without claiming provider
+    # delivery. Each deterministic redispatch evaluation therefore advances the
+    # next stage; production does the same through durable scheduler callbacks.
+    third = tools.process_incident_redispatch_eval(incident_id)
+    assert third["stage"] == 3
+    fourth = tools.process_incident_redispatch_eval(incident_id)
+    assert fourth["stage"] == 4
+    exhausted = tools.process_incident_redispatch_eval(incident_id)
+    assert exhausted["status"] == "MAX_RADIUS_REACHED"
+    assert get_incident(incident_id)["current_escalation_stage"] == 4
 
 
 def test_verification_timeout_is_idempotent_and_escalates_without_flutter():
