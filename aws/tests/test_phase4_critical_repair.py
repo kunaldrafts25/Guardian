@@ -203,6 +203,11 @@ def test_verification_timeout_is_idempotent_and_escalates_without_flutter():
     assert initial["decision"] == "REQUEST_USER_VERIFICATION"
     assert get_incident(incident_id)["verification_status"] == "PENDING"
 
+    # The deadline in DynamoDB/local incident state is authoritative. Simulate
+    # expiry rather than bypassing the production early-execution guard.
+    from aws.incident_handler.handler import _LOCAL_INCIDENTS
+    _LOCAL_INCIDENTS[incident_id]["verification_deadline_at"] = int(time.time()) - 1
+
     timeout = _handle_verification_timeout(incident_id, "timeout-run")
     assert timeout["status"] == "VERIFICATION_TIMEOUT_ESCALATED"
     assert timeout["community_dispatch"]["status"] == "INVITATIONS_CREATED"
@@ -250,7 +255,7 @@ def test_per_recipient_local_sms_acceptance_only_skips_that_contact():
             "location": {"latitude": 19.0760, "longitude": 72.8777},
             "motion_data": {
                 "local_sms_delivery": [
-                    {"contact_id": "local-ok", "state": "OS_ACCEPTED"},
+                    {"contact_id": "local-ok", "state": "SENT"},
                     {"contact_id": "needs-cloud", "state": "FAILED"},
                 ]
             },
