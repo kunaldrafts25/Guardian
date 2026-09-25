@@ -33,9 +33,11 @@ from aws.sns_push_service import send_push_to_user, send_sms_alert
 
 try:
     import boto3
+    from boto3.dynamodb.types import TypeSerializer
     BOTO3_AVAILABLE = True
 except ImportError:
     BOTO3_AVAILABLE = False
+    TypeSerializer = None
 
 DYNAMODB_RESPONDERS_TABLE = os.environ.get("DYNAMODB_RESPONDERS_TABLE", "guardian-responders")
 DYNAMODB_MISSIONS_TABLE = os.environ.get("DYNAMODB_MISSIONS_TABLE", "guardian-missions")
@@ -44,6 +46,32 @@ logger = logging.getLogger(__name__)
 
 def _dev_mode() -> bool:
     return os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+
+
+def _query_all(table, **kwargs) -> List[Dict[str, Any]]:
+    """Read every DynamoDB query page. Safety discovery must not stop at page 1."""
+    items: List[Dict[str, Any]] = []
+    request = dict(kwargs)
+    while True:
+        response = table.query(**request)
+        items.extend(response.get("Items", []))
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            return items
+        request["ExclusiveStartKey"] = last_key
+
+
+def _scan_all(table, **kwargs) -> List[Dict[str, Any]]:
+    """Read every DynamoDB scan page for explicitly bounded fallback paths."""
+    items: List[Dict[str, Any]] = []
+    request = dict(kwargs)
+    while True:
+        response = table.scan(**request)
+        items.extend(response.get("Items", []))
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            return items
+        request["ExclusiveStartKey"] = last_key
 
 
 def _schedule_agent_timeout(
@@ -858,13 +886,13 @@ def _responder_missions(responder_id: str) -> List[Dict[str, Any]]:
     now = int(datetime.now(timezone.utc).timestamp())
     dynamo = get_dynamo_resource()
     if dynamo:
-        missions = dynamo.Table(DYNAMODB_MISSIONS_TABLE).query(
+        missions = _query_all(
+            dynamo.Table(DYNAMODB_MISSIONS_TABLE),
             IndexName="ResponderMissionsIndex",
             KeyConditionExpression="responder_id = :responder",
             ExpressionAttributeValues={":responder": responder_id},
             ScanIndexForward=False,
-            Limit=50,
-        ).get("Items", [])
+        )
     elif _dev_mode():
         missions = [
             mission
@@ -905,119 +933,210 @@ def list_responder_missions(responder_id: str) -> List[Dict[str, Any]]:
 
 
 def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]:
-    """
-    Tool 7: Responder accepts rescue mission.
-    Conditionally accepts an invitation and issues a short-lived navigation grant.
-    """
-    resp = _get_responder(responder_id)
-    if not resp or resp.get("trust_score", 0) < 70 or (
-        not _dev_mode() and resp.get("verification_status") != "APPROVED"
+    """Atomically accept one responder invitation and reserve incident capacity."""
+    responder = _get_responder(responder_id)
+    if not responder or responder.get("trust_score", 0) < 70 or (
+        not _dev_mode() and responder.get("verification_status") != "APPROVED"
     ):
-        raise PermissionError(f"Responder {responder_id} does not meet trust score criteria.")
-
-    from aws.agent.escalation_policy import MAX_ACCEPTED_RESPONDERS
-    active_accepted = [
-        m for m in _incident_missions(incident_id)
-        if m.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}
-        and m.get("responder_id") != responder_id
-    ]
-    if len(active_accepted) >= MAX_ACCEPTED_RESPONDERS:
         raise PermissionError(
-            f"The maximum responder capacity ({MAX_ACCEPTED_RESPONDERS}) for this incident has been reached."
+            f"Responder {responder_id} does not meet trust score criteria."
         )
 
+    from aws.agent.escalation_policy import MAX_ACCEPTED_RESPONDERS
+
     ctx = get_incident_context(incident_id)
+    if ctx.get("state") in {
+        IncidentState.RESOLVED.value,
+        IncidentState.CANCELLED.value,
+        IncidentState.EXPIRED.value,
+    }:
+        raise PermissionError("Incident is closed; responder acceptance is unavailable")
+
     now = datetime.now(timezone.utc)
+    now_epoch = int(now.timestamp())
+    mission_id = _mission_id(incident_id, responder_id)
     grant = secrets.token_urlsafe(32)
-    acceptance_record = {
-        "mission_id": _mission_id(incident_id, responder_id),
-        "incident_id": incident_id,
-        "responder_id": responder_id,
-        "accepted_at": now.isoformat(),
-        "updated_at": now.isoformat(),
-        "status": "ACCEPTED",
-        "navigation_grant_hash": hashlib.sha256(grant.encode("utf-8")).hexdigest(),
-        "navigation_grant_expires_at": int(now.timestamp()) + 900,
-    }
-    mission_id = acceptance_record["mission_id"]
+    grant_hash = hashlib.sha256(grant.encode("utf-8")).hexdigest()
+    grant_expiry = now_epoch + 900
+
     dynamo = get_dynamo_resource()
     if dynamo:
-        try:
-            result = dynamo.Table(DYNAMODB_MISSIONS_TABLE).update_item(
-                Key={"mission_id": mission_id},
-                UpdateExpression=(
-                    "SET #status = :accepted, accepted_at = :accepted_at, "
-                    "updated_at = :updated_at, navigation_grant_hash = :grant, "
-                    "navigation_grant_expires_at = :grant_expiry"
-                ),
-                ConditionExpression=(
-                    "#status = :invited AND responder_id = :responder "
-                    "AND invitation_expires_at > :now"
-                ),
-                ExpressionAttributeNames={"#status": "status"},
-                ExpressionAttributeValues={
-                    ":accepted": "ACCEPTED",
-                    ":invited": "INVITED",
-                    ":responder": responder_id,
-                    ":now": int(now.timestamp()),
-                    ":accepted_at": now.isoformat(),
-                    ":updated_at": now.isoformat(),
-                    ":grant": acceptance_record["navigation_grant_hash"],
-                    ":grant_expiry": acceptance_record["navigation_grant_expires_at"],
-                },
-                ReturnValues="ALL_NEW",
-            )
-            acceptance_record = result["Attributes"]
-        except Exception as error:
-            code = getattr(error, "response", {}).get("Error", {}).get("Code")
-            if code == "ConditionalCheckFailedException":
-                raise PermissionError("Mission invitation is unavailable or expired") from error
-            raise
-    elif _dev_mode():
-        existing = _LOCAL_MISSIONS.get(mission_id)
-        if existing is None:
-            # Direct tool tests create incidents without running dispatch first.
-            existing = {
-                "status": "INVITED",
-                "invitation_expires_at": int(now.timestamp()) + 180,
-                "expires_at": int(now.timestamp()) + 30 * 24 * 60 * 60,
-            }
-        if existing.get("status") == "ACCEPTED":
+        mission_table = dynamo.Table(DYNAMODB_MISSIONS_TABLE)
+        existing = mission_table.get_item(
+            Key={"mission_id": mission_id},
+            ConsistentRead=True,
+        ).get("Item")
+        if existing and existing.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}:
             return {
                 "incident_id": incident_id,
-                "mission": existing,
+                "mission": _public_mission(existing),
                 "approximate_location": _coarse_location(ctx.get("location") or {}),
                 "navigation_grant": None,
             }
-        if existing.get("status") != "INVITED" or existing.get(
-            "invitation_expires_at", existing.get("expires_at", 0)
-        ) <= int(now.timestamp()):
-            if existing.get("status") == "INVITED":
-                _persist_mission_expired(existing)
+
+        if TypeSerializer is None:
+            raise RuntimeError("DynamoDB transaction serializer is unavailable")
+        serializer = TypeSerializer()
+
+        def av(value: Any) -> Dict[str, Any]:
+            return serializer.serialize(value)
+
+        client = dynamo.meta.client
+        try:
+            client.transact_write_items(
+                TransactItems=[
+                    {
+                        "Update": {
+                            "TableName": DYNAMODB_INCIDENTS_TABLE,
+                            "Key": {"incident_id": av(incident_id)},
+                            "UpdateExpression": (
+                                "SET accepted_responder_count = "
+                                "if_not_exists(accepted_responder_count, :zero) + :one, "
+                                "updated_at = :updated"
+                            ),
+                            "ConditionExpression": (
+                                "attribute_exists(incident_id) AND "
+                                "#state <> :resolved AND #state <> :cancelled AND #state <> :expired AND "
+                                "(attribute_not_exists(accepted_responder_count) OR "
+                                "accepted_responder_count < :max)"
+                            ),
+                            "ExpressionAttributeNames": {"#state": "state"},
+                            "ExpressionAttributeValues": {
+                                ":zero": av(0),
+                                ":one": av(1),
+                                ":updated": av(now.isoformat()),
+                                ":resolved": av(IncidentState.RESOLVED.value),
+                                ":cancelled": av(IncidentState.CANCELLED.value),
+                                ":expired": av(IncidentState.EXPIRED.value),
+                                ":max": av(MAX_ACCEPTED_RESPONDERS),
+                            },
+                        }
+                    },
+                    {
+                        "Update": {
+                            "TableName": DYNAMODB_MISSIONS_TABLE,
+                            "Key": {"mission_id": av(mission_id)},
+                            "UpdateExpression": (
+                                "SET #status = :accepted, accepted_at = :accepted_at, "
+                                "updated_at = :updated_at, navigation_grant_hash = :grant, "
+                                "navigation_grant_expires_at = :grant_expiry"
+                            ),
+                            "ConditionExpression": (
+                                "#status = :invited AND responder_id = :responder "
+                                "AND incident_id = :incident AND invitation_expires_at > :now"
+                            ),
+                            "ExpressionAttributeNames": {"#status": "status"},
+                            "ExpressionAttributeValues": {
+                                ":accepted": av("ACCEPTED"),
+                                ":invited": av("INVITED"),
+                                ":responder": av(responder_id),
+                                ":incident": av(incident_id),
+                                ":now": av(now_epoch),
+                                ":accepted_at": av(now.isoformat()),
+                                ":updated_at": av(now.isoformat()),
+                                ":grant": av(grant_hash),
+                                ":grant_expiry": av(grant_expiry),
+                            },
+                        }
+                    },
+                ]
+            )
+        except Exception as error:
+            code = getattr(error, "response", {}).get("Error", {}).get("Code")
+            if code in {"TransactionCanceledException", "ConditionalCheckFailedException"}:
+                latest_incident = get_incident_context(incident_id)
+                if latest_incident.get("state") in {
+                    IncidentState.RESOLVED.value,
+                    IncidentState.CANCELLED.value,
+                    IncidentState.EXPIRED.value,
+                }:
+                    raise PermissionError("Incident is closed; responder acceptance is unavailable") from error
+                if int(latest_incident.get("accepted_responder_count") or 0) >= MAX_ACCEPTED_RESPONDERS:
+                    raise PermissionError(
+                        f"The maximum responder capacity ({MAX_ACCEPTED_RESPONDERS}) "
+                        "for this incident has been reached."
+                    ) from error
+                raise PermissionError("Mission invitation is unavailable or expired") from error
+            raise
+
+        acceptance_record = mission_table.get_item(
+            Key={"mission_id": mission_id},
+            ConsistentRead=True,
+        ).get("Item")
+        if not acceptance_record:
+            raise RuntimeError("Mission acceptance committed but could not be reloaded")
+    elif _dev_mode():
+        existing = _LOCAL_MISSIONS.get(mission_id)
+        if existing is None:
+            existing = {
+                "mission_id": mission_id,
+                "incident_id": incident_id,
+                "responder_id": responder_id,
+                "status": "INVITED",
+                "invitation_expires_at": now_epoch + 180,
+                "expires_at": now_epoch + 30 * 24 * 60 * 60,
+            }
+        if existing.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}:
+            return {
+                "incident_id": incident_id,
+                "mission": _public_mission(existing),
+                "approximate_location": _coarse_location(ctx.get("location") or {}),
+                "navigation_grant": None,
+            }
+        if existing.get("status") != "INVITED" or int(
+            existing.get("invitation_expires_at", existing.get("expires_at", 0))
+        ) <= now_epoch:
             raise PermissionError("Mission invitation is unavailable or expired")
-        _LOCAL_MISSIONS[mission_id] = {**existing, **acceptance_record}
+
+        with _LOCAL_AGENT_LOCK:
+            latest = get_incident_context(incident_id)
+            if latest.get("state") in {
+                IncidentState.RESOLVED.value,
+                IncidentState.CANCELLED.value,
+                IncidentState.EXPIRED.value,
+            }:
+                raise PermissionError("Incident is closed; responder acceptance is unavailable")
+            count = int(latest.get("accepted_responder_count") or 0)
+            if count >= MAX_ACCEPTED_RESPONDERS:
+                raise PermissionError(
+                    f"The maximum responder capacity ({MAX_ACCEPTED_RESPONDERS}) "
+                    "for this incident has been reached."
+                )
+            latest["accepted_responder_count"] = count + 1
+            acceptance_record = {
+                **existing,
+                "status": "ACCEPTED",
+                "accepted_at": now.isoformat(),
+                "updated_at": now.isoformat(),
+                "navigation_grant_hash": grant_hash,
+                "navigation_grant_expires_at": grant_expiry,
+            }
+            _LOCAL_MISSIONS[mission_id] = acceptance_record
     else:
         raise RuntimeError("Mission store is unavailable")
 
-    # Record on timeline
-    update_incident_status(
-        incident_id=incident_id,
-        new_state=IncidentState.RESPONDERS_ACCEPTED.value,
-        actor="COMMUNITY_RESPONDER",
-        note=f"Verified helper {resp.get('name')} accepted the responder mission.",
-    )
+    try:
+        update_incident_status(
+            incident_id=incident_id,
+            new_state=IncidentState.RESPONDERS_ACCEPTED.value,
+            actor="COMMUNITY_RESPONDER",
+            note="An approved responder accepted the responder mission.",
+        )
+    except ValueError:
+        latest = get_incident_context(incident_id)
+        if latest.get("state") in {
+            IncidentState.RESOLVED.value,
+            IncidentState.CANCELLED.value,
+            IncidentState.EXPIRED.value,
+        }:
+            raise PermissionError("Incident closed during responder acceptance")
 
     return {
         "incident_id": incident_id,
-        "mission": {
-            key: value
-            for key, value in acceptance_record.items()
-            if key not in {"navigation_grant_hash"}
-        },
+        "mission": _public_mission(acceptance_record),
         "approximate_location": _coarse_location(ctx.get("location") or {}),
         "navigation_grant": grant,
     }
-
 
 def get_authorized_incident_location(
     incident_id: str, responder_id: str, navigation_grant: str
@@ -1211,11 +1330,12 @@ def _incident_missions(incident_id: str) -> List[Dict[str, Any]]:
     """Load missions for an incident using declared IncidentMissionsIndex or local store."""
     dynamo = get_dynamo_resource()
     if dynamo:
-        missions = dynamo.Table(DYNAMODB_MISSIONS_TABLE).query(
+        missions = _query_all(
+            dynamo.Table(DYNAMODB_MISSIONS_TABLE),
             IndexName="IncidentMissionsIndex",
             KeyConditionExpression="incident_id = :incident",
             ExpressionAttributeValues={":incident": incident_id},
-        ).get("Items", [])
+        )
     elif _dev_mode():
         missions = [
             mission
