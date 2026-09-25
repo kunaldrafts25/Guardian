@@ -144,6 +144,7 @@ class LocalIncidentEvents extends Table {
 /// Durable operations awaiting an authenticated cloud write.
 class LocalOutboxOperations extends Table {
   TextColumn get operationId => text()();
+  TextColumn get ownerUserId => text().withDefault(const Constant(''))();
   TextColumn get aggregateType => text()();
   TextColumn get aggregateId => text()();
   TextColumn get operationType => text()();
@@ -200,7 +201,7 @@ class GuardianDatabase extends _$GuardianDatabase {
   GuardianDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -250,6 +251,12 @@ class GuardianDatabase extends _$GuardianDatabase {
           }
           if (from < 7 && to >= 7) {
             await migrator.deleteTable('local_mesh_beacons');
+          }
+          if (from < 8 && to >= 8) {
+            await migrator.addColumn(
+              localOutboxOperations,
+              localOutboxOperations.ownerUserId,
+            );
           }
         },
       );
@@ -386,6 +393,7 @@ class GuardianDatabase extends _$GuardianDatabase {
       } else {
         await _queueTerminalCloudUpdate(
           alertId: alertId,
+          ownerUserId: alert.userId,
           cloudIncidentId: cloudIncidentId,
           terminalState: currentState,
           occurredAt: alert.resolvedAt ?? now,
@@ -442,6 +450,7 @@ class GuardianDatabase extends _$GuardianDatabase {
       if (alert.cloudIncidentId != null) {
         await _queueTerminalCloudUpdate(
           alertId: alertId,
+          ownerUserId: alert.userId,
           cloudIncidentId: alert.cloudIncidentId!,
           terminalState: terminalState,
           occurredAt: occurredAt,
@@ -452,6 +461,7 @@ class GuardianDatabase extends _$GuardianDatabase {
 
   Future<void> _queueTerminalCloudUpdate({
     required String alertId,
+    required String ownerUserId,
     required String cloudIncidentId,
     required EmergencyIncidentState terminalState,
     required DateTime occurredAt,
@@ -459,6 +469,7 @@ class GuardianDatabase extends _$GuardianDatabase {
       into(localOutboxOperations).insert(
         LocalOutboxOperationsCompanion.insert(
           operationId: '$alertId:update:${terminalState.name}',
+          ownerUserId: ownerUserId,
           aggregateType: 'incident',
           aggregateId: alertId,
           operationType: 'updateIncidentStatus',
@@ -476,6 +487,7 @@ class GuardianDatabase extends _$GuardianDatabase {
   /// cloud operation. Replaying the same identifiers is safe.
   Future<bool> queueAlertForCloud({
     required LocalAlertsCompanion alert,
+    required String ownerUserId,
     required String alertId,
     required String eventType,
     required DateTime occurredAt,
@@ -509,6 +521,7 @@ class GuardianDatabase extends _$GuardianDatabase {
         await into(localOutboxOperations).insert(
           LocalOutboxOperationsCompanion.insert(
             operationId: '$alertId:createIncident',
+            ownerUserId: ownerUserId,
             aggregateType: 'incident',
             aggregateId: alertId,
             operationType: 'createIncident',
@@ -546,11 +559,13 @@ class GuardianDatabase extends _$GuardianDatabase {
           .get();
 
   Future<List<LocalOutboxOperation>> getDueOutboxOperations({
+    required String ownerUserId,
     DateTime? now,
     int limit = 25,
   }) =>
       (select(localOutboxOperations)
             ..where((operation) =>
+                operation.ownerUserId.equals(ownerUserId) &
                 operation.status.equals(OutboxOperationState.pending.name) &
                 operation.nextAttemptAt
                     .isSmallerOrEqualValue(now ?? DateTime.now()))
