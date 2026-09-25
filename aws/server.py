@@ -3,8 +3,6 @@ Guardian AWS Backend Server (FastAPI / Serverless Local Runner)
 v3.0 — Full AWS-Only Stack: Cognito Auth + DynamoDB + SNS Push + Bedrock AI
 
 Mirrors real AWS API Gateway + Lambda endpoints:
-  POST   /auth/send-otp              → Cognito: send phone OTP
-  POST   /auth/verify-otp            → Cognito: verify OTP, get JWT tokens
   POST   /auth/refresh               → Cognito: refresh access token
   POST   /auth/sign-out              → Cognito: global sign out
 
@@ -81,8 +79,6 @@ from aws.agent.safety_policy import evaluate_safety_policy
 # AWS Services
 from aws.cognito_service import (
     authenticate_with_google,
-    initiate_phone_auth,
-    verify_otp,
     refresh_tokens,
     sign_out,
     update_user_profile,
@@ -246,9 +242,6 @@ def health_check():
 # AUTH ENDPOINTS (AWS Cognito)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class SendOtpRequest(BaseModel):
-    phone_number: str
-
 
 class GoogleAuthRequest(BaseModel):
     id_token: str = Field(min_length=1)
@@ -275,13 +268,6 @@ def api_google_auth(req: GoogleAuthRequest):
         raise HTTPException(status_code=500, detail=f"Google authentication failed: {str(e)}")
 
 
-class VerifyOtpRequest(BaseModel):
-    phone_number: str
-    otp_code: str
-    session: str
-    device_label: str = Field(default="Guardian mobile device", max_length=80)
-    platform: str = Field(default="unknown", max_length=20)
-
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
@@ -294,36 +280,6 @@ class AssistantRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     incident_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
 
-
-@app.post("/auth/send-otp")
-def api_send_otp(req: SendOtpRequest):
-    """Initiate phone number authentication — sends SMS OTP via Cognito."""
-    try:
-        result = initiate_phone_auth(req.phone_number)
-        return result
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OTP dispatch failed: {str(e)}")
-
-
-@app.post("/auth/verify-otp")
-def api_verify_otp(req: VerifyOtpRequest):
-    """Verify SMS OTP and return JWT tokens (access + id + refresh)."""
-    try:
-        result = verify_otp(req.phone_number, req.otp_code, req.session)
-        guardian_session = create_session(
-            result["user_id"],
-            result["refresh_token"],
-            req.device_label,
-            req.platform,
-        )
-        result.update(guardian_session)
-        return result
-    except ValueError as ve:
-        raise HTTPException(status_code=401, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OTP verification failed: {str(e)}")
 
 
 @app.post("/auth/refresh")
