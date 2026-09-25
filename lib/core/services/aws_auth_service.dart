@@ -7,10 +7,13 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:app_links/app_links.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
+import 'package:crypto/crypto.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:guardian/core/utils/logger.dart';
 import 'package:guardian/core/services/safety_service_bridge.dart';
 import 'package:uuid/uuid.dart';
@@ -27,6 +30,8 @@ const _kPhotoUrl = 'aws_user_photo_url';
 const _kAuthProvider = 'aws_auth_provider';
 const _kSessionId = 'guardian_session_id';
 const _kDeviceId = 'guardian_device_id';
+const _kOauthState = 'cognito_oauth_state';
+const _kPkceVerifier = 'cognito_pkce_verifier';
 
 /// Canonical authentication lifecycle states for mobile UI and services.
 enum AuthStatus {
@@ -234,6 +239,7 @@ class AwsAuthService {
   /// Call this at app startup to restore cached session.
   Future<void> initialize() async {
     try {
+      await _resumePendingCognitoCallback();
       _userId = await _storage.read(key: _kUserId);
       _accessToken = await _storage.read(key: _kAccessToken);
       _phone = await _storage.read(key: _kPhone);
@@ -286,61 +292,243 @@ class AwsAuthService {
     }
   }
 
-  static String _googleServerClientId() {
-    const configured = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
-    if (configured.isNotEmpty) return configured;
-    if (kReleaseMode) {
+  static const String _cognitoAuthDomain = String.fromEnvironment(
+    'COGNITO_AUTH_DOMAIN',
+  );
+  static const String _cognitoClientId = String.fromEnvironment(
+    'COGNITO_CLIENT_ID',
+  );
+  static const String _cognitoRedirectUri = String.fromEnvironment(
+    'COGNITO_REDIRECT_URI',
+    defaultValue: 'guardian://auth/callback',
+  );
+
+  static String _requireCognitoAuthDomain() {
+    final configured = _cognitoAuthDomain.replaceAll(RegExp(r'/$'), '');
+    if (configured.isEmpty) {
       throw StateError(
-        'GOOGLE_SERVER_CLIENT_ID is required for Google sign-in in release builds.',
+        'COGNITO_AUTH_DOMAIN is required for Google sign-in.',
       );
     }
-    return '530178096868-v6q66826igipjpc2jlq7q95ipfu2bnev.apps.googleusercontent.com';
+    if (!configured.startsWith('https://')) {
+      throw StateError('COGNITO_AUTH_DOMAIN must use HTTPS.');
+    }
+    return configured;
   }
 
-  // ─── Google Sign-In Flow ──────────────────────────────────────────────────
+  static String _requireCognitoClientId() {
+    if (_cognitoClientId.isEmpty) {
+      throw StateError('COGNITO_CLIENT_ID is required for Google sign-in.');
+    }
+    return _cognitoClientId;
+  }
 
-  /// Sign in with Google (Gmail) credentials.
-  /// Launches native Google sign-in dialog and sends the verified ID token to the backend.
-  Future<AwsAuthUser?> signInWithGoogle({
-    GoogleSignIn? customGoogleSignIn,
-    String? mockIdToken,
+  static String _randomUrlSafe(int bytes) {
+    final random = Random.secure();
+    final values = List<int>.generate(bytes, (_) => random.nextInt(256));
+    return base64UrlEncode(values).replaceAll('=', '');
+  }
+
+  static String _pkceChallenge(String verifier) =>
+      base64UrlEncode(sha256.convert(utf8.encode(verifier)).bytes)
+          .replaceAll('=', '');
+
+  static bool _isCognitoAuthCallback(Uri uri) =>
+      uri.scheme == 'guardian' &&
+      uri.host == 'auth' &&
+      uri.path == '/callback';
+
+  Future<Map<String, dynamic>> _exchangeAuthorizationCode({
+    required String code,
+    required String verifier,
   }) async {
-    Logger.info('AwsAuthService: initiating Google sign-in');
-    String? idToken = mockIdToken;
+    final domain = _requireCognitoAuthDomain();
+    final clientId = _requireCognitoClientId();
+    final response = await http
+        .post(
+          Uri.parse('$domain/oauth2/token'),
+          headers: const {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json',
+          },
+          body: {
+            'grant_type': 'authorization_code',
+            'client_id': clientId,
+            'code': code,
+            'redirect_uri': _cognitoRedirectUri,
+            'code_verifier': verifier,
+          },
+        )
+        .timeout(const Duration(seconds: 20));
+    final payload = response.body.isEmpty
+        ? <String, dynamic>{}
+        : jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Cognito token exchange failed.');
+    }
+    final accessToken = payload['access_token'] as String?;
+    final idToken = payload['id_token'] as String?;
+    final refreshToken = payload['refresh_token'] as String?;
+    if (accessToken == null ||
+        accessToken.isEmpty ||
+        idToken == null ||
+        idToken.isEmpty ||
+        refreshToken == null ||
+        refreshToken.isEmpty) {
+      throw Exception('Cognito did not return a complete authenticated session.');
+    }
+    return payload;
+  }
 
-    if (idToken == null) {
-      final googleSignIn = customGoogleSignIn ??
-          GoogleSignIn(
-            scopes: ['email', 'profile'],
-            serverClientId: _googleServerClientId(),
-          );
+  Future<Map<String, dynamic>> _bootstrapGuardianSession(
+    Map<String, dynamic> tokens,
+  ) async {
+    final accessToken = tokens['access_token'] as String;
+    final refreshToken = tokens['refresh_token'] as String;
+    final response = await http
+        .post(
+          Uri.parse('$_baseUrl/auth/session'),
+          headers: const {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode({
+            'access_token': accessToken,
+            'refresh_token': refreshToken,
+            'device_label':
+                'Guardian ${kIsWeb ? 'web' : defaultTargetPlatform.name} device',
+            'platform': kIsWeb ? 'web' : defaultTargetPlatform.name,
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
+    final payload = response.body.isEmpty
+        ? <String, dynamic>{}
+        : jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final detail = payload['detail'];
+      throw Exception(
+        detail is String && detail.isNotEmpty
+            ? detail
+            : 'Guardian session bootstrap failed.',
+      );
+    }
+    return payload;
+  }
 
-      final account = await googleSignIn.signIn();
-      if (account == null) {
-        Logger.info('AwsAuthService: Google sign-in was cancelled by user');
-        return null;
+  Future<AwsAuthUser?> _completeCognitoCallback(Uri callback) async {
+    final expectedState = await _storage.read(key: _kOauthState);
+    final verifier = await _storage.read(key: _kPkceVerifier);
+    if (expectedState == null || verifier == null) {
+      throw Exception('Google sign-in session expired. Please try again.');
+    }
+    if (callback.queryParameters['state'] != expectedState) {
+      throw Exception('Google sign-in state validation failed.');
+    }
+    final providerError = callback.queryParameters['error'];
+    if (providerError != null) {
+      throw Exception('Google sign-in was cancelled or denied.');
+    }
+    final code = callback.queryParameters['code'];
+    if (code == null || code.isEmpty) {
+      throw Exception('Google sign-in did not return an authorization code.');
+    }
+
+    try {
+      final tokens = await _exchangeAuthorizationCode(
+        code: code,
+        verifier: verifier,
+      );
+      final guardianSession = await _bootstrapGuardianSession(tokens);
+      await _persistSession({
+        ...guardianSession,
+        'access_token': tokens['access_token'],
+        'id_token': tokens['id_token'],
+        'refresh_token': tokens['refresh_token'],
+      });
+      return _currentUser;
+    } finally {
+      await _storage.delete(key: _kOauthState);
+      await _storage.delete(key: _kPkceVerifier);
+    }
+  }
+
+  Future<void> _resumePendingCognitoCallback() async {
+    final pendingState = await _storage.read(key: _kOauthState);
+    if (pendingState == null || pendingState.isEmpty) return;
+    try {
+      final initial = await AppLinks().getInitialLink();
+      if (initial != null && _isCognitoAuthCallback(initial)) {
+        await _completeCognitoCallback(initial);
       }
+    } catch (error) {
+      Logger.warning(
+        'AwsAuthService: pending Cognito callback could not be resumed: $error',
+      );
+    }
+  }
 
-      final auth = await account.authentication;
-      idToken = auth.idToken;
+  // ─── Google / Cognito Federated Sign-In ─────────────────────────────────
+
+  /// Google is federated by Cognito. Production uses authorization-code + PKCE
+  /// so Guardian never creates or stores a password for a Google user.
+  Future<AwsAuthUser?> signInWithGoogle({String? mockIdToken}) async {
+    if (mockIdToken != null) {
+      if (kReleaseMode) {
+        throw StateError('Mock Google tokens are disabled in release builds.');
+      }
+      final resp = await _post('/auth/google', {
+        'id_token': mockIdToken,
+        'device_label':
+            'Guardian ${kIsWeb ? 'web' : defaultTargetPlatform.name} device',
+        'platform': kIsWeb ? 'web' : defaultTargetPlatform.name,
+      });
+      if (resp['user_id'] != null) await _persistSession(resp);
+      return _currentUser;
     }
 
-    if (idToken == null || idToken.isEmpty) {
-      throw Exception('Failed to obtain Google verification token.');
+    final domain = _requireCognitoAuthDomain();
+    final clientId = _requireCognitoClientId();
+    final state = _randomUrlSafe(24);
+    final verifier = _randomUrlSafe(48);
+    final challenge = _pkceChallenge(verifier);
+    await _storage.write(key: _kOauthState, value: state);
+    await _storage.write(key: _kPkceVerifier, value: verifier);
+
+    final authorizeUri = Uri.parse('$domain/oauth2/authorize').replace(
+      queryParameters: {
+        'identity_provider': 'Google',
+        'response_type': 'code',
+        'client_id': clientId,
+        'redirect_uri': _cognitoRedirectUri,
+        'scope': 'openid email profile',
+        'state': state,
+        'code_challenge': challenge,
+        'code_challenge_method': 'S256',
+      },
+    );
+
+    final appLinks = AppLinks();
+    final callbackFuture = appLinks.uriLinkStream
+        .firstWhere(_isCognitoAuthCallback)
+        .timeout(const Duration(minutes: 2));
+    final launched = await launchUrl(
+      authorizeUri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched) {
+      await _storage.delete(key: _kOauthState);
+      await _storage.delete(key: _kPkceVerifier);
+      throw Exception('Could not open Google sign-in.');
     }
 
-    final resp = await _post('/auth/google', {
-      'id_token': idToken,
-      'device_label':
-          'Guardian ${kIsWeb ? 'web' : defaultTargetPlatform.name} device',
-      'platform': kIsWeb ? 'web' : defaultTargetPlatform.name,
-    });
-
-    if (resp['user_id'] != null) {
-      await _persistSession(resp);
+    try {
+      final callback = await callbackFuture;
+      return await _completeCognitoCallback(callback);
+    } on TimeoutException {
+      await _storage.delete(key: _kOauthState);
+      await _storage.delete(key: _kPkceVerifier);
+      throw Exception('Google sign-in timed out or was cancelled.');
     }
-
-    return _currentUser;
   }
 
   /// Refresh expired access token using the stored refresh token.
@@ -396,11 +584,6 @@ class AwsAuthService {
 
   /// Sign out — revokes tokens and clears local storage.
   Future<void> signOut() async {
-    if (_currentUser?.authProvider == 'google') {
-      try {
-        await GoogleSignIn().signOut();
-      } catch (_) {}
-    }
     if (_accessToken != null) {
       try {
         await _post('/auth/sign-out', const {});
@@ -647,7 +830,7 @@ class AwsAuthService {
   }
 
   bool _isPublicAuthPath(String path) =>
-      path == '/auth/google' || path == '/auth/refresh';
+      path == '/auth/google' || path == '/auth/session' || path == '/auth/refresh';
 
   Future<void> _persistSession(Map<String, dynamic> resp) async {
     _userId = resp['user_id'] as String;
