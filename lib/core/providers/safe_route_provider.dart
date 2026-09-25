@@ -109,8 +109,10 @@ class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
         throw StateError('Route geometry is unavailable.');
       }
 
-      final distanceMeters = (response['distance_meters'] as num?)?.toDouble() ?? 0;
-      final durationSeconds = _durationSeconds(response['duration']?.toString() ?? '');
+      final distanceMeters =
+          (response['distance_meters'] as num?)?.toDouble() ?? 0;
+      final durationSeconds =
+          _durationSeconds(response['duration']?.toString() ?? '');
       final distanceText = distanceMeters < 1000
           ? '${distanceMeters.round()} m'
           : '${(distanceMeters / 1000).toStringAsFixed(1)} km';
