@@ -83,69 +83,50 @@ def _schedule_agent_timeout(
     *,
     idempotency_key: str,
 ) -> Dict[str, Any]:
-    """Create an idempotent one-shot EventBridge Scheduler invocation."""
+    """Queue a durable deadline check using SQS delayed delivery.
+
+    The deadline persisted on the incident remains authoritative. SQS is only
+    the wake-up transport; the worker rechecks time/state before acting.
+    """
+    queue_url = os.environ.get("WORKFLOW_QUEUE_URL", "").strip()
     if not (
         BOTO3_AVAILABLE
         and os.environ.get("AWS_EXECUTION_ENV")
-        and os.environ.get("SCHEDULER_ROLE_ARN")
+        and queue_url
     ):
-        return {"scheduled": False, "reason": "scheduler_unavailable"}
-
-    scheduler = boto3.client("scheduler", region_name=AWS_REGION)
-    sts = boto3.client("sts", region_name=AWS_REGION)
-    account_id = sts.get_caller_identity()["Account"]
-    lambda_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
-    if not lambda_name:
-        return {"scheduled": False, "reason": "lambda_name_unavailable"}
+        return {"scheduled": False, "reason": "workflow_queue_unavailable"}
 
     delay = max(1, int(delay_seconds))
-    target_time = datetime.now(timezone.utc) + timedelta(seconds=delay)
-    schedule_expr = f"at({target_time.strftime('%Y-%m-%dT%H:%M:%S')})"
+    now = datetime.now(timezone.utc)
+    target_time = now + timedelta(seconds=delay)
+    deadline_at = int(target_time.timestamp())
     digest = hashlib.sha256(
-        f"{incident_id}:{timeout_type}:{idempotency_key}".encode("utf-8")
-    ).hexdigest()[:24]
-    schedule_name = f"guardian-{timeout_type.lower().replace('_', '-')}-{digest}"[:64]
+        f"{incident_id}:{timeout_type}:{idempotency_key}:{deadline_at}".encode("utf-8")
+    ).hexdigest()[:32]
     payload = {
         "detail": {
             "incident_id": incident_id,
             "timeout_type": timeout_type,
             "idempotency_key": idempotency_key,
+            "deadline_at": deadline_at,
+            "message_id": digest,
         }
     }
     try:
-        scheduler.create_schedule(
-            Name=schedule_name,
-            ClientToken=digest,
-            ScheduleExpression=schedule_expr,
-            ScheduleExpressionTimezone="UTC",
-            FlexibleTimeWindow={"Mode": "OFF"},
-            ActionAfterCompletion="DELETE",
-            Target={
-                "Arn": f"arn:aws:lambda:{AWS_REGION}:{account_id}:function:{lambda_name}",
-                "RoleArn": os.environ["SCHEDULER_ROLE_ARN"],
-                "Input": json.dumps(payload),
-                "RetryPolicy": {
-                    "MaximumEventAgeInSeconds": 3600,
-                    "MaximumRetryAttempts": 3,
-                },
-            },
+        sqs = boto3.client("sqs", region_name=AWS_REGION)
+        response = sqs.send_message(
+            QueueUrl=queue_url,
+            MessageBody=json.dumps(payload),
+            DelaySeconds=min(delay, 900),
         )
         return {
             "scheduled": True,
-            "schedule_name": schedule_name,
-            "deadline_at": int(target_time.timestamp()),
+            "message_id": response.get("MessageId"),
+            "deadline_at": deadline_at,
         }
     except Exception as error:
-        code = getattr(error, "response", {}).get("Error", {}).get("Code")
-        if code in {"ConflictException", "ResourceConflictException"}:
-            return {
-                "scheduled": True,
-                "schedule_name": schedule_name,
-                "deadline_at": int(target_time.timestamp()),
-                "existing": True,
-            }
         logger.error(
-            "Failed to schedule %s for incident %s: %s",
+            "Failed to queue %s deadline for incident %s: %s",
             timeout_type,
             incident_id,
             type(error).__name__,
@@ -153,8 +134,8 @@ def _schedule_agent_timeout(
         return {
             "scheduled": False,
             "reason": type(error).__name__,
+            "deadline_at": deadline_at,
         }
-
 
 def _persist_verification_request(
     incident_id: str,
@@ -162,11 +143,14 @@ def _persist_verification_request(
     schedule_result: Dict[str, Any],
 ) -> None:
     requested_at = datetime.now(timezone.utc)
-    deadline = requested_at + timedelta(seconds=max(1, timeout_seconds))
+    fallback_deadline = int(
+        (requested_at + timedelta(seconds=max(1, timeout_seconds))).timestamp()
+    )
+    deadline_epoch = int(schedule_result.get("deadline_at") or fallback_deadline)
     dynamo = get_dynamo_resource()
     values = {
         ":requested": requested_at.isoformat(),
-        ":deadline": int(deadline.timestamp()),
+        ":deadline": deadline_epoch,
         ":status": "PENDING",
     }
     if dynamo:
