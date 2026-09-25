@@ -356,8 +356,7 @@ class GuardianDatabase extends _$GuardianDatabase {
   Future<List<LocalAlert>> getUnsyncedAlerts(String ownerUserId) =>
       (select(localAlerts)
             ..where((t) =>
-                t.userId.equals(ownerUserId) &
-                t.syncedToCloud.equals(false)))
+                t.userId.equals(ownerUserId) & t.syncedToCloud.equals(false)))
           .get();
 
   Future<LocalAlert?> getActiveAlert(String userId) => (select(localAlerts)
@@ -853,5 +852,4 @@ final databaseProvider = Provider<GuardianDatabase>((ref) {
           .go();
     });
   }
-
 });
