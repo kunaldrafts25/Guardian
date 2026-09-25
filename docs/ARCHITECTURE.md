@@ -166,7 +166,7 @@ sequenceDiagram
     Victim->>UI: Trigger SOS (No internet connectivity)
     UI->>Drift: Persist incident in Outbox (status: PENDING_SYNC, nonce: uuid)
     UI->>Native: Dispatch direct cellular SMS to contacts
-    Native-->>UI: SMS dispatched via cellular network
+    Native-->>UI: Per-recipient OS submission acceptance/failure evidence
     UI->>UI: Display Offline Emergency HUD (SMS sent, Cloud pending)
     
     Note over Sync,Backend: Time passes; network connectivity is restored
@@ -234,10 +234,9 @@ sequenceDiagram
     Provider->>Provider: Calculate freshness (quality: FRESH / ACCEPTABLE)
     alt Freshness Valid (< 120s and acceptable accuracy)
         Provider->>Backend: POST /incidents/{incident_id}/location (location payload)
-        Backend->>Dynamo: Append coordinate to trajectory history
-        Backend->>Dynamo: Update current_location with freshness timestamp
+        Backend->>Dynamo: Update current_emergency_location only if the capture time is newer
         Backend-->>Provider: 200 OK
-        Backend->>Responders: Push location update notification (if holding active grant)
+        Note over Backend,Responders: Accepted responders retrieve the latest authorized location using their live navigation grant; each GPS tick is not broadcast as a responder push.
     else Stale or Inaccurate
         Provider->>Provider: Suppress remote broadcast until fresh GPS fix acquired
     end
@@ -311,12 +310,12 @@ sequenceDiagram
     participant Ledger as ActionLedger
 
     Resp->>RespUI: Click "Accept Emergency Mission"
-    RespUI->>Backend: POST /missions/{mission_id}/accept
+    RespUI->>Backend: POST /incidents/{incident_id}/accept
     Backend->>Dynamo: ConditionalUpdate: Status == 'INVITED' & ActiveMissions < Max (2)
     alt Acceptance Successful
         Backend->>Dynamo: Set mission status = 'ACCEPTED', accepted_at = now
         Backend->>Ledger: Record acceptance decision & responder ID
-        Backend-->>RespUI: 200 OK (mission_status: ACCEPTED, navigation_grant: grant_token)
+        Backend-->>RespUI: 200 OK (mission: ACCEPTED, navigation_grant: grant_token)
         RespUI->>RespUI: Unlock navigation HUD & precise coordinate viewer
     else Conflict / Already Full
         Backend-->>RespUI: 409 Conflict (Mission already assigned to maximum responders)
@@ -335,9 +334,9 @@ sequenceDiagram
     participant Dynamo as DynamoDB
     participant ExtNav as External Navigation App (Google/Apple Maps)
 
-    RespUI->>Backend: GET /missions/{mission_id}/location (Header: X-Guardian-Session-ID)
+    RespUI->>Backend: POST /incidents/{incident_id}/authorized-location (navigation_grant + X-Guardian-Session-ID)
     Backend->>Dynamo: Verify mission status in ['ACCEPTED', 'EN_ROUTE']
-    Backend->>Dynamo: Verify incident status == 'ACTIVE'
+    Backend->>Dynamo: Verify incident is nonterminal and grant is unexpired
     alt Authorization Valid
         Backend->>Dynamo: Retrieve latest victim current_location & freshness
         Backend-->>RespUI: 200 OK (latitude, longitude, freshness: "FRESH", age_seconds)
