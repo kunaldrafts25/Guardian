@@ -172,6 +172,28 @@ Resources:
       AttributeDefinitions: [{AttributeName: user_id, AttributeType: S}]
       KeySchema: [{AttributeName: user_id, KeyType: HASH}]
 
+  DeviceEndpointsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub guardian-${EnvironmentName}-device-endpoints
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+      SSESpecification: {SSEEnabled: true}
+      AttributeDefinitions:
+        - {AttributeName: user_id, AttributeType: S}
+        - {AttributeName: device_id, AttributeType: S}
+        - {AttributeName: token_hash, AttributeType: S}
+      KeySchema:
+        - {AttributeName: user_id, KeyType: HASH}
+        - {AttributeName: device_id, KeyType: RANGE}
+      GlobalSecondaryIndexes:
+        - IndexName: TokenHashIndex
+          KeySchema:
+            - {AttributeName: token_hash, KeyType: HASH}
+          Projection: {ProjectionType: ALL}
+
   SessionsTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Retain
@@ -240,6 +262,7 @@ Resources:
           DYNAMODB_RESPONDERS_TABLE: !Ref RespondersTable
           DYNAMODB_MISSIONS_TABLE: !Ref MissionsTable
           DYNAMODB_USERS_TABLE: !Ref UsersTable
+          DYNAMODB_DEVICE_ENDPOINTS_TABLE: !Ref DeviceEndpointsTable
           DYNAMODB_SESSIONS_TABLE: !Ref SessionsTable
           DYNAMODB_AGENT_LEDGER_TABLE: !Ref AgentLedgerTable
           DYNAMODB_AGENT_AUTHORIZATIONS_TABLE: !Ref AgentAuthorizationsTable
@@ -254,6 +277,7 @@ Resources:
         - DynamoDBCrudPolicy: {TableName: !Ref RespondersTable}
         - DynamoDBCrudPolicy: {TableName: !Ref MissionsTable}
         - DynamoDBCrudPolicy: {TableName: !Ref UsersTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref DeviceEndpointsTable}
         - DynamoDBCrudPolicy: {TableName: !Ref SessionsTable}
         - Statement:
             - Effect: Allow
@@ -334,6 +358,7 @@ Resources:
           DYNAMODB_RESPONDERS_TABLE: !Ref RespondersTable
           DYNAMODB_MISSIONS_TABLE: !Ref MissionsTable
           DYNAMODB_USERS_TABLE: !Ref UsersTable
+          DYNAMODB_DEVICE_ENDPOINTS_TABLE: !Ref DeviceEndpointsTable
           DYNAMODB_SESSIONS_TABLE: !Ref SessionsTable
           DYNAMODB_AGENT_LEDGER_TABLE: !Ref AgentLedgerTable
           DYNAMODB_AGENT_AUTHORIZATIONS_TABLE: !Ref AgentAuthorizationsTable
@@ -354,6 +379,7 @@ Resources:
               Resource: !GetAtt AgentLedgerTable.Arn
         - DynamoDBCrudPolicy: {TableName: !Ref AgentAuthorizationsTable}
         - DynamoDBReadPolicy: {TableName: !Ref UsersTable}
+        - DynamoDBReadPolicy: {TableName: !Ref DeviceEndpointsTable}
         - Statement:
             - Effect: Allow
               Action: sns:Publish
