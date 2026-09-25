@@ -1,0 +1,43 @@
+name: Phase 5 Drift Regeneration
+
+on:
+  push:
+    branches: [ phase5-production-hardening ]
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase5-production-hardening
+          fetch-depth: 0
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.4'
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Regenerate Drift code
+        run: flutter pub run build_runner build --delete-conflicting-outputs
+      - name: Apply canonical Dart formatter
+        run: dart format lib test
+      - name: Commit generated output
+        shell: bash
+        run: |
+          if git diff --quiet -- lib test; then
+            echo "No generated or formatting changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib test
+          git commit -m "chore(phase5): regenerate Drift and format Dart"
+          git push origin HEAD:phase5-production-hardening
