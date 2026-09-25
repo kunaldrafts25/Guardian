@@ -164,6 +164,35 @@ def test_out_of_order_location_update_rejected(victim_headers):
     assert saved["current_emergency_location"]["latitude"] == 19.0800
 
 
+def test_location_update_without_capture_time_is_rejected(victim_headers):
+    """Replay/transport time must never be substituted for GPS capture time."""
+    t0 = datetime.now(timezone.utc)
+    incident = create_incident({
+        "user_id": "victim-01",
+        "event_type": "sos_button",
+        "location": {
+            "latitude": 19.0760,
+            "longitude": 72.8777,
+            "accuracy": 10.0,
+            "captured_at": t0.isoformat(),
+        },
+    })
+    inc_id = incident["incident_id"]
+
+    resp = client.post(
+        f"/incidents/{inc_id}/location",
+        headers=victim_headers,
+        json={
+            "latitude": 19.0780,
+            "longitude": 72.8790,
+            "accuracy": 8.0,
+        },
+    )
+    assert resp.status_code == 409
+    error_msg = resp.json().get("error", {}).get("message", "")
+    assert "captured_at is required" in error_msg
+
+
 def test_non_owner_location_update_forbidden(other_headers):
     t0 = datetime.now(timezone.utc)
     incident = create_incident({
