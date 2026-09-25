@@ -178,7 +178,7 @@ object NativeEmergencyStore {
     fun recordSmsPartResult(
         context: Context,
         eventId: String,
-        phoneHash: Int,
+        recipientToken: String,
         partIndex: Int,
         totalParts: Int,
         success: Boolean,
@@ -189,9 +189,9 @@ object NativeEmergencyStore {
             JSONObject(prefs.getString(SMS_RESULTS_KEY, null) ?: "{}")
         }.getOrDefault(JSONObject())
         val eventResults = allResults.optJSONObject(eventId) ?: JSONObject()
-        val key = phoneHash.toString()
+        val key = recipientToken
         val aggregate = eventResults.optJSONObject(key) ?: JSONObject()
-            .put("phone_hash", phoneHash)
+            .put("recipient_token", recipientToken)
             .put("status", "PENDING")
             .put("parts_total", totalParts)
             .put("parts_reported", 0)
@@ -250,11 +250,11 @@ object NativeEmergencyStore {
     }
 
     @Synchronized
-    fun smsSentResult(context: Context, eventId: String, phoneHash: Int): JSONObject? {
+    fun smsSentResult(context: Context, eventId: String, recipientToken: String): JSONObject? {
         val raw = preferences(context).getString(SMS_RESULTS_KEY, null) ?: return null
         val allResults = runCatching { JSONObject(raw) }.getOrNull() ?: return null
         val result = allResults.optJSONObject(eventId)
-            ?.optJSONObject(phoneHash.toString())
+            ?.optJSONObject(recipientToken)
             ?: return null
         return JSONObject(result.toString())
     }
