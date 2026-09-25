@@ -19,7 +19,6 @@ dependencies:
   # ═══════════════════════════════════════════════
   firebase_core: ^3.8.1
   firebase_messaging: ^15.1.6
-  google_sign_in: ^6.2.2
 
   # ═══════════════════════════════════════════════
   # State Management — Riverpod ONLY (GetIt removed)
@@ -67,7 +66,8 @@ dependencies:
   permission_handler: ^11.2.0
   # 9.4.7 conflicts with geolocator_apple in Flutter 3.47 iOS builds.
   permission_handler_apple: ^9.6.1
-  url_launcher: ^6.2.4               # Emergency call + iOS SMS fallback
+  url_launcher: ^6.2.4               # Emergency call + OAuth browser launch
+  app_links: ^6.4.1                  # Cognito PKCE custom-scheme callback
   intl: ^0.20.2
   connectivity_plus: ^6.1.4
   dio: ^5.7.0
