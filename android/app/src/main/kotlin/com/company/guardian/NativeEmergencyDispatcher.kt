@@ -67,9 +67,12 @@ object NativeEmergencyDispatcher {
                 contactIdByPhone[phone] = contactId
             }
         }
-        val phoneHashByContact = JSONObject()
+        val recipientTokenByContact = JSONObject()
         contactIdByPhone.forEach { (phone, contactId) ->
-            phoneHashByContact.put(contactId, phone.hashCode())
+            recipientTokenByContact.put(
+                contactId,
+                SmsHelper.recipientToken(eventId, phone),
+            )
         }
         val event = JSONObject().apply {
             put("schema_version", 1)
@@ -81,7 +84,7 @@ object NativeEmergencyDispatcher {
             put("snapshot_version", snapshot?.optInt("version", 0) ?: 0)
             put("accepted_contact_ids", JSONArray())
             put("failed_contact_ids", JSONArray())
-            put("phone_hash_by_contact", phoneHashByContact)
+            put("sms_recipient_token_by_contact", recipientTokenByContact)
             put("latitude", location?.latitude ?: JSONObject.NULL)
             put("longitude", location?.longitude ?: JSONObject.NULL)
             put("accuracy", location?.accuracy ?: JSONObject.NULL)
