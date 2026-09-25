@@ -679,8 +679,13 @@ def _claim_verification_timeout(incident_id: str) -> bool:
     }:
         return False
 
+    now_dt = datetime.now(timezone.utc)
+    deadline = int(incident.get("verification_deadline_at") or 0)
+    if deadline and int(now_dt.timestamp()) < deadline:
+        return False
+
     dynamo = get_dynamo_resource()
-    now = datetime.now(timezone.utc).isoformat()
+    now = now_dt.isoformat()
     if dynamo:
         try:
             dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
@@ -694,7 +699,9 @@ def _claim_verification_timeout(incident_id: str) -> bool:
                     "AND agent_decision = :verification "
                     "AND #state <> :resolved "
                     "AND #state <> :cancelled "
-                    "AND #state <> :expired"
+                    "AND #state <> :expired "
+                    "AND (attribute_not_exists(verification_deadline_at) "
+                    "OR verification_deadline_at <= :now_epoch)"
                 ),
                 ExpressionAttributeNames={"#state": "state"},
                 ExpressionAttributeValues={
@@ -705,6 +712,7 @@ def _claim_verification_timeout(incident_id: str) -> bool:
                     ":cancelled": IncidentState.CANCELLED.value,
                     ":expired": IncidentState.EXPIRED.value,
                     ":now": now,
+                    ":now_epoch": int(now_dt.timestamp()),
                 },
             )
             return True
@@ -822,7 +830,10 @@ def _handle_verification_timeout(
     }
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def _process_workflow_event(
+    event: Dict[str, Any],
+    context: Any,
+) -> Dict[str, Any]:
     detail = event.get("detail", {}) or {}
     incident_id = detail.get("incident_id") or event.get("incident_id")
     timeout_type = detail.get("timeout_type")
@@ -854,11 +865,47 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 raise RuntimeError("Agent execution lease is currently held; retry event")
         return {"statusCode": 200, "body": result}
     except Exception:
-        # Only initial reasoning owns the initial-agent lease. Timeout workflows
-        # have independent idempotency claims and must not mutate that lease.
         if not timeout_type:
             try:
                 finish_agent_run(incident_id, correlation_id, success=False)
             except Exception:
                 logger.exception("Failed to release agent lease after execution error")
         raise
+
+
+def _requeue_early_deadline(payload: Dict[str, Any], remaining_seconds: int) -> None:
+    queue_url = os.environ.get("WORKFLOW_QUEUE_URL", "").strip()
+    if not (BOTO3_AVAILABLE and queue_url):
+        raise RuntimeError("Workflow queue is unavailable for early deadline requeue")
+    boto3.client("sqs", region_name=AWS_REGION).send_message(
+        QueueUrl=queue_url,
+        MessageBody=json.dumps(payload),
+        DelaySeconds=max(1, min(int(remaining_seconds), 900)),
+    )
+
+
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    records = event.get("Records")
+    if isinstance(records, list):
+        failures = []
+        for record in records:
+            message_id = str(record.get("messageId") or "")
+            try:
+                body = json.loads(record.get("body") or "{}")
+                detail = body.get("detail", {}) or {}
+                deadline_at = int(detail.get("deadline_at") or 0)
+                now_epoch = int(datetime.now(timezone.utc).timestamp())
+                if deadline_at and now_epoch < deadline_at:
+                    _requeue_early_deadline(body, deadline_at - now_epoch)
+                    continue
+                response = _process_workflow_event(body, context)
+                if int(response.get("statusCode", 500)) >= 500:
+                    raise RuntimeError("Workflow deadline processing failed")
+            except Exception:
+                logger.exception("Workflow queue message failed")
+                if message_id:
+                    failures.append({"itemIdentifier": message_id})
+        return {"batchItemFailures": failures}
+
+    return _process_workflow_event(event, context)
+
