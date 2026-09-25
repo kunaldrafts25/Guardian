@@ -14,7 +14,7 @@ import hashlib
 import logging
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
 
 try:
@@ -32,6 +32,10 @@ DYNAMODB_INCIDENTS_TABLE = os.environ.get("DYNAMODB_INCIDENTS_TABLE", "guardian-
 DYNAMODB_EVENTS_TABLE = os.environ.get("DYNAMODB_EVENTS_TABLE", "guardian-incident-events")
 DYNAMODB_ABUSE_COUNTERS_TABLE = os.environ.get(
     "DYNAMODB_ABUSE_COUNTERS_TABLE", "guardian-abuse-counters"
+)
+INCIDENT_RETENTION_DAYS = max(
+    30,
+    min(365, int(os.environ.get("INCIDENT_RETENTION_DAYS", "90"))),
 )
 EVENTBUS_NAME = os.environ.get("EVENTBUS_NAME", "default")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
@@ -141,6 +145,11 @@ def _captured_at_epoch_ms(location: Any) -> Optional[int]:
         return int(dt.timestamp() * 1000)
     except Exception:
         return None
+
+
+def _retention_expiry(now: Optional[datetime] = None) -> int:
+    base = now or datetime.now(timezone.utc)
+    return int((base + timedelta(days=INCIDENT_RETENTION_DAYS)).timestamp())
 
 
 def _incident_frequency_advisory(user_id: str, now: datetime) -> Dict[str, Any]:
@@ -310,6 +319,7 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         "risk_assessment": risk,
         "created_at": now_iso,
         "updated_at": now_iso,
+        "expires_at": _retention_expiry(datetime.fromisoformat(now_iso)),
         "agent_decision": "PENDING_REASONING",
         "agent_execution_state": "PENDING",
         "orchestration_event_state": "PENDING",
@@ -327,6 +337,7 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         "state": initial_state,
         "actor": "SYSTEM",
         "details": f"Anomaly detected ({event_type}) with risk level {risk['level']} (score: {risk['score']})",
+        "expires_at": incident_record["expires_at"],
     }
 
     # Persist
@@ -624,6 +635,10 @@ def append_incident_event(
         "state": state or incident["state"],
         "actor": str(actor).upper()[:40],
         "details": str(details)[:500],
+        "expires_at": int(
+            incident.get("expires_at")
+            or _retention_expiry()
+        ),
     }
     dynamo = get_dynamo_resource()
     if dynamo:
