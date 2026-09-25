@@ -5,11 +5,7 @@ Cognito-issued access tokens plus Guardian device sessions.
 """
 
 import os
-import hmac
-import hashlib
-import base64
 import logging
-import re
 import uuid
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
@@ -26,19 +22,9 @@ logger = logging.getLogger("cognito_service")
 # Env config
 COGNITO_USER_POOL_ID = os.environ.get("COGNITO_USER_POOL_ID", "")
 COGNITO_CLIENT_ID = os.environ.get("COGNITO_CLIENT_ID", "")
-COGNITO_CLIENT_SECRET = os.environ.get("COGNITO_CLIENT_SECRET", "")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "ap-south-1")
 DYNAMODB_USERS_TABLE = os.environ.get("DYNAMODB_USERS_TABLE", "guardian-users")
-
-
-def _get_secret_hash(username: str) -> str:
-    """HMAC-SHA256 hash required by Cognito app clients with secret."""
-    if not COGNITO_CLIENT_SECRET:
-        return ""
-    msg = username + COGNITO_CLIENT_ID
-    dig = hmac.new(COGNITO_CLIENT_SECRET.encode("utf-8"), msg.encode("utf-8"), hashlib.sha256).digest()
-    return base64.b64encode(dig).decode()
 
 
 def _cognito_client():
@@ -79,9 +65,6 @@ def refresh_tokens(refresh_token: str, user_id: Optional[str] = None) -> Dict[st
 
     try:
         auth_params = {"REFRESH_TOKEN": refresh_token}
-        if COGNITO_CLIENT_SECRET:
-            raise ValueError("Mobile Cognito clients must not use a client secret")
-
         resp = client.initiate_auth(
             AuthFlow="REFRESH_TOKEN_AUTH",
             AuthParameters=auth_params,
@@ -198,8 +181,6 @@ def authenticate_with_google(id_token_str: str) -> Dict[str, Any]:
                 Permanent=True,
             )
             auth_params = {"USERNAME": user_id, "PASSWORD": temp_pwd}
-            if COGNITO_CLIENT_SECRET:
-                auth_params["SECRET_HASH"] = _get_secret_hash(user_id)
             resp = client.admin_initiate_auth(
                 UserPoolId=COGNITO_USER_POOL_ID,
                 ClientId=COGNITO_CLIENT_ID,
@@ -338,28 +319,6 @@ def get_user_profile(user_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def save_fcm_token(user_id: str, fcm_token: str) -> Dict[str, Any]:
-    """
-    Add a device FCM/SNS token to the user's token list in DynamoDB.
-    This enables targeted push notifications via AWS SNS.
-    """
-    dynamo = _dynamo_resource()
-    if not dynamo:
-        return {"success": True, "dev_mode": True}
-    try:
-        table = dynamo.Table(DYNAMODB_USERS_TABLE)
-        table.update_item(
-            Key={"user_id": user_id},
-            UpdateExpression="ADD fcm_tokens :t SET updated_at = :u",
-            ExpressionAttributeValues={
-                ":t": {fcm_token},
-                ":u": datetime.now(timezone.utc).isoformat(),
-            },
-        )
-        return {"success": True}
-    except Exception as e:
-        logger.error(f"Save FCM token failed: {e}")
-        return {"success": False, "error": str(e)}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
