@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import FirebaseCore
 import FirebaseMessaging
+import GoogleMaps
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -12,6 +13,13 @@ import FirebaseMessaging
     // Configure Firebase
     if let _ = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") {
       FirebaseApp.configure()
+    }
+
+    if let mapsKey = Bundle.main.object(forInfoDictionaryKey: "GOOGLE_MAPS_IOS_API_KEY") as? String,
+       !mapsKey.isEmpty,
+       mapsKey != "NOT_CONFIGURED",
+       !mapsKey.hasPrefix("$(") {
+      GMSServices.provideAPIKey(mapsKey)
     }
 
     // Request push notification permissions
