@@ -14,6 +14,7 @@ import hmac
 import logging
 import secrets
 import uuid
+import threading
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone, timedelta
 
@@ -42,6 +43,7 @@ except ImportError:
 DYNAMODB_RESPONDERS_TABLE = os.environ.get("DYNAMODB_RESPONDERS_TABLE", "guardian-responders")
 DYNAMODB_MISSIONS_TABLE = os.environ.get("DYNAMODB_MISSIONS_TABLE", "guardian-missions")
 logger = logging.getLogger(__name__)
+_LOCAL_RESPONDER_LOCK = threading.RLock()
 
 
 def _dev_mode() -> bool:
@@ -1088,7 +1090,7 @@ def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]
         ) <= now_epoch:
             raise PermissionError("Mission invitation is unavailable or expired")
 
-        with _LOCAL_AGENT_LOCK:
+        with _LOCAL_RESPONDER_LOCK:
             latest = get_incident_context(incident_id)
             if latest.get("state") in {
                 IncidentState.RESOLVED.value,
@@ -1262,38 +1264,100 @@ def transition_rescue_mission(
 
     now = datetime.now(timezone.utc).isoformat()
     terminal = target in {"COMPLETED", "WITHDRAWN", "CANCELLED", "EXPIRED"}
+    incident_id = str(existing["incident_id"])
+    releases_capacity = (
+        current in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}
+        and target in {"COMPLETED", "WITHDRAWN", "CANCELLED", "EXPIRED"}
+    )
     if table:
         update_expression = "SET #status = :target, updated_at = :updated"
         if terminal:
             update_expression += " REMOVE navigation_grant_hash, navigation_grant_expires_at"
         try:
-            result = table.update_item(
-                Key={"mission_id": mission_id},
-                UpdateExpression=update_expression,
-                ConditionExpression="#status = :current AND responder_id = :responder",
-                ExpressionAttributeNames={"#status": "status"},
-                ExpressionAttributeValues={
-                    ":target": target,
-                    ":current": current,
-                    ":responder": responder_id,
-                    ":updated": now,
-                },
-                ReturnValues="ALL_NEW",
-            )
-            updated = result["Attributes"]
+            if releases_capacity:
+                if TypeSerializer is None:
+                    raise RuntimeError("DynamoDB transaction serializer is unavailable")
+                serializer = TypeSerializer()
+                av = serializer.serialize
+                dynamo.meta.client.transact_write_items(
+                    TransactItems=[
+                        {
+                            "Update": {
+                                "TableName": DYNAMODB_MISSIONS_TABLE,
+                                "Key": {"mission_id": av(mission_id)},
+                                "UpdateExpression": update_expression,
+                                "ConditionExpression": (
+                                    "#status = :current AND responder_id = :responder"
+                                ),
+                                "ExpressionAttributeNames": {"#status": "status"},
+                                "ExpressionAttributeValues": {
+                                    ":target": av(target),
+                                    ":current": av(current),
+                                    ":responder": av(responder_id),
+                                    ":updated": av(now),
+                                },
+                            }
+                        },
+                        {
+                            "Update": {
+                                "TableName": DYNAMODB_INCIDENTS_TABLE,
+                                "Key": {"incident_id": av(incident_id)},
+                                "UpdateExpression": (
+                                    "SET accepted_responder_count = "
+                                    "accepted_responder_count - :one, updated_at = :updated"
+                                ),
+                                "ConditionExpression": (
+                                    "attribute_exists(incident_id) AND "
+                                    "accepted_responder_count >= :one"
+                                ),
+                                "ExpressionAttributeValues": {
+                                    ":one": av(1),
+                                    ":updated": av(now),
+                                },
+                            }
+                        },
+                    ]
+                )
+                updated = table.get_item(
+                    Key={"mission_id": mission_id},
+                    ConsistentRead=True,
+                ).get("Item")
+                if not updated:
+                    raise RuntimeError("Mission transition committed but reload failed")
+            else:
+                result = table.update_item(
+                    Key={"mission_id": mission_id},
+                    UpdateExpression=update_expression,
+                    ConditionExpression="#status = :current AND responder_id = :responder",
+                    ExpressionAttributeNames={"#status": "status"},
+                    ExpressionAttributeValues={
+                        ":target": target,
+                        ":current": current,
+                        ":responder": responder_id,
+                        ":updated": now,
+                    },
+                    ReturnValues="ALL_NEW",
+                )
+                updated = result["Attributes"]
         except Exception as error:
             code = getattr(error, "response", {}).get("Error", {}).get("Code")
-            if code == "ConditionalCheckFailedException":
+            if code in {"ConditionalCheckFailedException", "TransactionCanceledException"}:
                 raise ValueError("Mission changed; refresh before trying again") from error
             raise
     else:
-        updated = {**existing, "status": target, "updated_at": now}
-        if terminal:
-            updated.pop("navigation_grant_hash", None)
-            updated.pop("navigation_grant_expires_at", None)
-        _LOCAL_MISSIONS[mission_id] = updated
+        with _LOCAL_RESPONDER_LOCK:
+            updated = {**existing, "status": target, "updated_at": now}
+            if terminal:
+                updated.pop("navigation_grant_hash", None)
+                updated.pop("navigation_grant_expires_at", None)
+            _LOCAL_MISSIONS[mission_id] = updated
+            if releases_capacity:
+                incident = get_incident_context(incident_id)
+                incident["accepted_responder_count"] = max(
+                    0,
+                    int(incident.get("accepted_responder_count") or 0) - 1,
+                )
 
-    incident_id = str(existing["incident_id"])
     if target == "EN_ROUTE":
         update_incident_status(
             incident_id,
@@ -1389,6 +1453,23 @@ def cancel_incident_missions(incident_id: str, reason: str) -> int:
             mission.pop("navigation_grant_hash", None)
             mission.pop("navigation_grant_expires_at", None)
         cancelled += 1
+    if dynamo:
+        try:
+            dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+                Key={"incident_id": incident_id},
+                UpdateExpression="SET accepted_responder_count = :zero",
+                ExpressionAttributeValues={":zero": 0},
+                ConditionExpression="attribute_exists(incident_id)",
+            )
+        except Exception:
+            logger.warning(
+                "Could not reset accepted responder count for terminal incident %s",
+                incident_id,
+            )
+    elif _dev_mode():
+        incident = get_incident_context(incident_id)
+        if incident:
+            incident["accepted_responder_count"] = 0
     return cancelled
 
 
