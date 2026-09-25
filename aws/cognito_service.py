@@ -109,92 +109,41 @@ def _verify_google_payload(id_token_str: str) -> Dict[str, Any]:
     return payload
 
 def authenticate_with_google(id_token_str: str) -> Dict[str, Any]:
+    """Development-only direct Google bootstrap.
+
+    Production mobile clients authenticate through Cognito's Google IdP using
+    authorization-code + PKCE. Keeping this helper in explicit dev mode makes
+    local tests deterministic without retaining a password-minting production
+    backdoor.
     """
-    Authenticate with Google ID Token.
-    Validates cryptographic signature with Google or dev mock fallback.
-    Upserts profile into DynamoDB and returns access + id + refresh tokens.
-    """
+    is_dev = os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    if not is_dev:
+        raise ValueError(
+            "Direct Google token bootstrap is disabled in production; "
+            "use Cognito managed login."
+        )
     if not id_token_str or not id_token_str.strip():
         raise ValueError("Google ID token is required")
 
-    sub: str = ""
-    email: str = ""
-    name: str = ""
-    picture: str = ""
-
-    # Check for dev token fallback
-    is_dev = os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
-    if is_dev and (id_token_str.startswith("dev_google_") or id_token_str.startswith("mock_google_")):
+    if id_token_str.startswith("dev_google_") or id_token_str.startswith("mock_google_"):
         parts = id_token_str.split("_")
-        user_suffix = parts[-1] if len(parts) > 2 else "user1"
-        sub = f"dev_{user_suffix}"
-        email = f"{user_suffix}@gmail.com"
-        name = f"Guardian User ({user_suffix})"
-        picture = "https://lh3.googleusercontent.com/a/default-user"
+        suffix = parts[-1] if len(parts) > 2 else "user1"
+        user_id = f"dev_{suffix}"
+        email = f"{suffix}@gmail.com"
+        name = f"Guardian User ({suffix})"
+        picture = ""
     else:
-        try:
-            id_info = _verify_google_payload(id_token_str)
+        id_info = _verify_google_payload(id_token_str)
+        sub = str(id_info.get("sub") or "").strip()
+        email = str(id_info.get("email") or "").strip()
+        if not sub or not email:
+            raise ValueError("Google token is missing required identity claims")
+        user_id = f"dev_google_{sub}"
+        name = str(id_info.get("name") or "")
+        picture = str(id_info.get("picture") or "")
 
-            if not GOOGLE_CLIENT_ID or id_info.get("aud") != GOOGLE_CLIENT_ID:
-                raise ValueError("Invalid Google token audience")
-            if id_info.get("email_verified") is not True:
-                raise ValueError("Google account email must be verified")
-            sub = id_info.get("sub", "")
-            email = id_info.get("email", "")
-            if not sub or not email:
-                raise ValueError("Google token is missing required identity claims")
-            name = id_info.get("name", "")
-            picture = id_info.get("picture", "")
-        except Exception as e:
-            logger.error(f"Google token verification failed: {e}")
-            raise ValueError(f"Invalid Google ID token: {str(e)}")
-
-    user_id = f"google_{sub}"
-
-    if is_dev:
-        refresh_token = f"google_refresh_token_{uuid.uuid4().hex}"
-        access_token = f"dev_access_token_{user_id}"
-    else:
-        client = _cognito_client()
-        if not client or not COGNITO_USER_POOL_ID or not COGNITO_CLIENT_ID:
-            raise ValueError("AWS Cognito is not configured; Google authentication is unavailable in production")
-        temp_pwd = _generate_temp_password()
-        try:
-            client.admin_create_user(
-                UserPoolId=COGNITO_USER_POOL_ID,
-                Username=user_id,
-                UserAttributes=[
-                    {"Name": "email", "Value": email},
-                    {"Name": "email_verified", "Value": "true"},
-                ],
-                MessageAction="SUPPRESS",
-                TemporaryPassword=temp_pwd,
-            )
-        except ClientError as e:
-            if e.response["Error"]["Code"] != "UsernameExistsException":
-                logger.warning(f"Google Cognito user creation note: {e}")
-        try:
-            client.admin_set_user_password(
-                UserPoolId=COGNITO_USER_POOL_ID,
-                Username=user_id,
-                Password=temp_pwd,
-                Permanent=True,
-            )
-            auth_params = {"USERNAME": user_id, "PASSWORD": temp_pwd}
-            resp = client.admin_initiate_auth(
-                UserPoolId=COGNITO_USER_POOL_ID,
-                ClientId=COGNITO_CLIENT_ID,
-                AuthFlow="ADMIN_USER_PASSWORD_AUTH",
-                AuthParameters=auth_params,
-            )
-            auth_result = resp.get("AuthenticationResult", {})
-            access_token = auth_result.get("AccessToken", "")
-            refresh_token = auth_result.get("RefreshToken", "")
-        except Exception as e:
-            logger.error(f"Cognito token issuance for Google auth failed: {e}")
-            raise ValueError("Unable to issue authenticated session for Google login.")
-
-    # Upsert user profile in DynamoDB
+    refresh_token = f"google_refresh_token_{uuid.uuid4().hex}"
+    access_token = f"dev_access_token_{user_id}"
     _upsert_user_profile(
         user_id=user_id,
         phone="",
@@ -205,7 +154,6 @@ def authenticate_with_google(id_token_str: str) -> Dict[str, Any]:
             "auth_provider": "google",
         },
     )
-
     return {
         "access_token": access_token,
         "id_token": id_token_str,
@@ -217,6 +165,63 @@ def authenticate_with_google(id_token_str: str) -> Dict[str, Any]:
         "auth_provider": "google",
     }
 
+
+def bootstrap_cognito_identity(access_token: str) -> Dict[str, Any]:
+    """Resolve a Cognito-authenticated identity to Guardian's immutable user id."""
+    if not access_token:
+        raise ValueError("Cognito access token is required")
+
+    is_dev = os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    if is_dev and access_token.startswith("dev_access_token_"):
+        user_id = access_token.removeprefix("dev_access_token_")
+        if not user_id:
+            raise ValueError("Invalid development access token")
+        profile = get_user_profile(user_id) or {}
+        return {
+            "user_id": user_id,
+            "email": profile.get("email", ""),
+            "display_name": profile.get("display_name", ""),
+            "photo_url": profile.get("photo_url", ""),
+            "auth_provider": profile.get("auth_provider", "google"),
+        }
+
+    client = _cognito_client()
+    if not client or not COGNITO_USER_POOL_ID:
+        raise ValueError("AWS Cognito is not configured")
+    try:
+        result = client.get_user(AccessToken=access_token)
+    except ClientError as error:
+        raise ValueError("Cognito access token is invalid or expired") from error
+
+    attributes = {
+        str(item.get("Name")): str(item.get("Value") or "")
+        for item in result.get("UserAttributes", [])
+        if item.get("Name")
+    }
+    user_id = attributes.get("sub", "").strip()
+    if not user_id:
+        raise ValueError("Cognito token is missing immutable subject identity")
+    email = attributes.get("email", "").strip()
+    display_name = attributes.get("name", "").strip()
+    photo_url = attributes.get("picture", "").strip()
+    _upsert_user_profile(
+        user_id=user_id,
+        phone="",
+        extra={
+            "email": email,
+            "display_name": display_name,
+            "photo_url": photo_url,
+            "auth_provider": "google",
+            "cognito_username": str(result.get("Username") or ""),
+        },
+    )
+    return {
+        "user_id": user_id,
+        "email": email,
+        "display_name": display_name,
+        "photo_url": photo_url,
+        "auth_provider": "google",
+    }
 
 def sign_out(access_token: str) -> Dict[str, Any]:
     """Revoke all tokens for the user (global sign out)."""
