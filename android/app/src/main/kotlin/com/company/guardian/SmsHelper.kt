@@ -30,6 +30,7 @@ object SmsHelper {
      */
     fun sendEmergencySms(
         context: Context,
+        eventId: String,
         phoneNumbers: List<String>,
         message: String
     ): Map<String, Boolean> {
@@ -61,11 +62,27 @@ object SmsHelper {
 
                 if (parts.size == 1) {
                     // Short message — single SMS
-                    val sentIntent = buildSentIntent(context, phone)
+                    val sentIntent = buildSentIntent(
+                        context = context,
+                        eventId = eventId,
+                        phone = phone,
+                        partIndex = 0,
+                        totalParts = 1,
+                    )
                     smsManager.sendTextMessage(phone, null, message, sentIntent, null)
                 } else {
                     // Long message — multipart SMS
-                    val sentIntents = ArrayList(parts.map { buildSentIntent(context, phone) })
+                    val sentIntents = ArrayList(
+                        parts.indices.map { partIndex ->
+                            buildSentIntent(
+                                context = context,
+                                eventId = eventId,
+                                phone = phone,
+                                partIndex = partIndex,
+                                totalParts = parts.size,
+                            )
+                        },
+                    )
                     smsManager.sendMultipartTextMessage(
                         phone, null, ArrayList(parts), sentIntents, null
                     )
@@ -87,15 +104,27 @@ object SmsHelper {
      * Build a PendingIntent for SMS delivery confirmation.
      * Used to track whether SMS was actually sent by the carrier.
      */
-    private fun buildSentIntent(context: Context, phone: String): PendingIntent {
-        val intent = Intent("GUARDIAN_SMS_SENT").apply {
-            putExtra("phone_hash", phone.hashCode())
+    private fun buildSentIntent(
+        context: Context,
+        eventId: String,
+        phone: String,
+        partIndex: Int,
+        totalParts: Int,
+    ): PendingIntent {
+        val phoneHash = phone.hashCode()
+        val intent = Intent(context, SmsSentReceiver::class.java).apply {
+            action = SmsSentReceiver.ACTION_SMS_SENT
+            putExtra(SmsSentReceiver.EXTRA_EVENT_ID, eventId)
+            putExtra(SmsSentReceiver.EXTRA_PHONE_HASH, phoneHash)
+            putExtra(SmsSentReceiver.EXTRA_PART_INDEX, partIndex)
+            putExtra(SmsSentReceiver.EXTRA_TOTAL_PARTS, totalParts)
         }
+        val requestCode = 31 * eventId.hashCode() + 17 * phoneHash + partIndex
         return PendingIntent.getBroadcast(
             context,
-            phone.hashCode(),
+            requestCode,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     }
 
