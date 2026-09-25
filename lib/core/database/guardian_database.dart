@@ -484,7 +484,7 @@ class GuardianDatabase extends _$GuardianDatabase {
       into(localOutboxOperations).insert(
         LocalOutboxOperationsCompanion.insert(
           operationId: '$alertId:update:${terminalState.name}',
-          ownerUserId: ownerUserId,
+          ownerUserId: Value(ownerUserId),
           aggregateType: 'incident',
           aggregateId: alertId,
           operationType: 'updateIncidentStatus',
@@ -536,7 +536,7 @@ class GuardianDatabase extends _$GuardianDatabase {
         await into(localOutboxOperations).insert(
           LocalOutboxOperationsCompanion.insert(
             operationId: '$alertId:createIncident',
-            ownerUserId: ownerUserId,
+            ownerUserId: Value(ownerUserId),
             aggregateType: 'incident',
             aggregateId: alertId,
             operationType: 'createIncident',
@@ -779,20 +779,6 @@ class GuardianDatabase extends _$GuardianDatabase {
     ));
     return affected == 1;
   }
-}
-
-// ═══════════════════════════════════════════════════════
-// DATABASE CONNECTION
-// ═══════════════════════════════════════════════════════
-
-LazyDatabase _openConnection() {
-  return impl.openConnection();
-}
-
-final databaseProvider = Provider<GuardianDatabase>((ref) {
-  final database = GuardianDatabase();
-  ref.onDispose(database.close);
-  return database;
 
   /// Remove old local safety history without touching active/pending evidence.
   ///
@@ -852,4 +838,19 @@ final databaseProvider = Provider<GuardianDatabase>((ref) {
           .go();
     });
   }
+
+}
+
+// ═══════════════════════════════════════════════════════
+// DATABASE CONNECTION
+// ═══════════════════════════════════════════════════════
+
+LazyDatabase _openConnection() {
+  return impl.openConnection();
+}
+
+final databaseProvider = Provider<GuardianDatabase>((ref) {
+  final database = GuardianDatabase();
+  ref.onDispose(database.close);
+  return database;
 });
