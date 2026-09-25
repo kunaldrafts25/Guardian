@@ -135,6 +135,39 @@ def test_google_auth_refresh_and_authenticated_call():
 
 
 
+def test_session_bootstrap_rejects_mismatched_refresh_identity():
+    with (
+        patch(
+            "aws.server.bootstrap_cognito_identity",
+            return_value={
+                "user_id": "subject-a",
+                "email": "a@example.com",
+                "display_name": "A",
+                "photo_url": "",
+                "auth_provider": "google",
+            },
+        ),
+        patch(
+            "aws.server.validate_refresh_token_owner",
+            side_effect=ValueError(
+                "Refresh token does not belong to the authenticated user"
+            ),
+        ),
+    ):
+        response = client.post(
+            "/auth/session",
+            json={
+                "access_token": "valid_access_token_subject_a",
+                "refresh_token": "refresh_token_subject_b_123456",
+                "device_label": "Test Device",
+                "platform": "android",
+            },
+        )
+
+    assert response.status_code == 401
+    assert "does not belong" in response.text
+
+
 def test_google_auth_wrong_audience_rejected(monkeypatch):
     monkeypatch.setattr("aws.cognito_service.GOOGLE_CLIENT_ID", "guardian-google-client")
     payload = {
