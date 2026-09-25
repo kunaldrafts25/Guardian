@@ -341,8 +341,12 @@ class GuardianDatabase extends _$GuardianDatabase {
   Future<void> upsertAlert(LocalAlertsCompanion alert) =>
       into(localAlerts).insertOnConflictUpdate(alert);
 
-  Future<List<LocalAlert>> getUnsyncedAlerts() =>
-      (select(localAlerts)..where((t) => t.syncedToCloud.equals(false))).get();
+  Future<List<LocalAlert>> getUnsyncedAlerts(String ownerUserId) =>
+      (select(localAlerts)
+            ..where((t) =>
+                t.userId.equals(ownerUserId) &
+                t.syncedToCloud.equals(false)))
+          .get();
 
   Future<LocalAlert?> getActiveAlert(String userId) => (select(localAlerts)
         ..where((alert) =>
