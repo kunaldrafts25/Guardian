@@ -320,6 +320,7 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         "created_at": now_iso,
         "updated_at": now_iso,
         "expires_at": _retention_expiry(datetime.fromisoformat(now_iso)),
+        "accepted_responder_count": 0,
         "agent_decision": "PENDING_REASONING",
         "agent_execution_state": "PENDING",
         "orchestration_event_state": "PENDING",
