@@ -26,6 +26,7 @@ Mirrors real AWS API Gateway + Lambda endpoints:
 """
 
 import os
+import logging
 import sys
 from pathlib import Path
 
@@ -111,6 +112,8 @@ from aws.google_maps_service import (
     place_details,
     compute_walking_route,
 )
+
+logger = logging.getLogger("guardian_server")
 
 app = FastAPI(
     title="Guardian AWS Agentic Backend",
