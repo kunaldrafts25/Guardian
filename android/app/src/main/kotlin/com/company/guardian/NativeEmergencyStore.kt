@@ -152,6 +152,104 @@ object NativeEmergencyStore {
     }
 
     @Synchronized
+    fun updateSmsSubmissionResults(
+        context: Context,
+        eventId: String,
+        acceptedPhones: JSONArray,
+        failedPhones: JSONArray,
+        acceptedContactIds: JSONArray,
+        failedContactIds: JSONArray,
+    ): Boolean {
+        val all = allEvents(context)
+        var found = false
+        for (index in 0 until all.length()) {
+            val event = all.getJSONObject(index)
+            if (event.optString("event_id") == eventId) {
+                event.put("accepted_phones", acceptedPhones)
+                event.put("failed_phones", failedPhones)
+                event.put("accepted_contact_ids", acceptedContactIds)
+                event.put("failed_contact_ids", failedContactIds)
+                found = true
+                break
+            }
+        }
+        if (found) preferences(context).edit().putString(EVENTS_KEY, all.toString()).commit()
+        return found
+    }
+
+    @Synchronized
+    fun recordSmsPartResult(
+        context: Context,
+        eventId: String,
+        phoneHash: Int,
+        partIndex: Int,
+        totalParts: Int,
+        success: Boolean,
+        errorCode: Int?,
+    ): Boolean {
+        val all = allEvents(context)
+        var found = false
+        for (index in 0 until all.length()) {
+            val event = all.getJSONObject(index)
+            if (event.optString("event_id") != eventId) continue
+
+            val results = event.optJSONArray("sms_sent_results") ?: JSONArray()
+            var aggregate: JSONObject? = null
+            for (resultIndex in 0 until results.length()) {
+                val candidate = results.optJSONObject(resultIndex) ?: continue
+                if (candidate.optInt("phone_hash") == phoneHash) {
+                    aggregate = candidate
+                    break
+                }
+            }
+            if (aggregate == null) {
+                aggregate = JSONObject()
+                    .put("phone_hash", phoneHash)
+                    .put("status", "PENDING")
+                    .put("parts_total", totalParts)
+                    .put("parts_reported", 0)
+                    .put("parts_succeeded", 0)
+                results.put(aggregate)
+            }
+
+            val partResults = aggregate.optJSONObject("part_results") ?: JSONObject()
+            val partKey = partIndex.toString()
+            if (!partResults.has(partKey)) {
+                partResults.put(
+                    partKey,
+                    JSONObject()
+                        .put("success", success)
+                        .put("error_code", errorCode ?: JSONObject.NULL)
+                        .put("reported_at_ms", System.currentTimeMillis()),
+                )
+                aggregate.put("parts_reported", aggregate.optInt("parts_reported", 0) + 1)
+                if (success) {
+                    aggregate.put("parts_succeeded", aggregate.optInt("parts_succeeded", 0) + 1)
+                }
+            }
+
+            aggregate.put("part_results", partResults)
+            aggregate.put("parts_total", totalParts)
+            aggregate.put("updated_at_ms", System.currentTimeMillis())
+            val reported = aggregate.optInt("parts_reported", 0)
+            val succeeded = aggregate.optInt("parts_succeeded", 0)
+            aggregate.put(
+                "status",
+                when {
+                    reported < totalParts -> "PENDING"
+                    succeeded == totalParts -> "RADIO_SENT"
+                    else -> "FAILED"
+                },
+            )
+            event.put("sms_sent_results", results)
+            found = true
+            break
+        }
+        if (found) preferences(context).edit().putString(EVENTS_KEY, all.toString()).commit()
+        return found
+    }
+
+    @Synchronized
     fun markCloudSynced(context: Context, eventId: String, incidentId: String?): Boolean {
         val all = allEvents(context)
         var found = false
