@@ -19,6 +19,6 @@ Because iOS strictly curtails background execution and hardware access compared 
 
 ## Mitigation Strategy for iOS
 To provide a viable safety product on iOS, the following workarounds are required:
-1. **Cloud-backed escalation after incident ingestion**: Once an iOS incident reaches the backend, EventBridge Scheduler owns verification/escalation deadlines. This does not guarantee that a terminated/offline iOS app can create the incident in the first place.
+1. **Cloud-backed escalation after incident ingestion**: Once an iOS incident reaches the backend, the durable SQS deadline workflow plus the minute-level reconciliation worker owns verification/escalation recovery. This does not guarantee that a terminated/offline iOS app can create the incident in the first place.
 2. **Siri Shortcuts Integration**: Instead of hardware buttons, iOS users must be guided to set up a Siri Shortcut ("Hey Siri, trigger Guardian") or use the iOS 15+ Action Button on supported iPhones.
 3. **Apple Watch Companion App**: To restore background Fall Detection and Heart Rate anomalies, a dedicated watchOS app must be developed to leverage Apple's native fall detection APIs and HealthKit.
