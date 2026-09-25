@@ -26,7 +26,8 @@ part 'guardian_database.g.dart';
 // TABLE DEFINITIONS
 // ═══════════════════════════════════════════════════════
 
-/// Emergency contacts — stored locally, encrypted at rest
+/// Emergency contacts — stored in OS-protected app storage. The Drift file is
+/// not SQLCipher-encrypted; see the storage/privacy ADR before changing this.
 class LocalContacts extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get ownerUserId => text()();
@@ -793,4 +794,64 @@ final databaseProvider = Provider<GuardianDatabase>((ref) {
   final database = GuardianDatabase();
   ref.onDispose(database.close);
   return database;
+
+  /// Remove old local safety history without touching active/pending evidence.
+  ///
+  /// The database itself relies on OS application sandbox/device encryption,
+  /// so minimizing retained sensitive history is part of the privacy boundary.
+  Future<void> pruneLocalSafetyData({
+    Duration incidentRetention = const Duration(days: 90),
+    Duration locationRetention = const Duration(days: 7),
+  }) async {
+    final now = DateTime.now();
+    final incidentCutoff = now.subtract(incidentRetention);
+    final locationCutoff = now.subtract(locationRetention);
+
+    await transaction(() async {
+      await (delete(localLocationLog)
+            ..where((row) => row.timestamp.isSmallerThanValue(locationCutoff)))
+          .go();
+
+      await (delete(localDeliveryAttempts)
+            ..where((row) => row.updatedAt.isSmallerThanValue(incidentCutoff)))
+          .go();
+
+      await (delete(localIncidentEvents)
+            ..where((row) => row.createdAt.isSmallerThanValue(incidentCutoff)))
+          .go();
+
+      await (delete(localIncidents)
+            ..where((row) =>
+                row.syncedToCloud.equals(true) &
+                row.createdAt.isSmallerThanValue(incidentCutoff)))
+          .go();
+
+      final oldTerminalAlerts = await (select(localAlerts)
+            ..where((row) =>
+                row.syncedToCloud.equals(true) &
+                row.createdAt.isSmallerThanValue(incidentCutoff) &
+                row.status.isIn(const ['resolved', 'cancelled', 'expired'])))
+          .get();
+      for (final alert in oldTerminalAlerts) {
+        await (delete(localIncidentEvents)
+              ..where((row) => row.incidentId.equals(alert.alertId)))
+            .go();
+        await (delete(localDeliveryAttempts)
+              ..where((row) => row.incidentId.equals(alert.alertId)))
+            .go();
+        await (delete(localAlerts)
+              ..where((row) => row.alertId.equals(alert.alertId)))
+            .go();
+      }
+
+      await (delete(localCheckIns)
+            ..where((row) =>
+                row.status.isIn(
+                  const ['confirmed', 'cancelled', 'escalated'],
+                ) &
+                row.scheduledAt.isSmallerThanValue(incidentCutoff)))
+          .go();
+    });
+  }
+
 });
