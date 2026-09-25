@@ -375,7 +375,13 @@ def api_refresh_token(req: RefreshTokenRequest):
 def api_sign_out(request: Request):
     """Revoke all tokens, sessions, and user-bound push endpoints."""
     user_id = authenticated_user_id(request)
-    disable_all_device_endpoints(user_id)
+    try:
+        disable_all_device_endpoints(user_id)
+    except Exception as error:
+        logger.warning(
+            "Push endpoint cleanup failed during sign-out: %s",
+            type(error).__name__,
+        )
     result = sign_out(request.state.access_token)
     revoke_all_sessions(user_id)
     return result
@@ -396,7 +402,13 @@ def api_list_sessions(request: Request):
 def api_revoke_session(session_id: str, request: Request):
     try:
         user_id = authenticated_user_id(request)
-        disable_device_endpoints_for_session(user_id, session_id)
+        try:
+            disable_device_endpoints_for_session(user_id, session_id)
+        except Exception as error:
+            logger.warning(
+                "Push endpoint cleanup failed during session revocation: %s",
+                type(error).__name__,
+            )
         revoke_session(user_id, session_id)
         return {"success": True}
     except ValueError as error:
