@@ -170,6 +170,11 @@ class OfflineSyncService {
                   'latitude': alert.latitude,
                   'longitude': alert.longitude,
                   if (alert.accuracy != null) 'accuracy': alert.accuracy,
+                  // Schema-v1 alerts did not persist an independent GPS capture
+                  // time. startedAt is the oldest defensible timestamp; mark the
+                  // source explicitly so it is never represented as replay-time GPS.
+                  'captured_at': alert.startedAt.toUtc().toIso8601String(),
+                  'source': 'LEGACY_LOCAL_ALERT',
                 }
               : null,
           motionData: {
