@@ -51,7 +51,15 @@
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="guardian" android:host="emergency" />
+            </intent-filter>
+            <!-- Cognito authorization-code + PKCE callback. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="guardian" android:host="auth" />
             </intent-filter>
         </activity>
 
