@@ -21,6 +21,8 @@ import hashlib
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 
+from aws.session_service import validate_access_session
+
 try:
     import boto3
     from botocore.exceptions import ClientError
@@ -322,6 +324,16 @@ def send_push_to_user(
     failures: List[Dict[str, str]] = []
 
     for endpoint in endpoints:
+        session_id = str(endpoint.get("session_id") or "")
+        if not session_id or not validate_access_session(session_id, user_id):
+            _mark_endpoint_disabled(
+                user_id,
+                str(endpoint.get("device_id") or ""),
+                reason="guardian_session_inactive",
+                dynamo=dynamo,
+            )
+            continue
+
         platform = str(endpoint.get("platform") or "android")
         endpoint_arn = str(endpoint["sns_endpoint_arn"])
         payload = (
