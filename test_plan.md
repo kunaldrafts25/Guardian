@@ -1,4 +1,4 @@
-# Guardian Comprehensive Safety & Quality Test Plan (Post-P0/P1/P2/P3)
+# Guardian Comprehensive Safety & Quality Test Plan (Post-P0/P1/P2/P3 + Phase 4 Critical Repair)
 
 This test plan defines the formal verification suite and regression acceptance criteria for Guardian across mobile clients (Flutter & Android native) and cloud infrastructure (AWS API Gateway, Lambda, DynamoDB, Cognito, SNS, Bedrock).
 
@@ -82,7 +82,7 @@ This test plan defines the formal verification suite and regression acceptance c
 
 ### 4.3 Mission Lifecycle & Precise Location Authorization
 - [x] Verify candidate invitation delivery with coarse location only (approximate neighborhood/distance).
-- [x] Test mission acceptance (`POST /missions/{id}/accept`) issuing single-use `navigation_grant`.
+- [x] Test mission acceptance (`POST /incidents/{id}/accept`) issuing a short-lived `navigation_grant`.
 - [x] Verify maximum accepted responder limit (`MAX_ACCEPTED_RESPONDERS = 2`) rejecting excess acceptances with `409 Conflict`.
 - [x] Test exchanging valid grant for precise coordinates (`POST /incidents/{id}/authorized-location`).
 - [x] Verify immediate revocation of navigation grant upon:
