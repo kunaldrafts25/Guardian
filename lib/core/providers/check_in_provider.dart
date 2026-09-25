@@ -439,8 +439,8 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
           if (changed && mounted) {
             _cancelTimers();
             await _notifications.cancel(_reminderNotificationId);
-            state =
-                state.copyWith(status: CheckInStatus.escalated, clearError: true);
+            state = state.copyWith(
+                status: CheckInStatus.escalated, clearError: true);
           }
           return;
         }

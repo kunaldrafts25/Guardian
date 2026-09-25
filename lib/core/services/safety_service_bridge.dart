@@ -366,7 +366,8 @@ class SafetyServiceBridge {
     } on MissingPluginException {
       return null;
     } catch (error) {
-      Logger.error('Failed to trigger canonical native check-in emergency', error);
+      Logger.error(
+          'Failed to trigger canonical native check-in emergency', error);
       return null;
     }
   }
@@ -389,7 +390,8 @@ class SafetyServiceBridge {
     return acknowledgeNativeEmergencyEventById(eventId);
   }
 
-  static Future<bool> acknowledgeNativeEmergencyEventById(String eventId) async {
+  static Future<bool> acknowledgeNativeEmergencyEventById(
+      String eventId) async {
     try {
       return await _serviceChannel.invokeMethod<bool>(
             'acknowledgeNativeEmergencyEvent',
