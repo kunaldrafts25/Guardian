@@ -336,21 +336,3 @@ def get_user_profile(user_id: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Get user profile failed: {e}")
         return None
-
-
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _generate_temp_password() -> str:
-    """Generate a consistent temporary password for Cognito user creation."""
-    import secrets
-    import string
-    chars = string.ascii_letters + string.digits + "!@#$"
-    pwd = "".join(secrets.choice(chars) for _ in range(16))
-    # Ensure complexity requirements met
-    return f"Grd1!A{pwd[:12]}"
-
-
