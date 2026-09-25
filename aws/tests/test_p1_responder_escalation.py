@@ -224,11 +224,12 @@ class TestProgressiveEscalationAndRedispatch:
         assert inc_w["current_escalation_stage"] == 2
         assert "helper_backup" in inc_w["dispatched_responder_ids"]
 
-        # Local dev creates the Stage-2 mission but does not fabricate push
-        # provider acceptance. A subsequent evaluation therefore advances again.
+        # The Stage-2 mission was not provider-accepted in local dev. With no
+        # additional undispatched responders in larger bands, the next evaluation
+        # skips empty stages and reports maximum-radius exhaustion truthfully.
         eval_res = tools.process_incident_redispatch_eval(iid)
-        assert eval_res["status"] == "INVITATIONS_CREATED"
-        assert eval_res["stage"] == 3
+        assert eval_res["status"] == "MAX_RADIUS_REACHED"
+        assert get_incident(iid)["current_escalation_stage"] == 4
 
 
 class TestNavigationGrantLifecycle:
