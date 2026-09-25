@@ -665,79 +665,149 @@ def execute_agent_reasoning(
     }
 
 
-def _claim_verification_timeout(incident_id: str) -> bool:
-    """Atomically move a pending verification to TIMED_OUT once."""
+def _claim_verification_timeout(
+    incident_id: str,
+    run_id: str,
+    *,
+    lease_seconds: int = 90,
+) -> str:
+    """Acquire a recoverable lease for one verification-deadline execution."""
     incident = get_incident(incident_id)
     if not incident:
-        return False
-    if incident.get("verification_status") != "PENDING":
-        return False
+        return "NOOP"
+    if incident.get("verification_status") == "TIMED_OUT":
+        return "COMPLETED"
     if incident.get("agent_decision") != "REQUEST_USER_VERIFICATION":
-        return False
+        return "NOOP"
     if incident.get("state") in {
         IncidentState.RESOLVED.value,
         IncidentState.CANCELLED.value,
         IncidentState.EXPIRED.value,
     }:
-        return False
+        return "NOOP"
 
     now_dt = datetime.now(timezone.utc)
+    now_epoch = int(now_dt.timestamp())
     deadline = int(incident.get("verification_deadline_at") or 0)
-    if deadline and int(now_dt.timestamp()) < deadline:
-        return False
+    if deadline and now_epoch < deadline:
+        return "EARLY"
 
+    lease_until = now_epoch + max(30, int(lease_seconds))
     dynamo = get_dynamo_resource()
-    now = now_dt.isoformat()
     if dynamo:
+        table = dynamo.Table(DYNAMODB_INCIDENTS_TABLE)
         try:
-            dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            table.update_item(
                 Key={"incident_id": incident_id},
                 UpdateExpression=(
-                    "SET verification_status = :timed_out, "
-                    "verification_completed_at = :now"
+                    "SET verification_status = :processing, "
+                    "verification_run_id = :run_id, "
+                    "verification_lease_expires_at = :lease, "
+                    "verification_processing_at = :now"
                 ),
                 ConditionExpression=(
-                    "verification_status = :pending "
-                    "AND agent_decision = :verification "
+                    "agent_decision = :verification "
                     "AND #state <> :resolved "
                     "AND #state <> :cancelled "
                     "AND #state <> :expired "
                     "AND (attribute_not_exists(verification_deadline_at) "
-                    "OR verification_deadline_at <= :now_epoch)"
+                    "OR verification_deadline_at <= :now_epoch) "
+                    "AND (verification_status = :pending "
+                    "OR (verification_status = :processing "
+                    "AND verification_lease_expires_at < :now_epoch))"
                 ),
                 ExpressionAttributeNames={"#state": "state"},
                 ExpressionAttributeValues={
-                    ":timed_out": "TIMED_OUT",
+                    ":processing": "PROCESSING",
                     ":pending": "PENDING",
                     ":verification": "REQUEST_USER_VERIFICATION",
                     ":resolved": IncidentState.RESOLVED.value,
                     ":cancelled": IncidentState.CANCELLED.value,
                     ":expired": IncidentState.EXPIRED.value,
-                    ":now": now,
-                    ":now_epoch": int(now_dt.timestamp()),
+                    ":run_id": run_id,
+                    ":lease": lease_until,
+                    ":now": now_dt.isoformat(),
+                    ":now_epoch": now_epoch,
                 },
             )
-            return True
+            return "ACQUIRED"
         except Exception as error:
             code = getattr(error, "response", {}).get("Error", {}).get("Code")
-            if code == "ConditionalCheckFailedException":
-                return False
-            raise
+            if code != "ConditionalCheckFailedException":
+                raise
+            latest = table.get_item(
+                Key={"incident_id": incident_id},
+                ConsistentRead=True,
+            ).get("Item") or {}
+            if latest.get("verification_status") == "TIMED_OUT":
+                return "COMPLETED"
+            if latest.get("verification_status") == "PROCESSING":
+                return "BUSY"
+            return "NOOP"
 
-    # Local test mode uses the same semantic claim without DynamoDB.
-    incident["verification_status"] = "TIMED_OUT"
-    incident["verification_completed_at"] = now
-    return True
+    if os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true":
+        status = str(incident.get("verification_status") or "")
+        if status == "PROCESSING":
+            if int(incident.get("verification_lease_expires_at") or 0) >= now_epoch:
+                return "BUSY"
+        elif status != "PENDING":
+            return "NOOP"
+        incident["verification_status"] = "PROCESSING"
+        incident["verification_run_id"] = run_id
+        incident["verification_lease_expires_at"] = lease_until
+        incident["verification_processing_at"] = now_dt.isoformat()
+        return "ACQUIRED"
+    return "NOOP"
 
+
+def _complete_verification_timeout(
+    incident_id: str,
+    run_id: str,
+) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression=(
+                "SET verification_status = :timed_out, "
+                "verification_completed_at = :now "
+                "REMOVE verification_run_id, verification_lease_expires_at"
+            ),
+            ConditionExpression=(
+                "verification_status = :processing AND verification_run_id = :run_id"
+            ),
+            ExpressionAttributeValues={
+                ":timed_out": "TIMED_OUT",
+                ":processing": "PROCESSING",
+                ":run_id": run_id,
+                ":now": now,
+            },
+        )
+        return
+
+    incident = get_incident(incident_id)
+    if (
+        incident
+        and incident.get("verification_status") == "PROCESSING"
+        and incident.get("verification_run_id") == run_id
+    ):
+        incident["verification_status"] = "TIMED_OUT"
+        incident["verification_completed_at"] = now
+        incident.pop("verification_run_id", None)
+        incident.pop("verification_lease_expires_at", None)
 
 def _handle_verification_timeout(
     incident_id: str,
     correlation_id: str,
 ) -> Dict[str, Any]:
-    if not _claim_verification_timeout(incident_id):
+    claim = _claim_verification_timeout(incident_id, correlation_id)
+    if claim == "BUSY":
+        raise RuntimeError("Verification timeout execution is already running")
+    if claim in {"NOOP", "COMPLETED", "EARLY"}:
         return {
             "incident_id": incident_id,
-            "status": "VERIFICATION_TIMEOUT_NOOP",
+            "status": f"VERIFICATION_TIMEOUT_{claim}",
         }
 
     incident = get_incident(incident_id) or {}
@@ -823,6 +893,8 @@ def _handle_verification_timeout(
             "User verification deadline expired without a safe response; "
             "deterministic policy escalated independent emergency channels."
         )
+
+    _complete_verification_timeout(incident_id, correlation_id)
 
     return {
         "incident_id": incident_id,
