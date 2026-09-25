@@ -176,18 +176,16 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
                                       final prediction =
                                           searchState.predictions[index];
                                       return ListTile(
-                                        leading:
-                                            const Icon(Icons.location_on),
+                                        leading: const Icon(Icons.location_on),
                                         title: Text(prediction.mainText),
-                                        subtitle:
-                                            prediction.secondaryText == null
-                                                ? null
-                                                : Text(
-                                                    prediction.secondaryText!,
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
+                                        subtitle: prediction.secondaryText ==
+                                                null
+                                            ? null
+                                            : Text(
+                                                prediction.secondaryText!,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
                                         onTap: () =>
                                             _selectPrediction(prediction),
                                       );
@@ -207,8 +205,7 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
                           Icon(
                             Icons.touch_app,
                             size: 48,
-                            color:
-                                AppColors.primary.withValues(alpha: 0.7),
+                            color: AppColors.primary.withValues(alpha: 0.7),
                           ),
                           const SizedBox(height: 8),
                           Container(
