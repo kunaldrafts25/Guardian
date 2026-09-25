@@ -759,32 +759,83 @@ class AbuseReportRequest(BaseModel):
     description: str = Field(min_length=5)
 
 @app.post("/incidents/{incident_id}/report")
-def api_report_incident(incident_id: str, req: AbuseReportRequest, request: Request):
-    """P1-03: Submit abuse report and freeze trust score."""
+def api_report_incident(
+    incident_id: str,
+    req: AbuseReportRequest,
+    request: Request,
+):
+    """Record a moderation report only from a participant in the incident."""
     from aws.incident_handler.handler import get_dynamo_resource
-    from aws.agent.tools import DYNAMODB_INCIDENTS_TABLE, DYNAMODB_RESPONDERS_TABLE, _dev_mode
-    user_id = authenticated_user_id(request)
-    
+    from aws.agent.tools import _incident_missions, _dev_mode
+
+    reporter_id = authenticated_user_id(request)
+    incident = get_incident(incident_id)
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    reporter_role = None
+    if incident.get("user_id") == reporter_id:
+        reporter_role = "OWNER"
+    else:
+        missions = _incident_missions(incident_id)
+        if any(m.get("responder_id") == reporter_id for m in missions):
+            reporter_role = "RESPONDER"
+    if reporter_role is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the incident owner or an associated responder can report it.",
+        )
+
+    report_id = f"report_{uuid.uuid4().hex}"
+    now = datetime.now(timezone.utc)
+    report = {
+        "report_id": report_id,
+        "incident_id": incident_id,
+        "reporter_user_id": reporter_id,
+        "reporter_role": reporter_role,
+        "reason": req.reason[:120],
+        "description": req.description[:1000],
+        "review_status": "PENDING",
+        "created_at": now.isoformat(),
+        "expires_at": int(now.timestamp()) + (180 * 24 * 60 * 60),
+    }
+
     dynamo = get_dynamo_resource()
     if dynamo:
         try:
+            dynamo.Table(
+                os.environ.get(
+                    "DYNAMODB_ABUSE_REPORTS_TABLE",
+                    "guardian-abuse-reports",
+                )
+            ).put_item(
+                Item=report,
+                ConditionExpression="attribute_not_exists(report_id)",
+            )
             dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
                 Key={"incident_id": incident_id},
-                UpdateExpression="SET moderation_status = :flagged, reported_by = :reporter, moderation_reason = :reason",
+                UpdateExpression=(
+                    "SET moderation_status = :flagged, "
+                    "last_reported_at = :reported_at"
+                ),
+                ConditionExpression="attribute_exists(incident_id)",
                 ExpressionAttributeValues={
                     ":flagged": "NEEDS_REVIEW",
-                    ":reporter": user_id,
-                    ":reason": req.reason
-                }
+                    ":reported_at": now.isoformat(),
+                },
             )
-            # Do not mutate the reporter's responder status. A moderator must
-            # identify and review the actual subject before any trust action.
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+        except Exception as error:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not record moderation report: {type(error).__name__}",
+            )
     elif not _dev_mode():
         raise HTTPException(status_code=500, detail="Database unavailable")
-        
-    return {"status": "REPORT_RECEIVED"}
+
+    return {
+        "status": "REPORT_RECEIVED",
+        "report_id": report_id,
+    }
 
 @app.post("/incidents/{incident_id}/dispatch-community")
 def api_dispatch_community(
