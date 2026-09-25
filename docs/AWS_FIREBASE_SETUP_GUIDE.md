@@ -431,7 +431,7 @@ CognitoUserPoolId
 CognitoClientId
 ```
 
-The mobile build needs `ApiEndpoint`. The backend receives the Cognito IDs automatically through CloudFormation environment variables.
+The mobile build needs `ApiEndpoint`, `CognitoAuthDomain`, and `CognitoClientId` from the deployed stack outputs. The backend receives the user-pool/table configuration through CloudFormation environment variables.
 
 You can also inspect the stack status:
 
@@ -730,7 +730,7 @@ You may pass mobile values at build time with `--dart-define`.
 
 Do not manually edit generated build output under `build/` or `.aws-sam/`.
 
-Do not put AWS table names or Cognito IDs into Flutter source; CloudFormation supplies backend values and the app only needs the API endpoint.
+Do not put AWS table names or secrets into Flutter source. Supply the public API endpoint, Cognito managed-login domain, and public Cognito mobile client ID as build-time values.
 
 ## 20. Files you should not modify for normal setup
 
@@ -793,12 +793,16 @@ aws sts get-caller-identity
 
 Check that:
 
-- The phone number is verified in the SMS sandbox.
-- The deployment region is `ap-south-1`.
-- SMS spending is enabled.
-- The Cognito trigger Lambda has deployed successfully.
-- CloudWatch logs show an SNS publish attempt.
-- Indian DLT requirements are satisfied where applicable.
+- the deployed user-pool client lists Google as a supported identity provider;
+- the Google OAuth web client ID/secret used by Cognito are correct;
+- the Google OAuth redirect configuration allows Cognito's provider redirect;
+- the Cognito app client callback URL exactly matches `guardian://auth/callback`;
+- the mobile build received `COGNITO_AUTH_DOMAIN`, `COGNITO_CLIENT_ID`, and `COGNITO_REDIRECT_URI`;
+- the Android/iOS custom URL scheme is registered and returns the authorization code to Guardian;
+- the access token includes `aws.cognito.signin.user.admin`, which Guardian uses to bootstrap the device session;
+- the Guardian API can validate the Cognito access token and refresh-token ownership.
+
+AWS SMS sandbox/DLT configuration is unrelated to Guardian login and should be debugged only for the separate emergency-contact SMS channel.
 
 ### `AWS_API_ENDPOINT is required in release builds`
 
