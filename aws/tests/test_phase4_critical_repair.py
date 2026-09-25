@@ -1,5 +1,6 @@
 """Regression tests for Phase 4 critical emergency-orchestration repairs."""
 
+import time
 from unittest.mock import patch
 
 from aws.agent import tools
