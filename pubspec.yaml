@@ -19,7 +19,6 @@ dependencies:
   # ═══════════════════════════════════════════════
   firebase_core: ^3.8.1
   firebase_messaging: ^15.1.6
-  google_sign_in: ^6.2.2
 
   # ═══════════════════════════════════════════════
   # State Management — Riverpod ONLY (GetIt removed)
@@ -35,20 +34,13 @@ dependencies:
   path: ^1.9.0
 
   # ═══════════════════════════════════════════════
-  # Maps and Location — OpenStreetMap (FREE, no API key)
+  # Maps and Location — Google Maps SDK + Guardian-proxied Places/Routes
   # ═══════════════════════════════════════════════
-  flutter_map: ^7.0.2           # OSM map rendering (replaces google_maps_flutter)
-  latlong2: ^0.9.0              # LatLng type for flutter_map
-  flutter_map_tile_caching: ^9.1.0  # Offline tile caching for no-network mode
+  google_maps_flutter: ^2.18.1
+  latlong2: ^0.9.0              # Provider-neutral route geometry model
   geolocator: ^13.0.2
   geocoding: ^3.0.0
   sensors_plus: ^4.0.2
-
-  # ═══════════════════════════════════════════════
-  # Audio — voice SOS + emergency recording
-  # ═══════════════════════════════════════════════
-  speech_to_text: ^7.0.0
-  record: ^6.1.2                     # Emergency audio recording
 
   # ═══════════════════════════════════════════════
   # UI Components
@@ -67,7 +59,8 @@ dependencies:
   permission_handler: ^11.2.0
   # 9.4.7 conflicts with geolocator_apple in Flutter 3.47 iOS builds.
   permission_handler_apple: ^9.6.1
-  url_launcher: ^6.2.4               # Emergency call + iOS SMS fallback
+  url_launcher: ^6.2.4               # Emergency call + OAuth browser launch
+  app_links: ^6.4.1                  # Cognito PKCE custom-scheme callback
   intl: ^0.20.2
   connectivity_plus: ^6.1.4
   dio: ^5.7.0

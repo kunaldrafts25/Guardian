@@ -1,339 +1,165 @@
-# Guardian Public & Protected API Documentation
+# Guardian API Documentation
 
-This document defines the REST API endpoints served by the Guardian AWS Serverless backend (`aws/server.py` via AWS Lambda and Amazon API Gateway).
+Current API contract: Phase 5 pre-production hardening baseline.
 
----
+## Authentication
 
-## Global Authentication & Security Headers
+### Production sign-in
 
-All endpoints except `GET /health` and `POST /auth/phone/*` or `POST /auth/google` require:
+Production users authenticate with Google through Cognito managed login using authorization-code + PKCE. The mobile client exchanges the Cognito authorization code directly with Cognito, then creates a Guardian device session:
 
-1. **Bearer Authentication**: `Authorization: Bearer <cognito_access_token>`
-2. **Guardian Session Verification**: `X-Guardian-Session-ID: <session_uuid>`
-3. **Correlation Tracking**: `X-Correlation-ID: <uuid>` (auto-injected by API Gateway if missing)
+`POST /auth/session`
 
----
+Request:
+```json
+{
+  "access_token": "<Cognito access token>",
+  "refresh_token": "<Cognito refresh token>",
+  "device_label": "Guardian Android device",
+  "platform": "android"
+}
+```
 
-## 1. Authentication & Session Endpoints
+The backend resolves the immutable Cognito subject and returns the Guardian session metadata. Protected API requests then require:
 
-### `POST /auth/send-otp`
-- **Purpose**: Initiates SMS OTP delivery via Amazon Cognito Custom Challenge.
-- **Auth**: None (Public)
-- **Role**: Any
-- **Request Schema**:
-  ```json
-  {
-    "phone_number": "+919876543210" // E.164 format
+```text
+Authorization: Bearer <Cognito access token>
+X-Guardian-Session-ID: <Guardian session UUID>
+```
+
+Cognito ID tokens are not accepted as protected API bearer tokens.
+
+`POST /auth/google` exists only for explicit development-mode tests and is retired in production. Phone OTP endpoints do not exist.
+
+### Session endpoints
+
+- `POST /auth/refresh` — refresh Cognito access/id tokens after validating the Guardian session and refresh-token hash.
+- `POST /auth/sign-out` — global Cognito sign-out, revoke Guardian sessions, and disable user-bound push endpoints.
+- `GET /auth/sessions` — list current account sessions.
+- `DELETE /auth/sessions/{session_id}` — revoke one owned session and disable its push endpoints.
+
+## Maps
+
+All routes below are protected and use Guardian's server-only Google Maps Platform credential.
+
+- `POST /maps/places/autocomplete`
+- `POST /maps/places/details`
+- `POST /maps/routes/walking`
+
+Google route geometry is ordinary route data. Guardian does not label it as a verified safe route.
+
+## Users and devices
+
+- `GET /users/{user_id}` — owner profile read.
+- `PUT /users/{user_id}` — owner profile update.
+- `POST /users/{user_id}/contacts` — replace owned emergency-contact list.
+- `POST /users/{user_id}/device` — register an FCM/APNs token to the authenticated Guardian session and stable device ID.
+
+Device registration request:
+```json
+{
+  "device_token": "<FCM-or-APNs token>",
+  "device_id": "<stable local device UUID>",
+  "platform": "android"
+}
+```
+
+A token rebound to another account/session disables the previous Guardian binding.
+
+## Emergency incidents
+
+### `POST /incidents`
+
+Creates an idempotent incident from a stable `event_id`.
+
+```json
+{
+  "event_id": "client-event-uuid",
+  "event_type": "MANUAL_SOS",
+  "location": {
+    "latitude": 18.52,
+    "longitude": 73.85,
+    "accuracy": 12.0,
+    "captured_at": "2026-09-25T12:00:00Z",
+    "source": "gps"
+  },
+  "motion_data": {
+    "trigger_source": "button"
   }
-  ```
-- **Response Schema** (200 OK):
-  ```json
-  {
-    "session": "cognito_challenge_session_string",
-    "delivery_medium": "SMS",
-    "recipient": "+919876543210"
-  }
-  ```
-- **Error Codes**: `400 Bad Request` (invalid phone format), `500 Internal Error` (Cognito failure).
-- **Privacy Level**: Restricted (phone number PII).
+}
+```
 
-### `POST /auth/verify-otp`
-- **Purpose**: Verifies phone SMS OTP, returns Cognito JWT tokens, and issues an authenticated Guardian device session.
-- **Auth**: None (Public challenge)
-- **Role**: Any
-- **Request Schema**:
-  ```json
-  {
-    "phone_number": "+919876543210",
-    "otp_code": "123456",
-    "session": "cognito_challenge_session_string",
-    "device_label": "Pixel 8 Pro",
-    "platform": "android"
-  }
-  ```
-- **Response Schema** (200 OK):
-  ```json
-  {
-    "access_token": "ey...",
-    "id_token": "ey...",
-    "refresh_token": "ey...",
-    "expires_in": 3600,
-    "user_id": "cognito-sub-uuid",
-    "session_id": "guardian-session-uuid"
-  }
-  ```
-- **Error Codes**: `401 Unauthorized` (invalid or expired OTP), `500 Internal Error`.
-- **Privacy Level**: Highly Sensitive (Tokens & Session ID).
+The authenticated owner is supplied by the API boundary, not trusted from the body. Duplicate `event_id` creates return the same deterministic incident and repair orchestration emission if required.
 
-### `POST /auth/refresh`
-- **Purpose**: Refreshes expired access tokens. Validates matching `session_id`.
-- **Auth**: None (Uses `refresh_token` and `session_id`)
-- **Request Schema**:
-  ```json
-  {
-    "refresh_token": "ey...",
-    "session_id": "guardian-session-uuid"
-  }
-  ```
-- **Response Schema** (200 OK):
-  ```json
-  {
-    "access_token": "ey...",
-    "id_token": "ey...",
-    "session_id": "guardian-session-uuid"
-  }
-  ```
-- **Error Codes**: `401 Unauthorized` (revoked session or invalid refresh token).
+### Other owner incident routes
 
-### `POST /auth/sign-out`
-- **Purpose**: Global logout from Cognito and revokes all active sessions for user.
-- **Auth**: Required (`Bearer` + `X-Guardian-Session-ID`)
-- **Response Schema** (200 OK): `{"success": true}`
+- `GET /incidents/{incident_id}`
+- `PUT /incidents/{incident_id}/status`
+- `POST /incidents/{incident_id}/location`
+- `GET /incidents/{incident_id}/timeline`
+- `GET /incidents/{incident_id}/nearby`
+- `POST /incidents/{incident_id}/dispatch-community`
+- `POST /incidents/{incident_id}/escalate-dispatch`
+- `GET /incidents/{incident_id}/escalation-status`
+- `POST /incidents/{incident_id}/agent-step`
+- `POST /incidents/{incident_id}/escalate`
 
-### `GET /auth/sessions`
-- **Purpose**: List all active sessions and registered devices for authenticated user.
-- **Auth**: Required
-- **Response Schema** (200 OK):
-  ```json
-  {
-    "sessions": [
-      {
-        "session_id": "sess-1",
-        "device_label": "Pixel 8 Pro",
-        "platform": "android",
-        "created_at": "2026-09-24T12:00:00Z",
-        "last_seen_at": "2026-09-24T12:30:00Z",
-        "current": true
-      }
-    ]
-  }
-  ```
+Victim-location updates are conditional on ownership, nonterminal incident state, and a strictly newer captured timestamp.
 
-### `DELETE /auth/sessions/{session_id}`
-- **Purpose**: Revoke a specific session (remotely logs out that device).
-- **Auth**: Required
-- **Error Codes**: `404 Not Found` (session does not exist or owned by another user).
+## Responder APIs
 
----
+Responder operations require the Cognito responder role plus server-side approval/trust checks where applicable.
 
-## 2. Emergency Incident Endpoints
+- `POST /responders/enroll` — submit evidence digests for manual review.
+- `POST /responders/heartbeat` — update active availability/location. Current server availability TTL is approximately 30 minutes; mobile heartbeat cadence is approximately 15 minutes plus movement-triggered updates.
+- `GET /responders/invitations`
+- `GET /responders/missions`
+- `GET /missions/{mission_id}`
+- `PUT /missions/{mission_id}/status`
+- `POST /missions/{mission_id}/renew-grant`
 
-### `POST /incidents` (Status: 201 Created)
-- **Purpose**: Create a new emergency incident and trigger deterministic safety policy / Bedrock evaluation.
-- **Auth**: Required (`Bearer` + `X-Guardian-Session-ID`)
-- **Role**: Protected User
-- **Idempotency**: Enforced by `event_id` (client nonce). Submitting the same `event_id` returns the existing incident without duplicating alerts.
-- **Request Schema**:
-  ```json
-  {
-    "event_id": "b7891234-5678-4321-abcd-ef0123456789", // Client nonce
-    "event_type": "sos_button_hold", // "fall_detected", "hardware_panic", etc.
-    "location": {
-      "latitude": 19.0760,
-      "longitude": 72.8777,
-      "accuracy": 12.5,
-      "captured_at": "2026-09-24T12:00:00Z",
-      "source": "gps"
-    },
-    "motion_data": null
-  }
-  ```
-- **Response Schema** (201 Created):
-  ```json
-  {
-    "incident_id": "inc-456789",
-    "event_id": "b7891234-5678-4321-abcd-ef0123456789",
-    "user_id": "cognito-sub-uuid",
-    "state": "ACTIVE",
-    "created_at": "2026-09-24T12:00:01Z",
-    "initial_location": { ... },
-    "current_location": { ... }
-  }
-  ```
-- **Privacy Level**: Highly Sensitive (Victim GPS location).
+### Accept an invitation
 
-### `GET /incidents/{incident_id}`
-- **Purpose**: Retrieve current incident state and timeline metadata.
-- **Auth**: Required
-- **Authorization**: Caller must be incident owner (`user_id`).
-- **Response Schema** (200 OK): Full incident document including `state`, `escalation_stage`, `missions`.
+`POST /incidents/{incident_id}/accept`
 
-### `PUT /incidents/{incident_id}/status`
-- **Purpose**: Transition incident state (e.g. `RESOLVED`, `CANCELLED`).
-- **Auth**: Required (Owner only)
-- **Request Schema**:
-  ```json
-  {
-    "state": "RESOLVED", // "ACTIVE", "RESOLVED", "CANCELLED"
-    "note": "User safely reached destination"
-  }
-  ```
-- **Side Effects**: Automatically cancels and completes all active responder missions and revokes all navigation grants.
+Acceptance is transactionally conditioned on:
+- incident nonterminal,
+- responder approval/trust,
+- mission still `INVITED`,
+- invitation unexpired,
+- mission bound to caller,
+- accepted-responder capacity below the configured maximum.
 
-### `POST /incidents/{incident_id}/location`
-- **Purpose**: Continuous victim GPS tracking updates for an active emergency.
-- **Auth**: Required (Incident owner only)
-- **Request Schema**:
-  ```json
-  {
-    "location": {
-      "latitude": 19.0765,
-      "longitude": 72.8780,
-      "accuracy": 8.0,
-      "captured_at": "2026-09-24T12:01:30Z",
-      "source": "gps"
-    }
-  }
-  ```
-- **Response Schema** (200 OK):
-  ```json
-  {
-    "incident_id": "inc-456789",
-    "updated_at": "2026-09-24T12:01:31Z",
-    "freshness": "FRESH"
-  }
-  ```
-- **Error Codes**: `403 Forbidden` (not owner), `409 Conflict` (incident is terminal `RESOLVED`/`CANCELLED`).
+A successful response includes a short-lived navigation grant.
 
----
+### Read current authorized victim location
 
-## 3. Responder & Mission Endpoints
+`POST /incidents/{incident_id}/authorized-location`
 
-### `POST /responders/heartbeat`
-- **Purpose**: Responder availability heartbeat. Updates geohash position in DynamoDB with 300s TTL.
-- **Auth**: Required
-- **Role**: `responder`
-- **Request Schema**:
-  ```json
-  {
-    "latitude": 19.0760,
-    "longitude": 72.8777,
-    "is_active": true
-  }
-  ```
-- **Response Schema** (200 OK):
-  ```json
-  {
-    "responder_id": "user-uuid",
-    "status": "AVAILABLE",
-    "geohash": "te7u8",
-    "availability_expires_at": 1790250000
-  }
-  ```
+Requires the valid mission-bound navigation grant. The response includes coordinates plus accuracy, capture time, age, source, and freshness. Stale coordinates must be presented as last-known, not current.
 
-### `GET /responders/invitations`
-- **Purpose**: Lists pending coarse-location emergency invitations for the authenticated responder.
-- **Auth**: Required
-- **Role**: `responder`
-- **Response Schema** (200 OK):
-  ```json
-  {
-    "invitations": [
-      {
-        "mission_id": "mis-101",
-        "incident_id": "inc-456789",
-        "status": "INVITED",
-        "coarse_location": {
-          "approx_latitude": 19.08,
-          "approx_longitude": 72.88,
-          "distance_meters": 450.0
-        },
-        "expires_at": "2026-09-24T12:05:00Z"
-      }
-    ]
-  }
-  ```
+## Notifications
 
-### `POST /missions/{mission_id}/accept`
-- **Purpose**: Responder formally accepts an emergency invitation. Issues a single-use navigation grant.
-- **Auth**: Required
-- **Role**: `responder`
-- **Concurrency**: Capped at `MAX_ACCEPTED_RESPONDERS` (2). Returns `409 Conflict` if quota already met.
-- **Response Schema** (200 OK):
-  ```json
-  {
-    "mission_id": "mis-101",
-    "status": "ACCEPTED",
-    "navigation_grant": "grant-secret-uuid-token",
-    "grant_expires_at": "2026-09-24T12:15:00Z"
-  }
-  ```
+- `POST /notifications/contacts` — server-authored owned-contact safety update.
+- `POST /notifications/contact-test` — explicit non-emergency test to an owned contact.
+- `POST /push/send` — push to authenticated user's currently enabled session-bound endpoints.
+- `POST /push/sms` — development-only direct SMS route; production emergency contact SMS is server-side policy/tool behavior.
 
-### `POST /incidents/{incident_id}/authorized-location`
-- **Purpose**: Exchanges a valid navigation grant for the real, precise GPS coordinates of the victim.
-- **Auth**: Required
-- **Role**: `responder`
-- **Request Schema**:
-  ```json
-  {
-    "navigation_grant": "grant-secret-uuid-token"
-  }
-  ```
-- **Response Schema** (200 OK):
-  ```json
-  {
-    "latitude": 19.076543,
-    "longitude": 72.878012,
-    "accuracy": 8.0,
-    "freshness": "FRESH",
-    "age_seconds": 4.2,
-    "captured_at": "2026-09-24T12:01:30Z"
-  }
-  ```
-- **Error Codes**: `403 Forbidden` (invalid grant, expired grant, arrival reported, or incident resolved).
+Provider/OS acceptance is not handset-delivery proof.
 
-### `PUT /missions/{mission_id}/status`
-- **Purpose**: Advances mission lifecycle: `EN_ROUTE`, `ARRIVED`, `COMPLETED`, `WITHDRAWN`.
-- **Auth**: Required
-- **Role**: `responder`
-- **Request Schema**:
-  ```json
-  {
-    "status": "EN_ROUTE" // "ARRIVED", "COMPLETED", "WITHDRAWN"
-  }
-  ```
-- **Side Effects**:
-  - `EN_ROUTE` notifies protected user via push notification.
-  - `ARRIVED` revokes precise location grant and notifies protected user.
-  - `WITHDRAWN` triggers automatic redispatch to other responders.
+## Abuse reports
 
----
+`POST /incidents/{incident_id}/report`
 
-## 4. Notifications & Device Endpoints
+Only the incident owner or a responder associated with that incident may submit a report. Reports are separate TTL-backed moderation records; they do not suppress an SOS.
 
-### `POST /users/{user_id}/device`
-- **Purpose**: Registers an FCM (Android) or APNs (iOS) device push token with Amazon SNS.
-- **Auth**: Required (User matching `user_id`)
-- **Request Schema**:
-  ```json
-  {
-    "device_token": "fcm_or_apns_token_string",
-    "platform": "android" // "ios"
-  }
-  ```
-- **Response Schema** (200 OK):
-  ```json
-  {
-    "endpoint_arn": "arn:aws:sns:ap-south-1:...:endpoint/...",
-    "status": "REGISTERED"
-  }
-  ```
+## Error semantics
 
-### `POST /notifications/contact-test`
-- **Purpose**: Sends a single, explicit, non-emergency test SMS to an owned trusted contact.
-- **Auth**: Required
-- **Request Schema**:
-  ```json
-  {
-    "contact_id": "contact-uuid" // Optional; defaults to primary contact
-  }
-  ```
-- **Response Schema** (200 OK):
-  ```json
-  {
-    "contact_id": "contact-uuid",
-    "provider_accepted": true,
-    "message_id": "sns-sms-message-id",
-    "status": "PROVIDER_ACCEPTED"
-  }
-  ```
+- `401` — missing/invalid access token, revoked/invalid Guardian session.
+- `403` — authenticated but not authorized for the resource/role.
+- `404` — resource unavailable to caller.
+- `409` — state/concurrency conflict when exposed by the route adapter.
+- `422` — request validation failure.
+- `503` — required service temporarily unavailable.
+
+Operational clients should use the structured error payload and correlation ID rather than parsing provider-specific exception text.

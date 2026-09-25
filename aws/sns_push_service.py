@@ -17,8 +17,11 @@ Supported platforms:
 import os
 import json
 import logging
+import hashlib
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
+
+from aws.session_service import validate_access_session
 
 try:
     import boto3
@@ -33,6 +36,10 @@ AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "ap-south-1")
 SNS_FCM_PLATFORM_ARN = os.environ.get("SNS_FCM_PLATFORM_ARN", "")   # Android GCM/FCM
 SNS_APNS_PLATFORM_ARN = os.environ.get("SNS_APNS_PLATFORM_ARN", "") # iOS APNS
 DYNAMODB_USERS_TABLE = os.environ.get("DYNAMODB_USERS_TABLE", "guardian-users")
+DYNAMODB_DEVICE_ENDPOINTS_TABLE = os.environ.get(
+    "DYNAMODB_DEVICE_ENDPOINTS_TABLE",
+    "guardian-device-endpoints",
+)
 
 
 def _sns_client():
@@ -51,76 +58,226 @@ def _dynamo():
 # DEVICE REGISTRATION
 # ─────────────────────────────────────────────────────────────────────────────
 
-def register_device_endpoint(
+def _device_table(dynamo=None):
+    resource = dynamo or _dynamo()
+    return resource.Table(DYNAMODB_DEVICE_ENDPOINTS_TABLE) if resource else None
+
+
+def _query_all(table, **kwargs) -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
+    request = dict(kwargs)
+    while True:
+        response = table.query(**request)
+        items.extend(response.get("Items", []))
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            return items
+        request["ExclusiveStartKey"] = last_key
+
+
+def _token_hash(device_token: str) -> str:
+    return hashlib.sha256(device_token.encode("utf-8")).hexdigest()
+
+
+def _mark_endpoint_disabled(
     user_id: str,
-    device_token: str,
-    platform: str = "android",  # "android" | "ios"
-    user_data: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Register a device push token with AWS SNS to get an endpoint ARN.
-    This endpoint ARN is stored in DynamoDB and used for targeted push.
-    
-    Returns: { "endpoint_arn": str, "success": bool }
-    """
-    sns = _sns_client()
-    if not sns:
-        return {"endpoint_arn": "", "success": False, "error": "SNS client unavailable"}
-
-    platform_arn = SNS_FCM_PLATFORM_ARN if platform == "android" else SNS_APNS_PLATFORM_ARN
-    if not platform_arn:
-        logger.warning(f"No SNS platform ARN configured for {platform}")
-        return {"endpoint_arn": "", "success": False, "error": f"Platform ARN not configured for {platform}"}
-
-    try:
-        resp = sns.create_platform_endpoint(
-            PlatformApplicationArn=platform_arn,
-            Token=device_token,
-            CustomUserData=user_data or user_id,
-            Attributes={"Enabled": "true"},
-        )
-        endpoint_arn = resp["EndpointArn"]
-        logger.info(f"SNS endpoint registered for {user_id}")
-
-        # Persist endpoint ARN in DynamoDB
-        _save_endpoint_arn(user_id, endpoint_arn, platform)
-
-        return {"endpoint_arn": endpoint_arn, "success": True}
-    except ClientError as ce:
-        # Endpoint already exists — get existing ARN
-        err_code = ce.response["Error"]["Code"]
-        if err_code == "InvalidParameter" and "already exists" in str(ce):
-            # Parse existing ARN from error message
-            import re
-            match = re.search(r"arn:aws:sns[^\s]+", str(ce))
-            if match:
-                endpoint_arn = match.group(0)
-                _save_endpoint_arn(user_id, endpoint_arn, platform)
-                return {"endpoint_arn": endpoint_arn, "success": True}
-        logger.error(f"SNS endpoint registration failed: {ce}")
-        return {"endpoint_arn": "", "success": False, "error": str(ce)}
-
-
-def _save_endpoint_arn(user_id: str, endpoint_arn: str, platform: str):
-    """Store the SNS endpoint ARN in the user's DynamoDB profile."""
-    dynamo = _dynamo()
-    if not dynamo:
+    device_id: str,
+    *,
+    reason: str,
+    dynamo=None,
+) -> None:
+    table = _device_table(dynamo)
+    if not table:
         return
     try:
-        table = dynamo.Table(DYNAMODB_USERS_TABLE)
         table.update_item(
-            Key={"user_id": user_id},
+            Key={"user_id": user_id, "device_id": device_id},
             UpdateExpression=(
-                "SET sns_endpoint_arn = :e, sns_platform = :p, updated_at = :u"
+                "SET enabled = :disabled, disabled_at = :now, "
+                "disable_reason = :reason, last_seen_at = :now"
             ),
             ExpressionAttributeValues={
-                ":e": endpoint_arn,
-                ":p": platform,
-                ":u": datetime.now(timezone.utc).isoformat(),
+                ":disabled": False,
+                ":now": datetime.now(timezone.utc).isoformat(),
+                ":reason": reason[:120],
+            },
+            ConditionExpression="attribute_exists(user_id)",
+        )
+    except Exception as error:
+        logger.warning("Could not mark push endpoint disabled: %s", type(error).__name__)
+
+
+def register_device_endpoint(
+    user_id: str,
+    session_id: str,
+    device_id: str,
+    device_token: str,
+    platform: str = "android",
+) -> Dict[str, Any]:
+    """Bind one SNS platform endpoint to one Guardian account/device session."""
+    if platform not in {"android", "ios"}:
+        return {"endpoint_arn": "", "success": False, "error": "Unsupported platform"}
+    if not user_id or not session_id or not device_id or not device_token:
+        return {"endpoint_arn": "", "success": False, "error": "Missing device identity"}
+
+    sns = _sns_client()
+    dynamo = _dynamo()
+    table = _device_table(dynamo)
+    if not sns or not dynamo or not table:
+        return {
+            "endpoint_arn": "",
+            "success": False,
+            "error": "SNS or device endpoint store unavailable",
+        }
+
+    platform_arn = (
+        SNS_FCM_PLATFORM_ARN if platform == "android" else SNS_APNS_PLATFORM_ARN
+    )
+    if not platform_arn:
+        return {
+            "endpoint_arn": "",
+            "success": False,
+            "error": f"Platform ARN not configured for {platform}",
+        }
+
+    token_hash = _token_hash(device_token)
+    endpoint_arn = ""
+    custom_user_data = f"{user_id}:{device_id}"[:2048]
+    try:
+        response = sns.create_platform_endpoint(
+            PlatformApplicationArn=platform_arn,
+            Token=device_token,
+            CustomUserData=custom_user_data,
+            Attributes={"Enabled": "true"},
+        )
+        endpoint_arn = response["EndpointArn"]
+    except ClientError as error:
+        if (
+            error.response.get("Error", {}).get("Code") == "InvalidParameter"
+            and "already exists" in str(error)
+        ):
+            import re
+
+            match = re.search(r"arn:aws:sns[^\s]+", str(error))
+            if match:
+                endpoint_arn = match.group(0)
+            else:
+                return {
+                    "endpoint_arn": "",
+                    "success": False,
+                    "error": "Existing SNS endpoint could not be resolved",
+                }
+        else:
+            logger.error(
+                "SNS endpoint registration failed: %s",
+                error.response.get("Error", {}).get("Code", type(error).__name__),
+            )
+            return {
+                "endpoint_arn": "",
+                "success": False,
+                "error": "SNS endpoint registration failed",
+            }
+
+    try:
+        sns.set_endpoint_attributes(
+            EndpointArn=endpoint_arn,
+            Attributes={
+                "Token": device_token,
+                "Enabled": "true",
+                "CustomUserData": custom_user_data,
             },
         )
-    except Exception as ex:
-        logger.warning(f"Could not save SNS endpoint ARN: {ex}")
+    except Exception as error:
+        logger.warning("Could not refresh SNS endpoint attributes: %s", type(error).__name__)
+
+    # A push token may move between Guardian accounts on the same device.
+    # Disable previous account bindings without disabling the SNS endpoint that
+    # the new owner is about to use.
+    try:
+        previous = _query_all(
+            table,
+            IndexName="TokenHashIndex",
+            KeyConditionExpression="token_hash = :token",
+            ExpressionAttributeValues={":token": token_hash},
+        )
+        for item in previous:
+            if (
+                item.get("user_id") != user_id
+                or item.get("device_id") != device_id
+                or item.get("session_id") != session_id
+            ):
+                _mark_endpoint_disabled(
+                    str(item["user_id"]),
+                    str(item["device_id"]),
+                    reason="token_rebound_to_another_session",
+                    dynamo=dynamo,
+                )
+    except Exception as error:
+        logger.warning("Push-token ownership reconciliation failed: %s", type(error).__name__)
+
+    now = datetime.now(timezone.utc).isoformat()
+    table.put_item(
+        Item={
+            "user_id": user_id,
+            "device_id": device_id,
+            "session_id": session_id,
+            "platform": platform,
+            "token_hash": token_hash,
+            "sns_endpoint_arn": endpoint_arn,
+            "enabled": True,
+            "created_at": now,
+            "last_seen_at": now,
+        }
+    )
+    logger.info("SNS endpoint bound to authenticated Guardian device")
+    return {
+        "endpoint_arn": endpoint_arn,
+        "device_id": device_id,
+        "success": True,
+    }
+
+
+def disable_device_endpoints_for_session(user_id: str, session_id: str) -> int:
+    """Disable every push endpoint bound to a revoked Guardian session."""
+    table = _device_table()
+    if not table:
+        return 0
+    disabled = 0
+    for item in _query_all(
+        table,
+        KeyConditionExpression="user_id = :user",
+        ExpressionAttributeValues={":user": user_id},
+    ):
+        if item.get("session_id") != session_id or not item.get("enabled", False):
+            continue
+        _mark_endpoint_disabled(
+            user_id,
+            str(item["device_id"]),
+            reason="guardian_session_revoked",
+        )
+        disabled += 1
+    return disabled
+
+
+def disable_all_device_endpoints(user_id: str) -> int:
+    table = _device_table()
+    if not table:
+        return 0
+    disabled = 0
+    for item in _query_all(
+        table,
+        KeyConditionExpression="user_id = :user",
+        ExpressionAttributeValues={":user": user_id},
+    ):
+        if not item.get("enabled", False):
+            continue
+        _mark_endpoint_disabled(
+            user_id,
+            str(item["device_id"]),
+            reason="guardian_global_sign_out",
+        )
+        disabled += 1
+    return disabled
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -134,60 +291,89 @@ def send_push_to_user(
     data: Optional[Dict[str, str]] = None,
     notification_type: str = "general",
 ) -> Dict[str, Any]:
-    """
-    Send a targeted push notification to a specific user's device via SNS.
-    Looks up the user's endpoint ARN from DynamoDB, then sends via SNS.
-    """
+    """Send a push to every enabled device currently bound to a user."""
     sns = _sns_client()
     dynamo = _dynamo()
+    table = _device_table(dynamo)
+    if not sns or not dynamo or not table:
+        return {"success": False, "error": "SNS or device endpoint store unavailable"}
 
-    if not sns or not dynamo:
-        return {"success": False, "error": "SNS or DynamoDB client unavailable"}
-
-    # Get user's endpoint ARN
     try:
-        table = dynamo.Table(DYNAMODB_USERS_TABLE)
-        resp = table.get_item(Key={"user_id": user_id})
-        user = resp.get("Item", {})
-        endpoint_arn = user.get("sns_endpoint_arn", "")
+        endpoints = [
+            item
+            for item in _query_all(
+                table,
+                KeyConditionExpression="user_id = :user",
+                ExpressionAttributeValues={":user": user_id},
+            )
+            if item.get("enabled") is True and item.get("sns_endpoint_arn")
+        ]
+    except Exception as error:
+        logger.error("Push endpoint lookup failed: %s", type(error).__name__)
+        return {"success": False, "error": "Push endpoint lookup failed"}
 
-        if not endpoint_arn:
-            logger.warning(f"No SNS endpoint ARN found for user {user_id}")
-            return {"success": False, "error": "No device registered for push"}
+    if not endpoints:
+        return {"success": False, "error": "No enabled device registered for push"}
 
-        platform = user.get("sns_platform", "android")
-    except Exception as e:
-        logger.error(f"Failed to get user endpoint: {e}")
-        return {"success": False, "error": str(e)}
-
-    # Build platform-specific message
     notification_data = {
         "type": notification_type,
         "user_id": user_id,
         **(data or {}),
     }
+    accepted_ids: List[str] = []
+    failures: List[Dict[str, str]] = []
 
-    if platform == "ios":
-        message_payload = _build_apns_payload(title, body, notification_data)
-    else:
-        message_payload = _build_fcm_payload(title, body, notification_data)
+    for endpoint in endpoints:
+        session_id = str(endpoint.get("session_id") or "")
+        if not session_id or not validate_access_session(session_id, user_id):
+            _mark_endpoint_disabled(
+                user_id,
+                str(endpoint.get("device_id") or ""),
+                reason="guardian_session_inactive",
+                dynamo=dynamo,
+            )
+            continue
 
-    try:
-        resp = sns.publish(
-            TargetArn=endpoint_arn,
-            Message=json.dumps(message_payload),
-            MessageStructure="json",
-            Subject=title,
+        platform = str(endpoint.get("platform") or "android")
+        endpoint_arn = str(endpoint["sns_endpoint_arn"])
+        payload = (
+            _build_apns_payload(title, body, notification_data)
+            if platform == "ios"
+            else _build_fcm_payload(title, body, notification_data)
         )
-        logger.info(f"Push sent to {user_id}: MessageId={resp['MessageId']}")
-        return {"success": True, "message_id": resp["MessageId"]}
-    except ClientError as ce:
-        logger.error(f"SNS push failed: {ce}")
-        # Disable stale endpoint
-        if "EndpointDisabled" in str(ce):
-            _disable_endpoint(endpoint_arn, sns)
-            _clear_endpoint_arn(user_id, endpoint_arn, dynamo)
-        return {"success": False, "error": str(ce)}
+        try:
+            response = sns.publish(
+                TargetArn=endpoint_arn,
+                Message=json.dumps(payload),
+                MessageStructure="json",
+                Subject=title,
+            )
+            accepted_ids.append(str(response["MessageId"]))
+        except ClientError as error:
+            error_code = error.response.get("Error", {}).get("Code", "SNS_ERROR")
+            failures.append(
+                {
+                    "device_id": str(endpoint.get("device_id") or ""),
+                    "error_code": error_code,
+                }
+            )
+            if error_code == "EndpointDisabled" or "EndpointDisabled" in str(error):
+                _disable_endpoint(endpoint_arn, sns)
+                _mark_endpoint_disabled(
+                    user_id,
+                    str(endpoint.get("device_id") or ""),
+                    reason="sns_endpoint_disabled",
+                    dynamo=dynamo,
+                )
+
+    return {
+        "success": bool(accepted_ids),
+        "message_id": accepted_ids[0] if accepted_ids else None,
+        "message_ids": accepted_ids,
+        "provider_accepted_count": len(accepted_ids),
+        "failed_count": len(failures),
+        "failures": failures,
+    }
 
 
 def send_sms_alert(
@@ -222,80 +408,22 @@ def send_sms_alert(
                 },
             },
         )
-        logger.info(f"SMS sent to {phone}: MessageId={resp['MessageId']}")
+        logger.info("SNS accepted transactional SMS request")
         return {
             "success": True,
             "message_id": resp["MessageId"],
             "delivery_state": "PROVIDER_ACCEPTED",
         }
     except ClientError as ce:
-        logger.error(f"SNS SMS failed: {ce}")
-        return {"success": False, "error": str(ce)}
+        error_code = ce.response.get("Error", {}).get("Code", "SNS_ERROR")
+        logger.error("SNS SMS request failed: %s", error_code)
+        return {
+            "success": False,
+            "error": "SMS provider request failed",
+            "error_code": error_code,
+        }
 
 
-def send_emergency_contact_alerts(
-    user_id: str,
-    incident_id: str,
-    location: Dict[str, float],
-    message_template: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Notify ALL trusted emergency contacts for a user via:
-    1. Push notification (if they have the app)
-    2. SMS fallback (always sent for critical events)
-    """
-    dynamo = _dynamo()
-    results = []
-
-    # Get user's emergency contacts from DynamoDB
-    contacts = []
-    if dynamo:
-        try:
-            table = dynamo.Table(DYNAMODB_USERS_TABLE)
-            resp = table.get_item(Key={"user_id": user_id})
-            user = resp.get("Item", {})
-            contacts = user.get("emergency_contacts", [])
-        except Exception as e:
-            logger.error(f"Failed to get emergency contacts: {e}")
-
-    if not contacts:
-        logger.warning(f"No emergency contacts found for user {user_id}")
-        return {"success": False, "error": "No emergency contacts configured", "results": []}
-
-    lat = location.get("latitude", 0)
-    lng = location.get("longitude", 0)
-    maps_link = f"https://www.google.com/maps?q={lat},{lng}"
-
-    for contact in contacts:
-        phone = contact.get("phone", "")
-        name = contact.get("name", "Someone")
-
-        if not phone:
-            continue
-
-        msg = message_template or (
-            f"🆘 GUARDIAN SOS ALERT\n"
-            f"{name}, your trusted contact needs help!\n"
-            f"Incident: {incident_id}\n"
-            f"Location: {maps_link}\n"
-            f"Time: {datetime.now(timezone.utc).strftime('%H:%M UTC')}\n"
-            f"Please call them immediately or contact emergency services."
-        )
-
-        # Send SMS (always)
-        sms_result = send_sms_alert(phone, msg)
-        results.append({
-            "contact": name,
-            "phone": phone,
-            "sms": sms_result,
-        })
-
-    return {
-        "success": True,
-        "contacts_alerted": len(results),
-        "results": results,
-        "incident_id": incident_id,
-    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -360,16 +488,3 @@ def _disable_endpoint(endpoint_arn: str, sns_client):
         logger.info("Disabled stale push endpoint")
     except Exception as e:
         logger.warning(f"Could not disable endpoint: {e}")
-
-
-def _clear_endpoint_arn(user_id: str, endpoint_arn: str, dynamo) -> None:
-    """Remove only the stale endpoint currently bound to this user."""
-    try:
-        dynamo.Table(DYNAMODB_USERS_TABLE).update_item(
-            Key={"user_id": user_id},
-            UpdateExpression="REMOVE sns_endpoint_arn, sns_platform",
-            ConditionExpression="sns_endpoint_arn = :endpoint",
-            ExpressionAttributeValues={":endpoint": endpoint_arn},
-        )
-    except Exception as error:
-        logger.warning(f"Could not clear stale push endpoint: {error}")

@@ -14,7 +14,7 @@ import hashlib
 import logging
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
 
 try:
@@ -30,6 +30,13 @@ from aws.agent.risk_engine import assess_incident_risk
 # Environment configuration
 DYNAMODB_INCIDENTS_TABLE = os.environ.get("DYNAMODB_INCIDENTS_TABLE", "guardian-incidents")
 DYNAMODB_EVENTS_TABLE = os.environ.get("DYNAMODB_EVENTS_TABLE", "guardian-incident-events")
+DYNAMODB_ABUSE_COUNTERS_TABLE = os.environ.get(
+    "DYNAMODB_ABUSE_COUNTERS_TABLE", "guardian-abuse-counters"
+)
+INCIDENT_RETENTION_DAYS = max(
+    30,
+    min(365, int(os.environ.get("INCIDENT_RETENTION_DAYS", "90"))),
+)
 EVENTBUS_NAME = os.environ.get("EVENTBUS_NAME", "default")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 
@@ -125,6 +132,118 @@ def _emit_incident_created(incident_record: Dict[str, Any]) -> bool:
     return True
 
 
+def _captured_at_epoch_ms(location: Any) -> Optional[int]:
+    if not isinstance(location, dict):
+        return None
+    captured = location.get("captured_at")
+    if not captured:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(captured).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp() * 1000)
+    except Exception:
+        return None
+
+
+def _retention_expiry(now: Optional[datetime] = None) -> int:
+    base = now or datetime.now(timezone.utc)
+    return int((base + timedelta(days=INCIDENT_RETENTION_DAYS)).timestamp())
+
+
+def _incident_frequency_advisory(user_id: str, now: datetime) -> Dict[str, Any]:
+    """Return a non-blocking high-frequency advisory for responder safety.
+
+    This signal must never suppress or reject an SOS. Production uses a small
+    TTL-backed DynamoDB counter so behavior matches local tests.
+    """
+    count = 1
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        bucket = int(now.timestamp()) // 600
+        counter_key = f"{user_id}:{bucket}"
+        try:
+            response = dynamo.Table(DYNAMODB_ABUSE_COUNTERS_TABLE).update_item(
+                Key={"counter_key": counter_key},
+                UpdateExpression="ADD incident_count :one SET expires_at = :ttl, updated_at = :now",
+                ExpressionAttributeValues={
+                    ":one": 1,
+                    ":ttl": int(now.timestamp()) + 3600,
+                    ":now": now.isoformat(),
+                },
+                ReturnValues="UPDATED_NEW",
+            )
+            count = int(response.get("Attributes", {}).get("incident_count", 1))
+        except Exception as error:
+            logger.warning(
+                "Incident-frequency advisory unavailable: %s",
+                type(error).__name__,
+            )
+            return {}
+    elif _local_store_enabled():
+        count = 1
+        now_ts = now.timestamp()
+        for existing in _LOCAL_INCIDENTS.values():
+            if existing.get("user_id") != user_id:
+                continue
+            try:
+                created = datetime.fromisoformat(str(existing.get("created_at", "")))
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=timezone.utc)
+                if (now_ts - created.timestamp()) <= 600.0:
+                    count += 1
+            except Exception:
+                continue
+    else:
+        return {}
+
+    if count < 4:
+        return {}
+    return {
+        "high_frequency_creation": True,
+        "recent_incident_count_10m": count,
+        "advisory_only": True,
+    }
+
+
+def _trigger_provenance(event_type: str, motion_data: Dict[str, Any]) -> Dict[str, str]:
+    """Classify reported trigger provenance without pretending device attestation."""
+    normalized = str(event_type or "").strip().upper()
+    if normalized == "MANUAL_SOS":
+        return {
+            "origin": "USER_DECLARED",
+            "trust_level": "DECLARED_DISTRESS",
+            "attestation": "NOT_REQUIRED_FOR_HELP_REQUEST",
+        }
+    if bool((motion_data or {}).get("native_dispatch")):
+        return {
+            "origin": "DEVICE_NATIVE_REPORTED",
+            "trust_level": "UNATTESTED_DEVICE",
+            "attestation": "NOT_PRESENT",
+        }
+    if normalized in {
+        "ANDROID_POWER_GESTURE",
+        "ANDROID_SHAKE",
+        "ANDROID_FALL",
+        "ROUTE_DEVIATION",
+        "ROUTE_DEVIATION_TIMEOUT",
+        "CHECK_IN_EXPIRED",
+        "VOICE_SOS",
+        "MULTI_TAP",
+    }:
+        return {
+            "origin": "DEVICE_REPORTED",
+            "trust_level": "UNATTESTED_CLIENT",
+            "attestation": "NOT_PRESENT",
+        }
+    return {
+        "origin": "CLIENT_REPORTED",
+        "trust_level": "UNATTESTED_CLIENT",
+        "attestation": "NOT_PRESENT",
+    }
+
+
 def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Ingest a new incident with idempotency guarantee."""
     event_id = payload.get("event_id") or str(uuid.uuid4())
@@ -158,25 +277,16 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         location=location,
         motion_data=motion_data,
     )
-    abuse_signals = {}
-    now_ts = datetime.now(timezone.utc).timestamp()
-    recent_count = 0
-    if not dynamo and _local_store_enabled():
-        for inc in _LOCAL_INCIDENTS.values():
-            if inc.get("user_id") == user_id:
-                try:
-                    c_dt = datetime.fromisoformat(inc.get("created_at", ""))
-                    if (now_ts - c_dt.timestamp()) <= 600.0:
-                        recent_count += 1
-                except Exception:
-                    pass
-    if recent_count >= 3:
-        abuse_signals["high_frequency_creation"] = True
-        abuse_signals["recent_incident_count_10m"] = recent_count
+    abuse_signals = _incident_frequency_advisory(
+        user_id,
+        datetime.now(timezone.utc),
+    )
+    if abuse_signals:
         risk["abuse_signals"] = abuse_signals
         risk["responder_advisory"] = (
-            "Caution: Multiple recent alerts recorded from this account. "
-            "Anti-solo buddy quorum enforced. Maintain situational caution."
+            "Caution: Multiple recent alerts were recorded from this account. "
+            "This advisory never suppresses the SOS; responders should preserve "
+            "buddy-safety procedures."
         )
 
     initial_state = IncidentState.CLOUD_ACCEPTED.value
@@ -192,6 +302,7 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         except Exception:
             curr_location["freshness"] = "UNKNOWN"
 
+    initial_location_epoch_ms = _captured_at_epoch_ms(curr_location)
     incident_record = {
         "incident_id": incident_id,
         "event_id": event_id,
@@ -201,11 +312,15 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         "location": location,
         "initial_sos_location": location,
         "current_emergency_location": curr_location,
+        "current_location_captured_at_ms": initial_location_epoch_ms,
         "motion_data": motion_data,
         "trigger_source": (motion_data or {}).get("trigger_source") or event_type,
+        "trigger_provenance": _trigger_provenance(event_type, motion_data or {}),
         "risk_assessment": risk,
         "created_at": now_iso,
         "updated_at": now_iso,
+        "expires_at": _retention_expiry(datetime.fromisoformat(now_iso)),
+        "accepted_responder_count": 0,
         "agent_decision": "PENDING_REASONING",
         "agent_execution_state": "PENDING",
         "orchestration_event_state": "PENDING",
@@ -223,6 +338,7 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         "state": initial_state,
         "actor": "SYSTEM",
         "details": f"Anomaly detected ({event_type}) with risk level {risk['level']} (score: {risk['score']})",
+        "expires_at": incident_record["expires_at"],
     }
 
     # Persist
@@ -520,6 +636,10 @@ def append_incident_event(
         "state": state or incident["state"],
         "actor": str(actor).upper()[:40],
         "details": str(details)[:500],
+        "expires_at": int(
+            incident.get("expires_at")
+            or _retention_expiry()
+        ),
     }
     dynamo = get_dynamo_resource()
     if dynamo:
@@ -578,8 +698,9 @@ def update_incident_location(
         if (incoming_cap - now).total_seconds() > 300:
             raise ValueError("Captured timestamp cannot be in the future")
     else:
-        incoming_cap = now
-        location_payload["captured_at"] = now_iso
+        raise ValueError(
+            "captured_at is required for emergency location updates"
+        )
 
     current_loc = incident.get("current_emergency_location") or incident.get("location") or {}
     existing_cap_str = current_loc.get("captured_at")
@@ -594,39 +715,94 @@ def update_incident_location(
             pass
 
     location_payload["received_at"] = now_iso
+    incoming_epoch_ms = int(incoming_cap.timestamp() * 1000)
     initial_loc = incident.get("initial_sos_location") or incident.get("location") or location_payload
 
     dynamo = get_dynamo_resource()
     if dynamo:
         table = dynamo.Table(DYNAMODB_INCIDENTS_TABLE)
-        table.update_item(
-            Key={"incident_id": incident_id},
-            UpdateExpression="SET current_emergency_location = :curr, #loc = :curr, initial_sos_location = :init, updated_at = :now",
-            ExpressionAttributeNames={"#loc": "location"},
-            ExpressionAttributeValues={
-                ":curr": location_payload,
-                ":init": initial_loc,
-                ":now": now_iso,
-            },
-        )
-        incident["current_emergency_location"] = location_payload
-        incident["location"] = location_payload
-        incident["initial_sos_location"] = initial_loc
-        incident["updated_at"] = now_iso
+        try:
+            response = table.update_item(
+                Key={"incident_id": incident_id},
+                UpdateExpression=(
+                    "SET current_emergency_location = :curr, #loc = :curr, "
+                    "initial_sos_location = :init, current_location_captured_at_ms = :captured, "
+                    "updated_at = :now"
+                ),
+                ConditionExpression=(
+                    "#owner = :owner AND "
+                    "#state <> :resolved AND #state <> :cancelled AND #state <> :expired AND "
+                    "(attribute_not_exists(current_location_captured_at_ms) OR "
+                    "current_location_captured_at_ms < :captured)"
+                ),
+                ExpressionAttributeNames={
+                    "#loc": "location",
+                    "#owner": "user_id",
+                    "#state": "state",
+                },
+                ExpressionAttributeValues={
+                    ":curr": location_payload,
+                    ":init": initial_loc,
+                    ":captured": incoming_epoch_ms,
+                    ":now": now_iso,
+                    ":owner": user_id,
+                    ":resolved": IncidentState.RESOLVED.value,
+                    ":cancelled": IncidentState.CANCELLED.value,
+                    ":expired": IncidentState.EXPIRED.value,
+                },
+                ReturnValues="ALL_NEW",
+            )
+            incident = response["Attributes"]
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+                raise
+            latest = table.get_item(
+                Key={"incident_id": incident_id},
+                ConsistentRead=True,
+            ).get("Item")
+            if not latest:
+                raise ValueError(f"Incident {incident_id} not found") from error
+            if latest.get("user_id") != user_id:
+                raise PermissionError("Only the incident owner can update emergency location") from error
+            if latest.get("state") in {
+                IncidentState.RESOLVED.value,
+                IncidentState.CANCELLED.value,
+                IncidentState.EXPIRED.value,
+            }:
+                raise ValueError(
+                    f"Cannot update location for {latest.get('state')} incident"
+                ) from error
+            raise ValueError("Out-of-order or stale location update rejected") from error
     else:
         _require_local_store()
         with _LOCAL_STORE_LOCK:
-            incident["current_emergency_location"] = location_payload
-            incident["location"] = location_payload
-            incident["initial_sos_location"] = initial_loc
-            incident["updated_at"] = now_iso
-            _LOCAL_INCIDENTS[incident_id] = incident
+            latest = _LOCAL_INCIDENTS.get(incident_id)
+            if not latest:
+                raise ValueError(f"Incident {incident_id} not found")
+            if latest.get("user_id") != user_id:
+                raise PermissionError("Only the incident owner can update emergency location")
+            if latest.get("state") in {
+                IncidentState.RESOLVED.value,
+                IncidentState.CANCELLED.value,
+                IncidentState.EXPIRED.value,
+            }:
+                raise ValueError(f"Cannot update location for {latest.get('state')} incident")
+            existing_epoch = latest.get("current_location_captured_at_ms")
+            if existing_epoch is not None and int(existing_epoch) >= incoming_epoch_ms:
+                raise ValueError("Out-of-order or stale location update rejected")
+            latest["current_emergency_location"] = location_payload
+            latest["location"] = location_payload
+            latest["initial_sos_location"] = initial_loc
+            latest["current_location_captured_at_ms"] = incoming_epoch_ms
+            latest["updated_at"] = now_iso
+            _LOCAL_INCIDENTS[incident_id] = latest
+            incident = latest
 
     append_incident_event(
         incident_id=incident_id,
         event_type="victim_location_updated",
         actor="VICTIM_DEVICE",
-        details=f"Location updated to ({lat:.4f}, {lng:.4f}) captured_at {incoming_cap_str or now_iso}",
+        details="Victim location updated with a newer authenticated device fix.",
         state=current_state,
     )
 

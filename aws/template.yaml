@@ -35,93 +35,44 @@ Parameters:
     Type: String
     Default: ''
     Description: Existing SNS platform application ARN for iOS APNs
+  IncidentRetentionDays:
+    Type: Number
+    Default: 90
+    MinValue: 30
+    MaxValue: 365
+    Description: Days to retain incident, timeline, and agent decision evidence
+  GoogleClientId:
+    Type: String
+    MinLength: 20
+    Description: Google OAuth 2.0 web client ID used by Cognito federation
+  GoogleClientSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Description: Google OAuth 2.0 client secret used only by Cognito as the Google IdP
+  GuardianAuthCallbackUrl:
+    Type: String
+    Default: guardian://auth/callback
+    Description: Registered mobile OAuth callback URL for Cognito authorization code flow
+  GuardianAuthLogoutUrl:
+    Type: String
+    Default: guardian://auth/logout
+    Description: Registered mobile logout callback URL
+  GoogleMapsServerApiKeySecretArn:
+    Type: String
+    MinLength: 20
+    Description: Secrets Manager ARN containing the server-only Google Places/Routes API key
 
 Resources:
-  DefineAuthChallengeFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: .
-      Handler: cognito_triggers.define_auth_challenge
-
-  CreateAuthChallengeFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: .
-      Handler: cognito_triggers.create_auth_challenge
-      Environment:
-        Variables:
-          OTP_TTL_SECONDS: '300'
-          OTP_MAX_ATTEMPTS: '5'
-      Policies:
-        - Statement:
-            - Effect: Allow
-              Action: sns:Publish
-              Resource: '*'
-
-  VerifyAuthChallengeFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: .
-      Handler: cognito_triggers.verify_auth_challenge
-
-  AllowCognitoDefineChallenge:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref DefineAuthChallengeFunction
-      Principal: cognito-idp.amazonaws.com
-      SourceArn: !GetAtt GuardianUserPool.Arn
-  AllowCognitoCreateChallenge:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref CreateAuthChallengeFunction
-      Principal: cognito-idp.amazonaws.com
-      SourceArn: !GetAtt GuardianUserPool.Arn
-  AllowCognitoVerifyChallenge:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref VerifyAuthChallengeFunction
-      Principal: cognito-idp.amazonaws.com
-      SourceArn: !GetAtt GuardianUserPool.Arn
-
-  CognitoSmsRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub guardian-${EnvironmentName}-cognito-sms-role
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: cognito-idp.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: CognitoSmsPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action: sns:Publish
-                Resource: '*'
-
   GuardianUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
       UserPoolName: !Sub guardian-${EnvironmentName}-users
-      UsernameAttributes: [phone_number]
-      AutoVerifiedAttributes: [phone_number]
-      SmsConfiguration:
-        SnsCallerArn: !GetAtt CognitoSmsRole.Arn
+      AutoVerifiedAttributes: [email]
       AccountRecoverySetting:
         RecoveryMechanisms:
-          - Name: verified_phone_number
+          - Name: verified_email
             Priority: 1
-      LambdaConfig:
-        DefineAuthChallenge: !GetAtt DefineAuthChallengeFunction.Arn
-        CreateAuthChallenge: !GetAtt CreateAuthChallengeFunction.Arn
-        VerifyAuthChallengeResponse: !GetAtt VerifyAuthChallengeFunction.Arn
       Policies:
         PasswordPolicy:
           MinimumLength: 16
@@ -133,16 +84,43 @@ Resources:
       UserPoolAddOns:
         AdvancedSecurityMode: ENFORCED
 
+  GuardianGoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref GuardianUserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Ref GoogleClientId
+        client_secret: !Ref GoogleClientSecret
+        authorize_scopes: openid email profile
+      AttributeMapping:
+        email: email
+        name: name
+        picture: picture
+
+  GuardianUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub guardian-${EnvironmentName}-${AWS::AccountId}
+      UserPoolId: !Ref GuardianUserPool
+
   GuardianUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
+    DependsOn: GuardianGoogleIdentityProvider
     Properties:
       ClientName: !Sub guardian-${EnvironmentName}-mobile
       UserPoolId: !Ref GuardianUserPool
       GenerateSecret: false
       EnableTokenRevocation: true
       PreventUserExistenceErrors: ENABLED
-
-      ExplicitAuthFlows: [ALLOW_CUSTOM_AUTH, ALLOW_REFRESH_TOKEN_AUTH, ALLOW_ADMIN_USER_PASSWORD_AUTH]
+      SupportedIdentityProviders: [Google]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email, profile, aws.cognito.signin.user.admin]
+      CallbackURLs: [!Ref GuardianAuthCallbackUrl]
+      LogoutURLs: [!Ref GuardianAuthLogoutUrl]
+      ExplicitAuthFlows: [ALLOW_REFRESH_TOKEN_AUTH]
       AccessTokenValidity: 15
       IdTokenValidity: 15
       RefreshTokenValidity: 30
@@ -167,6 +145,7 @@ Resources:
       BillingMode: PAY_PER_REQUEST
       PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
       SSESpecification: {SSEEnabled: true}
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
       AttributeDefinitions: [{AttributeName: incident_id, AttributeType: S}]
       KeySchema: [{AttributeName: incident_id, KeyType: HASH}]
   IncidentEventsTable:
@@ -178,6 +157,7 @@ Resources:
       BillingMode: PAY_PER_REQUEST
       PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
       SSESpecification: {SSEEnabled: true}
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
       AttributeDefinitions:
         - {AttributeName: incident_id, AttributeType: S}
         - {AttributeName: timestamp, AttributeType: S}
@@ -244,17 +224,49 @@ Resources:
       SSESpecification: {SSEEnabled: true}
       AttributeDefinitions: [{AttributeName: user_id, AttributeType: S}]
       KeySchema: [{AttributeName: user_id, KeyType: HASH}]
-  AuthThrottleTable:
+
+  DeviceEndpointsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub guardian-${EnvironmentName}-device-endpoints
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+      SSESpecification: {SSEEnabled: true}
+      AttributeDefinitions:
+        - {AttributeName: user_id, AttributeType: S}
+        - {AttributeName: device_id, AttributeType: S}
+        - {AttributeName: token_hash, AttributeType: S}
+      KeySchema:
+        - {AttributeName: user_id, KeyType: HASH}
+        - {AttributeName: device_id, KeyType: RANGE}
+      GlobalSecondaryIndexes:
+        - IndexName: TokenHashIndex
+          KeySchema:
+            - {AttributeName: token_hash, KeyType: HASH}
+          Projection: {ProjectionType: ALL}
+
+  AbuseReportsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub guardian-${EnvironmentName}-auth-throttle
+      TableName: !Sub guardian-${EnvironmentName}-abuse-reports
       BillingMode: PAY_PER_REQUEST
       SSESpecification: {SSEEnabled: true}
-      TimeToLiveSpecification:
-        AttributeName: expires_at
-        Enabled: true
-      AttributeDefinitions: [{AttributeName: throttle_key, AttributeType: S}]
-      KeySchema: [{AttributeName: throttle_key, KeyType: HASH}]
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
+      AttributeDefinitions: [{AttributeName: report_id, AttributeType: S}]
+      KeySchema: [{AttributeName: report_id, KeyType: HASH}]
+
+  AbuseCountersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub guardian-${EnvironmentName}-abuse-counters
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification: {SSEEnabled: true}
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
+      AttributeDefinitions: [{AttributeName: counter_key, AttributeType: S}]
+      KeySchema: [{AttributeName: counter_key, KeyType: HASH}]
+
   SessionsTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Retain
@@ -285,6 +297,7 @@ Resources:
       BillingMode: PAY_PER_REQUEST
       PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
       SSESpecification: {SSEEnabled: true}
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
       AttributeDefinitions:
         - {AttributeName: incident_id, AttributeType: S}
         - {AttributeName: event_id, AttributeType: S}
@@ -308,6 +321,22 @@ Resources:
         PasswordLength: 64
         ExcludePunctuation: true
 
+  GuardianWorkflowDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub guardian-${EnvironmentName}-workflow-dlq
+      MessageRetentionPeriod: 1209600
+
+  GuardianWorkflowQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub guardian-${EnvironmentName}-workflow
+      VisibilityTimeout: 120
+      MessageRetentionPeriod: 86400
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt GuardianWorkflowDlq.Arn
+        maxReceiveCount: 5
+
   GuardianApiFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -317,27 +346,35 @@ Resources:
         Variables:
           COGNITO_USER_POOL_ID: !Ref GuardianUserPool
           COGNITO_CLIENT_ID: !Ref GuardianUserPoolClient
+          GOOGLE_CLIENT_ID: !Ref GoogleClientId
+          GOOGLE_MAPS_SERVER_API_KEY_SECRET_ARN: !Ref GoogleMapsServerApiKeySecretArn
           DYNAMODB_INCIDENTS_TABLE: !Ref IncidentsTable
           DYNAMODB_EVENTS_TABLE: !Ref IncidentEventsTable
           DYNAMODB_RESPONDERS_TABLE: !Ref RespondersTable
           DYNAMODB_MISSIONS_TABLE: !Ref MissionsTable
           DYNAMODB_USERS_TABLE: !Ref UsersTable
-          DYNAMODB_AUTH_THROTTLE_TABLE: !Ref AuthThrottleTable
+          DYNAMODB_DEVICE_ENDPOINTS_TABLE: !Ref DeviceEndpointsTable
+          DYNAMODB_ABUSE_COUNTERS_TABLE: !Ref AbuseCountersTable
+          DYNAMODB_ABUSE_REPORTS_TABLE: !Ref AbuseReportsTable
           DYNAMODB_SESSIONS_TABLE: !Ref SessionsTable
           DYNAMODB_AGENT_LEDGER_TABLE: !Ref AgentLedgerTable
           DYNAMODB_AGENT_AUTHORIZATIONS_TABLE: !Ref AgentAuthorizationsTable
           AGENT_POLICY_SECRET_ARN: !Ref AgentPolicySigningSecret
           EVENTBUS_NAME: default
+          WORKFLOW_QUEUE_URL: !Ref GuardianWorkflowQueue
           SNS_FCM_PLATFORM_ARN: !Ref FcmPlatformApplicationArn
           SNS_APNS_PLATFORM_ARN: !Ref ApnsPlatformApplicationArn
           BEDROCK_MODEL_ID: anthropic.claude-3-haiku-20240307-v1:0
+          INCIDENT_RETENTION_DAYS: !Ref IncidentRetentionDays
       Policies:
         - DynamoDBCrudPolicy: {TableName: !Ref IncidentsTable}
         - DynamoDBCrudPolicy: {TableName: !Ref IncidentEventsTable}
         - DynamoDBCrudPolicy: {TableName: !Ref RespondersTable}
         - DynamoDBCrudPolicy: {TableName: !Ref MissionsTable}
         - DynamoDBCrudPolicy: {TableName: !Ref UsersTable}
-        - DynamoDBCrudPolicy: {TableName: !Ref AuthThrottleTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref DeviceEndpointsTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref AbuseCountersTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref AbuseReportsTable}
         - DynamoDBCrudPolicy: {TableName: !Ref SessionsTable}
         - Statement:
             - Effect: Allow
@@ -345,12 +382,11 @@ Resources:
               Resource: !GetAtt AgentLedgerTable.Arn
         - DynamoDBCrudPolicy: {TableName: !Ref AgentAuthorizationsTable}
         - EventBridgePutEventsPolicy: {EventBusName: default}
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt GuardianWorkflowQueue.QueueName
         - Statement:
             - Effect: Allow
               Action:
-                - cognito-idp:AdminCreateUser
-                - cognito-idp:AdminSetUserPassword
-                - cognito-idp:AdminInitiateAuth
                 - cognito-idp:GetUser
                 - cognito-idp:GlobalSignOut
                 - cognito-idp:AdminListGroupsForUser
@@ -358,7 +394,6 @@ Resources:
             - Effect: Allow
               Action:
                 - cognito-idp:InitiateAuth
-                - cognito-idp:RespondToAuthChallenge
               Resource: '*'
             - Effect: Allow
               Action: [sns:CreatePlatformEndpoint, sns:GetEndpointAttributes, sns:SetEndpointAttributes, sns:Publish]
@@ -368,46 +403,22 @@ Resources:
               Resource: '*'
             - Effect: Allow
               Action: secretsmanager:GetSecretValue
-              Resource: !Ref AgentPolicySigningSecret
+              Resource:
+                - !Ref AgentPolicySigningSecret
+                - !Ref GoogleMapsServerApiKeySecretArn
       Events:
         PublicRoot:
           Type: Api
           Properties: {Path: /, Method: get, Auth: {Authorizer: NONE}}
-        SendOtp:
-          Type: Api
-          Properties: {Path: /auth/send-otp, Method: post, Auth: {Authorizer: NONE}}
-        VerifyOtp:
-          Type: Api
-          Properties: {Path: /auth/verify-otp, Method: post, Auth: {Authorizer: NONE}}
         RefreshToken:
           Type: Api
           Properties: {Path: /auth/refresh, Method: post, Auth: {Authorizer: NONE}}
-        GoogleAuth:
+        SessionBootstrap:
           Type: Api
-          Properties: {Path: /auth/google, Method: post, Auth: {Authorizer: NONE}}
+          Properties: {Path: /auth/session, Method: post, Auth: {Authorizer: NONE}}
         ProtectedApi:
           Type: Api
-          Properties: {Path: '/{proxy+}', Method: any, Auth: {Authorizer: NONE}}
-
-  AgentSchedulerRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub guardian-${EnvironmentName}-agent-scheduler-role
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: scheduler.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: InvokeGuardianAgent
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action: lambda:InvokeFunction
-                Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:guardian-${EnvironmentName}-agent
+          Properties: {Path: '/{proxy+}', Method: any}
 
   GuardianAgentFunction:
     Type: AWS::Serverless::Function
@@ -419,12 +430,15 @@ Resources:
         Variables:
           COGNITO_USER_POOL_ID: !Ref GuardianUserPool
           COGNITO_CLIENT_ID: !Ref GuardianUserPoolClient
+          GOOGLE_CLIENT_ID: !Ref GoogleClientId
           DYNAMODB_INCIDENTS_TABLE: !Ref IncidentsTable
           DYNAMODB_EVENTS_TABLE: !Ref IncidentEventsTable
           DYNAMODB_RESPONDERS_TABLE: !Ref RespondersTable
           DYNAMODB_MISSIONS_TABLE: !Ref MissionsTable
           DYNAMODB_USERS_TABLE: !Ref UsersTable
-          DYNAMODB_AUTH_THROTTLE_TABLE: !Ref AuthThrottleTable
+          DYNAMODB_DEVICE_ENDPOINTS_TABLE: !Ref DeviceEndpointsTable
+          DYNAMODB_ABUSE_COUNTERS_TABLE: !Ref AbuseCountersTable
+          DYNAMODB_ABUSE_REPORTS_TABLE: !Ref AbuseReportsTable
           DYNAMODB_SESSIONS_TABLE: !Ref SessionsTable
           DYNAMODB_AGENT_LEDGER_TABLE: !Ref AgentLedgerTable
           DYNAMODB_AGENT_AUTHORIZATIONS_TABLE: !Ref AgentAuthorizationsTable
@@ -433,7 +447,8 @@ Resources:
           SNS_FCM_PLATFORM_ARN: !Ref FcmPlatformApplicationArn
           SNS_APNS_PLATFORM_ARN: !Ref ApnsPlatformApplicationArn
           BEDROCK_MODEL_ID: anthropic.claude-3-haiku-20240307-v1:0
-          SCHEDULER_ROLE_ARN: !GetAtt AgentSchedulerRole.Arn
+          INCIDENT_RETENTION_DAYS: !Ref IncidentRetentionDays
+          WORKFLOW_QUEUE_URL: !Ref GuardianWorkflowQueue
       Policies:
         - DynamoDBCrudPolicy: {TableName: !Ref IncidentsTable}
         - DynamoDBCrudPolicy: {TableName: !Ref IncidentEventsTable}
@@ -445,6 +460,7 @@ Resources:
               Resource: !GetAtt AgentLedgerTable.Arn
         - DynamoDBCrudPolicy: {TableName: !Ref AgentAuthorizationsTable}
         - DynamoDBReadPolicy: {TableName: !Ref UsersTable}
+        - DynamoDBReadPolicy: {TableName: !Ref DeviceEndpointsTable}
         - Statement:
             - Effect: Allow
               Action: sns:Publish
@@ -456,11 +472,8 @@ Resources:
               Action: secretsmanager:GetSecretValue
               Resource: !Ref AgentPolicySigningSecret
             - Effect: Allow
-              Action: scheduler:CreateSchedule
-              Resource: '*'
-            - Effect: Allow
-              Action: iam:PassRole
-              Resource: !GetAtt AgentSchedulerRole.Arn
+              Action: sqs:SendMessage
+              Resource: !GetAtt GuardianWorkflowQueue.Arn
       Events:
         IncidentCreatedEvent:
           Type: EventBridgeRule
@@ -468,6 +481,37 @@ Resources:
             Pattern:
               source: [guardian.incident]
               detail-type: [incident.created]
+        WorkflowDeadlineEvents:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt GuardianWorkflowQueue.Arn
+            BatchSize: 10
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+
+  GuardianWorkflowReconcilerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub guardian-${EnvironmentName}-workflow-reconciler
+      CodeUri: .
+      Handler: workflow_reconciler.handler
+      Timeout: 60
+      Environment:
+        Variables:
+          DYNAMODB_INCIDENTS_TABLE: !Ref IncidentsTable
+          WORKFLOW_QUEUE_URL: !Ref GuardianWorkflowQueue
+          EVENTBUS_NAME: default
+      Policies:
+        - DynamoDBCrudPolicy: {TableName: !Ref IncidentsTable}
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt GuardianWorkflowQueue.QueueName
+        - EventBridgePutEventsPolicy: {EventBusName: default}
+      Events:
+        ReconcileSafetyDeadlines:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 minute)
+            Enabled: true
 
 Outputs:
   ApiEndpoint:
@@ -476,3 +520,5 @@ Outputs:
     Value: !Ref GuardianUserPool
   CognitoClientId:
     Value: !Ref GuardianUserPoolClient
+  CognitoAuthDomain:
+    Value: !Sub 'https://guardian-${EnvironmentName}-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com'

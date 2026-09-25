@@ -1,15 +1,11 @@
-"""
-Guardian AWS Cognito Authentication Service
-Replaces Firebase Auth with real AWS Cognito User Pool.
-Supports Phone OTP (SMS MFA), JWT token issuance, and user profile management in DynamoDB.
+"""Guardian authentication and user-profile service.
+
+Google identity is the only production login bootstrap. Guardian APIs use
+Cognito-issued access tokens plus Guardian device sessions.
 """
 
 import os
-import hmac
-import hashlib
-import base64
 import logging
-import re
 import uuid
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
@@ -26,24 +22,9 @@ logger = logging.getLogger("cognito_service")
 # Env config
 COGNITO_USER_POOL_ID = os.environ.get("COGNITO_USER_POOL_ID", "")
 COGNITO_CLIENT_ID = os.environ.get("COGNITO_CLIENT_ID", "")
-COGNITO_CLIENT_SECRET = os.environ.get("COGNITO_CLIENT_SECRET", "")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "ap-south-1")
 DYNAMODB_USERS_TABLE = os.environ.get("DYNAMODB_USERS_TABLE", "guardian-users")
-DYNAMODB_AUTH_THROTTLE_TABLE = os.environ.get(
-    "DYNAMODB_AUTH_THROTTLE_TABLE", "guardian-auth-throttle"
-)
-OTP_RESEND_COOLDOWN_SECONDS = int(os.environ.get("OTP_RESEND_COOLDOWN_SECONDS", "5"))
-OTP_MAX_REQUESTS_PER_HOUR = int(os.environ.get("OTP_MAX_REQUESTS_PER_HOUR", "50"))
-
-
-def _get_secret_hash(username: str) -> str:
-    """HMAC-SHA256 hash required by Cognito app clients with secret."""
-    if not COGNITO_CLIENT_SECRET:
-        return ""
-    msg = username + COGNITO_CLIENT_ID
-    dig = hmac.new(COGNITO_CLIENT_SECRET.encode("utf-8"), msg.encode("utf-8"), hashlib.sha256).digest()
-    return base64.b64encode(dig).decode()
 
 
 def _cognito_client():
@@ -63,132 +44,8 @@ def _dynamo_resource():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PHONE OTP FLOW
+# TOKEN REFRESH
 # ─────────────────────────────────────────────────────────────────────────────
-
-def initiate_phone_auth(phone_number: str) -> Dict[str, Any]:
-    """
-    Step 1: Initiate phone number authentication.
-    Cognito sends an SMS OTP to the phone number.
-    If the user doesn't exist, they are auto-created.
-    
-    Returns: { "session": str, "user_exists": bool }
-    """
-    client = _cognito_client()
-    if not client or not COGNITO_USER_POOL_ID or not COGNITO_CLIENT_ID:
-        raise ValueError("AWS Cognito is not configured; OTP authentication is unavailable")
-
-    phone = _normalize_e164(phone_number)
-    _enforce_otp_rate_limit(phone)
-
-    # Try to auto-register user if not exists
-    temp_pwd = _generate_temp_password()
-    try:
-        client.admin_create_user(
-            UserPoolId=COGNITO_USER_POOL_ID,
-            Username=phone,
-            UserAttributes=[
-                {"Name": "phone_number", "Value": phone},
-                {"Name": "phone_number_verified", "Value": "true"},
-            ],
-            MessageAction="SUPPRESS",  # Don't send welcome email
-            TemporaryPassword=temp_pwd,
-        )
-        logger.info("New Cognito user created")
-    except ClientError as e:
-        if e.response["Error"]["Code"] != "UsernameExistsException":
-            logger.warning(f"User creation note: {e}")
-
-    # Force set permanent password (to allow CUSTOM_AUTH flow)
-    try:
-        client.admin_set_user_password(
-            UserPoolId=COGNITO_USER_POOL_ID,
-            Username=phone,
-            Password=temp_pwd,
-            Permanent=True,
-        )
-    except Exception as e:
-        logger.warning(f"Set password: {e}")
-
-    # Initiate Custom Auth / OTP flow
-    try:
-        auth_params = {
-            "USERNAME": phone,
-        }
-        if COGNITO_CLIENT_SECRET:
-            auth_params["SECRET_HASH"] = _get_secret_hash(phone)
-
-        resp = client.initiate_auth(
-            AuthFlow="CUSTOM_AUTH",
-            AuthParameters=auth_params,
-            ClientId=COGNITO_CLIENT_ID,
-        )
-        session = resp.get("Session", "")
-        return {
-            "session": session,
-            "phone": phone,
-            "message": "If the number can receive messages, a code has been sent."
-        }
-    except ClientError as ce:
-        code = ce.response["Error"]["Code"]
-        logger.error("Initiate auth error: %s", code)
-        raise ValueError("Unable to start verification. Please try again later.")
-
-
-def verify_otp(phone_number: str, otp_code: str, session: str) -> Dict[str, Any]:
-    """
-    Step 2: Verify the SMS OTP and return JWT tokens.
-    Returns: { "access_token": str, "id_token": str, "refresh_token": str, "user_id": str }
-    """
-    client = _cognito_client()
-    if not client or not COGNITO_USER_POOL_ID or not COGNITO_CLIENT_ID:
-        raise ValueError("AWS Cognito is not configured; OTP authentication is unavailable")
-
-    phone = _normalize_e164(phone_number)
-
-    try:
-        challenge_responses = {
-            "USERNAME": phone,
-            "ANSWER": otp_code,
-        }
-        if COGNITO_CLIENT_SECRET:
-            challenge_responses["SECRET_HASH"] = _get_secret_hash(phone)
-
-        resp = client.respond_to_auth_challenge(
-            ClientId=COGNITO_CLIENT_ID,
-            ChallengeName="CUSTOM_CHALLENGE",
-            Session=session,
-            ChallengeResponses=challenge_responses,
-        )
-
-        auth_result = resp.get("AuthenticationResult", {})
-        access_token = auth_result.get("AccessToken", "")
-        id_token = auth_result.get("IdToken", "")
-        refresh_token = auth_result.get("RefreshToken", "")
-
-        if not access_token:
-            raise ValueError("The verification code is incorrect or expired.")
-
-        # Get user info
-        user_info = client.get_user(AccessToken=access_token)
-        user_id = user_info.get("Username", phone)
-
-        # Upsert user profile in DynamoDB
-        _upsert_user_profile(user_id=user_id, phone=phone)
-
-        return {
-            "access_token": access_token,
-            "id_token": id_token,
-            "refresh_token": refresh_token,
-            "user_id": user_id,
-            "phone": phone,
-        }
-    except ClientError as ce:
-        code = ce.response.get("Error", {}).get("Code", "Unknown")
-        msg = ce.response.get("Error", {}).get("Message", str(ce))
-        logger.error(f"OTP verification rejected: code={code}, msg={msg}")
-        raise ValueError(f"{msg}")
-
 
 def refresh_tokens(refresh_token: str, user_id: Optional[str] = None) -> Dict[str, Any]:
     """Refresh expired access/id tokens using the refresh token."""
@@ -208,9 +65,6 @@ def refresh_tokens(refresh_token: str, user_id: Optional[str] = None) -> Dict[st
 
     try:
         auth_params = {"REFRESH_TOKEN": refresh_token}
-        if COGNITO_CLIENT_SECRET:
-            raise ValueError("Mobile Cognito clients must not use a client secret")
-
         resp = client.initiate_auth(
             AuthFlow="REFRESH_TOKEN_AUTH",
             AuthParameters=auth_params,
@@ -225,116 +79,133 @@ def refresh_tokens(refresh_token: str, user_id: Optional[str] = None) -> Dict[st
         raise ValueError(f"Token refresh failed: {ce.response['Error']['Message']}")
 
 
+def validate_refresh_token_owner(
+    refresh_token: str,
+    expected_user_id: str,
+) -> None:
+    """Prove the refresh token belongs to the same Cognito subject as access_token.
+
+    Guardian sessions bind both token families. Without this check a caller
+    could accidentally pair an access token from one account with a refresh
+    token from another, creating a session that fails unpredictably at refresh.
+    """
+    if not refresh_token or not expected_user_id:
+        raise ValueError("Refresh token and expected user are required")
+
+    is_dev = os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    if is_dev:
+        if refresh_token.startswith("google_refresh_token_"):
+            return
+        raise ValueError("Invalid development refresh token")
+
+    client = _cognito_client()
+    if not client or not COGNITO_CLIENT_ID:
+        raise RuntimeError("AWS Cognito is temporarily unavailable")
+
+    try:
+        refreshed = client.initiate_auth(
+            AuthFlow="REFRESH_TOKEN_AUTH",
+            AuthParameters={"REFRESH_TOKEN": refresh_token},
+            ClientId=COGNITO_CLIENT_ID,
+        )
+        refreshed_access = (
+            refreshed.get("AuthenticationResult", {}).get("AccessToken", "")
+        )
+        if not refreshed_access:
+            raise ValueError("Cognito refresh token could not be validated")
+        result = client.get_user(AccessToken=refreshed_access)
+    except ClientError as error:
+        raise ValueError("Cognito refresh token is invalid or expired") from error
+
+    attributes = {
+        str(item.get("Name")): str(item.get("Value") or "")
+        for item in result.get("UserAttributes", [])
+        if item.get("Name")
+    }
+    refresh_user_id = attributes.get("sub", "").strip()
+    if not refresh_user_id or refresh_user_id != expected_user_id:
+        raise ValueError("Refresh token does not belong to the authenticated user")
+
+
 def _verify_google_payload(id_token_str: str) -> Dict[str, Any]:
-    """Cryptographic verification via google.oauth2.id_token or Google tokeninfo endpoint."""
+    """Verify a Google ID token cryptographically and for Guardian's audience."""
+    if not GOOGLE_CLIENT_ID:
+        raise ValueError("GOOGLE_CLIENT_ID is required for Google authentication")
     try:
         from google.oauth2 import id_token
         from google.auth.transport import requests as google_requests
 
-        req = google_requests.Request()
-        audience = GOOGLE_CLIENT_ID if GOOGLE_CLIENT_ID else None
-        return id_token.verify_oauth2_token(id_token_str, req, audience=audience)
-    except Exception as library_err:
-        logger.info(f"Local google-auth transport note: {library_err}. Using Google tokeninfo endpoint.")
-        import urllib.request
-        import json
-        tokeninfo_url = f"https://oauth2.googleapis.com/tokeninfo?id_token={id_token_str}"
-        req = urllib.request.Request(tokeninfo_url, headers={"User-Agent": "Guardian-Backend"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            id_info = json.loads(resp.read().decode("utf-8"))
-        if "error" in id_info:
-            raise ValueError(id_info.get("error_description", id_info["error"]))
-        return id_info
+        payload = id_token.verify_oauth2_token(
+            id_token_str,
+            google_requests.Request(),
+            audience=GOOGLE_CLIENT_ID,
+        )
+    except Exception as error:
+        raise ValueError("Google token verification failed") from error
 
+    if payload.get("iss") not in {
+        "accounts.google.com",
+        "https://accounts.google.com",
+    }:
+        raise ValueError("Invalid Google token issuer")
+    if payload.get("aud") != GOOGLE_CLIENT_ID:
+        raise ValueError("Invalid Google token audience")
+    if not payload.get("sub"):
+        raise ValueError("Google token is missing subject")
+    if not payload.get("email") or payload.get("email_verified") is not True:
+        raise ValueError("Google account email must be verified")
+    return payload
 
 def authenticate_with_google(id_token_str: str) -> Dict[str, Any]:
+    """Development-only direct Google bootstrap.
+
+    Production mobile clients authenticate through Cognito's Google IdP using
+    authorization-code + PKCE. Keeping this helper in explicit dev mode makes
+    local tests deterministic without retaining a password-minting production
+    backdoor.
     """
-    Authenticate with Google ID Token.
-    Validates cryptographic signature with Google or dev mock fallback.
-    Upserts profile into DynamoDB and returns access + id + refresh tokens.
-    """
+    is_dev = os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    if not is_dev:
+        raise ValueError(
+            "Direct Google token bootstrap is disabled in production; "
+            "use Cognito managed login."
+        )
     if not id_token_str or not id_token_str.strip():
         raise ValueError("Google ID token is required")
 
-    sub: str = ""
-    email: str = ""
-    name: str = ""
-    picture: str = ""
-
-    # Check for dev token fallback
-    is_dev = os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
-    if is_dev and (id_token_str.startswith("dev_google_") or id_token_str.startswith("mock_google_")):
+    if id_token_str.startswith("dev_google_") or id_token_str.startswith("mock_google_"):
         parts = id_token_str.split("_")
-        user_suffix = parts[-1] if len(parts) > 2 else "user1"
-        sub = f"dev_{user_suffix}"
-        email = f"{user_suffix}@gmail.com"
-        name = f"Guardian User ({user_suffix})"
-        picture = "https://lh3.googleusercontent.com/a/default-user"
+        suffix = parts[-1] if len(parts) > 2 else "user1"
+        user_id = f"google_dev_{suffix}"
+        email = f"{suffix}@gmail.com"
+        name = f"Guardian User ({suffix})"
+        picture = ""
     else:
         try:
             id_info = _verify_google_payload(id_token_str)
+        except ValueError as error:
+            raise ValueError("Invalid Google ID token") from error
 
-            if id_info.get("iss") not in ["accounts.google.com", "https://accounts.google.com"]:
-                raise ValueError("Invalid Google token issuer")
+        if id_info.get("iss") not in {
+            "accounts.google.com",
+            "https://accounts.google.com",
+        }:
+            raise ValueError("Invalid Google token issuer")
+        if id_info.get("aud") != GOOGLE_CLIENT_ID:
+            raise ValueError("Invalid Google token audience")
+        if id_info.get("email_verified") is not True:
+            raise ValueError("Google account email must be verified")
 
-            sub = id_info.get("sub", "")
-            email = id_info.get("email", "")
-            if not sub or not email:
-                raise ValueError("Google token is missing sub or verified email claim")
-            name = id_info.get("name", "")
-            picture = id_info.get("picture", "")
-        except Exception as e:
-            logger.error(f"Google token verification failed: {e}")
-            raise ValueError(f"Invalid Google ID token: {str(e)}")
+        sub = str(id_info.get("sub") or "").strip()
+        email = str(id_info.get("email") or "").strip()
+        if not sub or not email:
+            raise ValueError("Google token is missing required identity claims")
+        user_id = f"google_{sub}"
+        name = str(id_info.get("name") or "")
+        picture = str(id_info.get("picture") or "")
 
-    user_id = f"google_{sub}"
-
-    if is_dev:
-        refresh_token = f"google_refresh_token_{uuid.uuid4().hex}"
-        access_token = f"dev_access_token_{user_id}"
-    else:
-        client = _cognito_client()
-        if not client or not COGNITO_USER_POOL_ID or not COGNITO_CLIENT_ID:
-            raise ValueError("AWS Cognito is not configured; Google authentication is unavailable in production")
-        temp_pwd = _generate_temp_password()
-        try:
-            client.admin_create_user(
-                UserPoolId=COGNITO_USER_POOL_ID,
-                Username=user_id,
-                UserAttributes=[
-                    {"Name": "email", "Value": email},
-                    {"Name": "email_verified", "Value": "true"},
-                ],
-                MessageAction="SUPPRESS",
-                TemporaryPassword=temp_pwd,
-            )
-        except ClientError as e:
-            if e.response["Error"]["Code"] != "UsernameExistsException":
-                logger.warning(f"Google Cognito user creation note: {e}")
-        try:
-            client.admin_set_user_password(
-                UserPoolId=COGNITO_USER_POOL_ID,
-                Username=user_id,
-                Password=temp_pwd,
-                Permanent=True,
-            )
-            auth_params = {"USERNAME": user_id, "PASSWORD": temp_pwd}
-            if COGNITO_CLIENT_SECRET:
-                auth_params["SECRET_HASH"] = _get_secret_hash(user_id)
-            resp = client.admin_initiate_auth(
-                UserPoolId=COGNITO_USER_POOL_ID,
-                ClientId=COGNITO_CLIENT_ID,
-                AuthFlow="ADMIN_USER_PASSWORD_AUTH",
-                AuthParameters=auth_params,
-            )
-            auth_result = resp.get("AuthenticationResult", {})
-            access_token = auth_result.get("AccessToken", "")
-            refresh_token = auth_result.get("RefreshToken", "")
-        except Exception as e:
-            logger.error(f"Cognito token issuance for Google auth failed: {e}")
-            raise ValueError("Unable to issue authenticated session for Google login.")
-
-    # Upsert user profile in DynamoDB
+    refresh_token = f"google_refresh_token_{uuid.uuid4().hex}"
+    access_token = f"dev_access_token_{user_id}"
     _upsert_user_profile(
         user_id=user_id,
         phone="",
@@ -345,7 +216,6 @@ def authenticate_with_google(id_token_str: str) -> Dict[str, Any]:
             "auth_provider": "google",
         },
     )
-
     return {
         "access_token": access_token,
         "id_token": id_token_str,
@@ -357,6 +227,63 @@ def authenticate_with_google(id_token_str: str) -> Dict[str, Any]:
         "auth_provider": "google",
     }
 
+
+def bootstrap_cognito_identity(access_token: str) -> Dict[str, Any]:
+    """Resolve a Cognito-authenticated identity to Guardian's immutable user id."""
+    if not access_token:
+        raise ValueError("Cognito access token is required")
+
+    is_dev = os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    if is_dev and access_token.startswith("dev_access_token_"):
+        user_id = access_token.removeprefix("dev_access_token_")
+        if not user_id:
+            raise ValueError("Invalid development access token")
+        profile = get_user_profile(user_id) or {}
+        return {
+            "user_id": user_id,
+            "email": profile.get("email", ""),
+            "display_name": profile.get("display_name", ""),
+            "photo_url": profile.get("photo_url", ""),
+            "auth_provider": profile.get("auth_provider", "google"),
+        }
+
+    client = _cognito_client()
+    if not client or not COGNITO_USER_POOL_ID:
+        raise ValueError("AWS Cognito is not configured")
+    try:
+        result = client.get_user(AccessToken=access_token)
+    except ClientError as error:
+        raise ValueError("Cognito access token is invalid or expired") from error
+
+    attributes = {
+        str(item.get("Name")): str(item.get("Value") or "")
+        for item in result.get("UserAttributes", [])
+        if item.get("Name")
+    }
+    user_id = attributes.get("sub", "").strip()
+    if not user_id:
+        raise ValueError("Cognito token is missing immutable subject identity")
+    email = attributes.get("email", "").strip()
+    display_name = attributes.get("name", "").strip()
+    photo_url = attributes.get("picture", "").strip()
+    _upsert_user_profile(
+        user_id=user_id,
+        phone="",
+        extra={
+            "email": email,
+            "display_name": display_name,
+            "photo_url": photo_url,
+            "auth_provider": "google",
+            "cognito_username": str(result.get("Username") or ""),
+        },
+    )
+    return {
+        "user_id": user_id,
+        "email": email,
+        "display_name": display_name,
+        "photo_url": photo_url,
+        "auth_provider": "google",
+    }
 
 def sign_out(access_token: str) -> Dict[str, Any]:
     """Revoke all tokens for the user (global sign out)."""
@@ -457,84 +384,3 @@ def get_user_profile(user_id: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Get user profile failed: {e}")
         return None
-
-
-def save_fcm_token(user_id: str, fcm_token: str) -> Dict[str, Any]:
-    """
-    Add a device FCM/SNS token to the user's token list in DynamoDB.
-    This enables targeted push notifications via AWS SNS.
-    """
-    dynamo = _dynamo_resource()
-    if not dynamo:
-        return {"success": True, "dev_mode": True}
-    try:
-        table = dynamo.Table(DYNAMODB_USERS_TABLE)
-        table.update_item(
-            Key={"user_id": user_id},
-            UpdateExpression="ADD fcm_tokens :t SET updated_at = :u",
-            ExpressionAttributeValues={
-                ":t": {fcm_token},
-                ":u": datetime.now(timezone.utc).isoformat(),
-            },
-        )
-        return {"success": True}
-    except Exception as e:
-        logger.error(f"Save FCM token failed: {e}")
-        return {"success": False, "error": str(e)}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _generate_temp_password() -> str:
-    """Generate a consistent temporary password for Cognito user creation."""
-    import secrets
-    import string
-    chars = string.ascii_letters + string.digits + "!@#$"
-    pwd = "".join(secrets.choice(chars) for _ in range(16))
-    # Ensure complexity requirements met
-    return f"Grd1!A{pwd[:12]}"
-
-
-def _normalize_e164(phone_number: str) -> str:
-    phone = re.sub(r"[\s().-]", "", phone_number.strip())
-    if not re.fullmatch(r"\+[1-9]\d{7,14}", phone):
-        raise ValueError("Enter a valid phone number including country code.")
-    return phone
-
-
-def _enforce_otp_rate_limit(phone: str) -> None:
-    """Atomically enforce resend cooldown and a per-number hourly quota."""
-    dynamo = _dynamo_resource()
-    if not dynamo:
-        if os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true":
-            return
-        raise ValueError("Verification is temporarily unavailable.")
-    now = int(datetime.now(timezone.utc).timestamp())
-    phone_hash = hashlib.sha256(phone.encode("utf-8")).hexdigest()
-    hour_bucket = now // 3600
-    try:
-        dynamo.Table(DYNAMODB_AUTH_THROTTLE_TABLE).update_item(
-            Key={"throttle_key": f"{phone_hash}:{hour_bucket}"},
-            UpdateExpression=(
-                "SET last_sent_at = :now, expires_at = :ttl ADD request_count :one"
-            ),
-            ConditionExpression=(
-                "(attribute_not_exists(request_count) OR request_count < :max) "
-                "AND (attribute_not_exists(last_sent_at) OR last_sent_at <= :cooldown)"
-            ),
-            ExpressionAttributeValues={
-                ":now": now,
-                ":ttl": now + 7200,
-                ":one": 1,
-                ":max": OTP_MAX_REQUESTS_PER_HOUR,
-                ":cooldown": now - OTP_RESEND_COOLDOWN_SECONDS,
-            },
-        )
-    except ClientError as error:
-        if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
-            raise ValueError("Please wait before requesting another code.") from error
-        logger.exception("OTP rate-limit storage failed")
-        raise ValueError("Verification is temporarily unavailable.") from error
-

@@ -1,56 +1,26 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- ═══════════════════════════════════════════════
-         LOCATION — Required for GPS tracking during SOS
-         ═══════════════════════════════════════════════ -->
+    <!-- Location is required for active/native SOS and route/check-in safety. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
-    <!-- ═══════════════════════════════════════════════
-         AUDIO / CAMERA — Voice SOS + environment detection
-         ═══════════════════════════════════════════════ -->
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-
-    <!-- ═══════════════════════════════════════════════
-         STORAGE — Encrypted emergency recordings
-         ═══════════════════════════════════════════════ -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="29" />
-
-    <!-- ═══════════════════════════════════════════════
-         NETWORK — Firebase, maps, FCM
-         ═══════════════════════════════════════════════ -->
+    <!-- Network is required for authenticated cloud sync, maps and push. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
 
-    <!-- ═══════════════════════════════════════════════
-         SMS — Automatic emergency SMS via SmsManager
-         READ_SMS is REMOVED — we only send, never read
-         ═══════════════════════════════════════════════ -->
+    <!-- Direct Android emergency SMS. Login no longer uses SMS OTP. -->
     <uses-permission android:name="android.permission.SEND_SMS" />
 
-    <!-- ═══════════════════════════════════════════════
-         SYSTEM — Foreground service, boot, vibration
-         ═══════════════════════════════════════════════ -->
+    <!-- Native safety service, check-ins and reboot recovery. -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-
-    <!-- ═══════════════════════════════════════════════
-         PHONE — Emergency call (112)
-         ═══════════════════════════════════════════════ -->
-    <uses-permission android:name="android.permission.CALL_PHONE" />
 
     <application
         android:label="Guardian"
@@ -59,6 +29,10 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:allowBackup="false"
         android:fullBackupContent="false">
+
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${GOOGLE_MAPS_API_KEY}" />
 
         <!-- Main Flutter Activity -->
         <activity
@@ -81,7 +55,15 @@
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="guardian" android:host="emergency" />
+            </intent-filter>
+            <!-- Cognito authorization-code + PKCE callback. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="guardian" android:host="auth" />
             </intent-filter>
         </activity>
 
@@ -89,8 +71,13 @@
         <service
             android:name="com.company.guardian.SafetyForegroundService"
             android:exported="false"
-            android:foregroundServiceType="location|microphone"
+            android:foregroundServiceType="location"
             android:stopWithTask="false" />
+
+        <receiver
+            android:name="com.company.guardian.SmsSentReceiver"
+            android:enabled="true"
+            android:exported="false" />
 
         <!-- Boot Receiver — restart safety service after device reboot -->
         <receiver

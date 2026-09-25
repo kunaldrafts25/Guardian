@@ -183,21 +183,21 @@ jobs:
           <plist version="1.0">
           <dict>
           	<key>CLIENT_ID</key>
-          	<string>530178096868-90d5lls6prav97gaueu9814dgprlmlm7.apps.googleusercontent.com</string>
+          	<string>guardian-ci-client.apps.googleusercontent.com</string>
           	<key>REVERSED_CLIENT_ID</key>
-          	<string>com.googleusercontent.apps.530178096868-90d5lls6prav97gaueu9814dgprlmlm7</string>
+          	<string>com.googleusercontent.apps.guardian-ci-client</string>
           	<key>API_KEY</key>
-          	<string>AIzaSyCI-dAeXi1kgCYAzUbSoY8cnt5J9W56zi4</string>
+          	<string>guardian-ci-placeholder-api-key</string>
           	<key>GCM_SENDER_ID</key>
-          	<string>530178096868</string>
+          	<string>000000000000</string>
           	<key>PLIST_VERSION</key>
           	<string>1</string>
           	<key>BUNDLE_ID</key>
           	<string>com.company.guardian</string>
           	<key>PROJECT_ID</key>
-          	<string>guardian-70059</string>
+          	<string>guardian-ci</string>
           	<key>STORAGE_BUCKET</key>
-          	<string>guardian-70059.firebasestorage.app</string>
+          	<string>guardian-ci.invalid</string>
           	<key>IS_ADS_ENABLED</key>
           	<false></false>
           	<key>IS_ANALYTICS_ENABLED</key>
@@ -209,7 +209,7 @@ jobs:
           	<key>IS_SIGNIN_ENABLED</key>
           	<true></true>
           	<key>GOOGLE_APP_ID</key>
-          	<string>1:530178096868:ios:828f1a83ad34be612f36f1</string>
+          	<string>1:000000000000:ios:828f1a83ad34be612f36f1</string>
           </dict>
           </plist>
           EOF

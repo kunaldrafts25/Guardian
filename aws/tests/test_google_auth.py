@@ -47,9 +47,11 @@ def test_google_auth_dev_token_success():
     assert is_valid is True
 
 
-def test_google_auth_mocked_verified_token_success():
+def test_google_auth_mocked_verified_token_success(monkeypatch):
+    monkeypatch.setattr("aws.cognito_service.GOOGLE_CLIENT_ID", "guardian-google-client")
     mock_payload = {
         "iss": "https://accounts.google.com",
+        "aud": "guardian-google-client",
         "sub": "109876543210987654321",
         "email": "kunal.guardian@gmail.com",
         "email_verified": True,
@@ -117,12 +119,94 @@ def test_google_auth_refresh_and_authenticated_call():
     assert refreshed_data["session_id"] == session_id
     assert refreshed_data["access_token"].startswith(f"dev_access_token_{user_id}")
 
-    user_resp = client.get(
-        f"/users/{user_id}",
+    sessions_resp = client.get(
+        "/auth/sessions",
         headers={
             "Authorization": f"Bearer {refreshed_data['access_token']}",
             "X-Guardian-Session-ID": session_id,
         },
     )
-    assert user_resp.status_code == 200
+    assert sessions_resp.status_code == 200
+    sessions = sessions_resp.json()["sessions"]
+    assert any(
+        item["session_id"] == session_id and item["current"] is True
+        for item in sessions
+    )
 
+
+
+def test_session_bootstrap_rejects_mismatched_refresh_identity():
+    with (
+        patch(
+            "aws.server.bootstrap_cognito_identity",
+            return_value={
+                "user_id": "subject-a",
+                "email": "a@example.com",
+                "display_name": "A",
+                "photo_url": "",
+                "auth_provider": "google",
+            },
+        ),
+        patch(
+            "aws.server.validate_refresh_token_owner",
+            side_effect=ValueError(
+                "Refresh token does not belong to the authenticated user"
+            ),
+        ),
+    ):
+        response = client.post(
+            "/auth/session",
+            json={
+                "access_token": "valid_access_token_subject_a",
+                "refresh_token": "refresh_token_subject_b_123456",
+                "device_label": "Test Device",
+                "platform": "android",
+            },
+        )
+
+    assert response.status_code == 401
+    assert "does not belong" in response.text
+
+
+def test_google_auth_wrong_audience_rejected(monkeypatch):
+    monkeypatch.setattr("aws.cognito_service.GOOGLE_CLIENT_ID", "guardian-google-client")
+    payload = {
+        "iss": "https://accounts.google.com",
+        "aud": "different-client",
+        "sub": "subject",
+        "email": "user@example.com",
+        "email_verified": True,
+    }
+    with patch("aws.cognito_service._verify_google_payload", return_value=payload):
+        response = client.post(
+            "/auth/google",
+            json={
+                "id_token": "signed-but-wrong-audience",
+                "device_label": "Test Device",
+                "platform": "android",
+            },
+        )
+    assert response.status_code == 401
+    assert "audience" in response.text.lower()
+
+
+def test_google_auth_unverified_email_rejected(monkeypatch):
+    monkeypatch.setattr("aws.cognito_service.GOOGLE_CLIENT_ID", "guardian-google-client")
+    payload = {
+        "iss": "https://accounts.google.com",
+        "aud": "guardian-google-client",
+        "sub": "subject",
+        "email": "user@example.com",
+        "email_verified": False,
+    }
+    with patch("aws.cognito_service._verify_google_payload", return_value=payload):
+        response = client.post(
+            "/auth/google",
+            json={
+                "id_token": "signed-unverified-email",
+                "device_label": "Test Device",
+                "platform": "android",
+            },
+        )
+    assert response.status_code == 401
+    assert "verified" in response.text.lower()

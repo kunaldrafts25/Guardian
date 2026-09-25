@@ -3,14 +3,15 @@
  *
  * Validates:
  * 1. NearbyResponderSummary model & JSON contract
- * 2. MapRoutingConfig endpoint configurability, headers, and rate-limit constants
+ * 2. Provider-neutral route state and truthful degraded geometry semantics
  * 3. SosSettings state with fallDetectionEnabled & setting copy
  * 4. SosTriggerSource enums & accurate event provenance mappings
  */
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:guardian/core/config/map_routing_config.dart';
 import 'package:guardian/core/models/nearby_responder_summary.dart';
+import 'package:guardian/core/providers/safe_route_provider.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:guardian/core/providers/sos_settings_provider.dart';
 import 'package:guardian/core/services/sos_service.dart';
 
@@ -60,28 +61,41 @@ void main() {
     });
   });
 
-  group('P1: MapRoutingConfig Productionization', () {
-    test('provides configurable endpoints with non-empty defaults', () {
-      expect(MapRoutingConfig.tilesUrl, isNotEmpty);
-      expect(MapRoutingConfig.nominatimBaseUrl, isNotEmpty);
-      expect(MapRoutingConfig.osrmBaseUrl, isNotEmpty);
-      expect(MapRoutingConfig.userAgent, contains('GuardianSafetyApp'));
+  group('P1: Route Provider Truthfulness', () {
+    test('authoritative route geometry is explicitly represented', () {
+      const route = RouteInfo(
+        polylinePoints: [
+          LatLng(18.5204, 73.8567),
+          LatLng(18.5210, 73.8572),
+        ],
+        distance: '100 m',
+        duration: '2 min walk',
+        startAddress: 'Current Location',
+        endAddress: 'Destination',
+        provider: 'google_routes',
+        authoritativeGeometry: true,
+      );
+
+      expect(route.provider, 'google_routes');
+      expect(route.authoritativeGeometry, isTrue);
     });
 
-    test('nominatimHeaders contain User-Agent and Accept-Language', () {
-      final headers = MapRoutingConfig.nominatimHeaders;
-      expect(headers.containsKey('User-Agent'), isTrue);
-      expect(headers['User-Agent'], isNotEmpty);
-      expect(headers['Accept-Language'], 'en');
-    });
+    test('degraded direct line is distinguishable from a routable path', () {
+      const route = RouteInfo(
+        polylinePoints: [
+          LatLng(18.5204, 73.8567),
+          LatLng(18.5300, 73.8660),
+        ],
+        distance: '1.4 km direct',
+        duration: 'Routing unavailable',
+        startAddress: 'Current Location',
+        endAddress: 'Destination',
+        provider: 'degraded_direct_line',
+        authoritativeGeometry: false,
+      );
 
-    test('respects configured timeouts and intervals', () {
-      expect(MapRoutingConfig.defaultSearchTimeout.inSeconds,
-          greaterThanOrEqualTo(5));
-      expect(MapRoutingConfig.defaultRoutingTimeout.inSeconds,
-          greaterThanOrEqualTo(8));
-      expect(MapRoutingConfig.nominatimMinInterval.inMilliseconds,
-          greaterThanOrEqualTo(1000));
+      expect(route.authoritativeGeometry, isFalse);
+      expect(route.provider, 'degraded_direct_line');
     });
   });
 

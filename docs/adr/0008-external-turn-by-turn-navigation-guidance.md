@@ -8,7 +8,7 @@ Building an in-app turn-by-turn routing, voice guidance, lane-assist, and real-t
 
 ## Decision
 Hand off turn-by-turn guidance to the device's native navigation application via platform intents (`geo:lat,lng` URI scheme on Android, `maps.apple.com` on iOS, or Google Maps intent):
-- Guardian provides an in-app map overview with OpenStreetMap / OSRM foot routing for walking proximity.
+- Guardian provides an in-app Google Maps overview with ordinary Google Routes walking geometry for proximity and deviation monitoring.
 - When driving or cycling en route, the responder clicks "Start Navigation", which launches the external navigation app directly to the authorized coordinates.
 - Guardian retains background tracking to detect arrival within the target perimeter.
 
@@ -16,3 +16,12 @@ Hand off turn-by-turn guidance to the device's native navigation application via
 - **Positive**: Responders receive battle-tested live traffic re-routing and audio voice guidance.
 - **Positive**: Zero proprietary navigation bugs or incorrect one-way turn instructions during critical rescue runs.
 - **Negative**: The responder temporarily switches out of the Guardian UI into their preferred mapping application.
+
+
+## Phase 5 provider update
+
+Guardian's map/search/route overview now uses Google Maps SDK, Guardian-proxied
+Google Places (New), and Guardian-proxied Google Routes. Turn-by-turn handoff
+remains separate because the current Guardian route response deliberately does not
+pretend to provide lane guidance, voice instructions, traffic expertise, or a
+verified-safe route. See ADR 0010.

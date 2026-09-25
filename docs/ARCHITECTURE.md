@@ -1,6 +1,6 @@
 # Guardian Post-Remediation System Architecture & Invariants
 
-This document outlines the architecture, component relationships, data flows, and safety-critical execution sequences of Guardian across mobile clients (Flutter, Android native, iOS native), local durability layers (Drift/SQLite), cloud infrastructure (AWS API Gateway, FastAPI Lambda, DynamoDB, EventBridge, Amazon SNS, Amazon Bedrock), and mapping services (OpenStreetMap & OSRM).
+This document outlines the architecture, component relationships, data flows, and safety-critical execution sequences of Guardian across mobile clients (Flutter, Android native, iOS native), local durability layers (Drift/SQLite), cloud infrastructure (AWS API Gateway, FastAPI Lambda, DynamoDB, EventBridge, Amazon SNS, Amazon Bedrock), and mapping services (Google Maps SDK plus Guardian-authenticated Google Places/Routes gateways).
 
 ---
 
@@ -19,7 +19,7 @@ flowchart TB
         end
 
         subgraph LocalDurability["Local Persistence Layer"]
-            DriftDB[("Drift SQLite Database\n(Encrypted Outbox, Incidents, Contacts)")]
+            DriftDB[("Drift SQLite Database\n(Durable outbox, incidents, contacts; OS-protected, not SQLCipher)")]
         end
 
         subgraph AndroidNative["Android Native Layer (Kotlin Foreground Service)"]
@@ -62,8 +62,9 @@ flowchart TB
     end
 
     subgraph ExternalServices["External Navigation & Mapping"]
-        OSRM["OSRM Walking Router (Free Foot Routing)"]
-        OSM["OpenStreetMap Nominatim & Tile Servers"]
+        GoogleMaps["Google Maps SDK (platform-restricted mobile keys)"]
+        GuardianMaps["Guardian authenticated Places/Routes proxy"]
+        GoogleWeb["Google Places (New) + Routes (server-only key)"]
         ExternalNav["External Turn-by-Turn GPS (Google Maps / Apple Maps Intent)"]
     end
 
@@ -98,8 +99,9 @@ flowchart TB
     SNS --> AwsSms
 
     %% Mapping Wiring
-    UI --> OSM
-    UI --> OSRM
+    UI --> GoogleMaps
+    UI --> GuardianMaps
+    GuardianMaps --> GoogleWeb
     UI -.-> ExternalNav
 ```
 

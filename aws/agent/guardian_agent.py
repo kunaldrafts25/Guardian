@@ -40,6 +40,8 @@ from aws.agent.tools import (
     notify_trusted_contact,
     dispatch_community_alert,
     process_incident_redispatch_eval,
+    claim_escalation_evaluation,
+    complete_escalation_evaluation,
 )
 from aws.incident_handler.handler import (
     get_incident,
@@ -488,11 +490,22 @@ def execute_agent_reasoning(
         elif bedrock_threat == "HIGH" and effective_risk_level not in ("CRITICAL", "HIGH") and confidence >= 0.80:
             effective_risk_level = "HIGH"
 
+    abuse_signals = (context.get("risk_assessment") or {}).get(
+        "abuse_signals",
+        {},
+    )
+    buddy_safety_required = bool(
+        (context.get("location") or {}).get("is_isolated", False)
+        or abuse_signals.get("high_frequency_creation", False)
+    )
+    provenance = context.get("trigger_provenance") or {}
     policy = evaluate_safety_policy(
         event_type=str(context.get("event_type", "")),
         risk_level=effective_risk_level,
         incident_state=str(context.get("state", "")),
-        is_isolated=bool((context.get("location") or {}).get("is_isolated", False)),
+        is_isolated=buddy_safety_required,
+        trigger_origin=str(provenance.get("origin", "")),
+        trigger_trust_level=str(provenance.get("trust_level", "")),
     )
     decision = policy.decision
     provider_name = (
@@ -655,71 +668,149 @@ def execute_agent_reasoning(
     }
 
 
-def _claim_verification_timeout(incident_id: str) -> bool:
-    """Atomically move a pending verification to TIMED_OUT once."""
+def _claim_verification_timeout(
+    incident_id: str,
+    run_id: str,
+    *,
+    lease_seconds: int = 90,
+) -> str:
+    """Acquire a recoverable lease for one verification-deadline execution."""
     incident = get_incident(incident_id)
     if not incident:
-        return False
-    if incident.get("verification_status") != "PENDING":
-        return False
+        return "NOOP"
+    if incident.get("verification_status") == "TIMED_OUT":
+        return "COMPLETED"
     if incident.get("agent_decision") != "REQUEST_USER_VERIFICATION":
-        return False
+        return "NOOP"
     if incident.get("state") in {
         IncidentState.RESOLVED.value,
         IncidentState.CANCELLED.value,
         IncidentState.EXPIRED.value,
     }:
-        return False
+        return "NOOP"
 
+    now_dt = datetime.now(timezone.utc)
+    now_epoch = int(now_dt.timestamp())
+    deadline = int(incident.get("verification_deadline_at") or 0)
+    if deadline and now_epoch < deadline:
+        return "EARLY"
+
+    lease_until = now_epoch + max(30, int(lease_seconds))
     dynamo = get_dynamo_resource()
-    now = datetime.now(timezone.utc).isoformat()
     if dynamo:
+        table = dynamo.Table(DYNAMODB_INCIDENTS_TABLE)
         try:
-            dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            table.update_item(
                 Key={"incident_id": incident_id},
                 UpdateExpression=(
-                    "SET verification_status = :timed_out, "
-                    "verification_completed_at = :now"
+                    "SET verification_status = :processing, "
+                    "verification_run_id = :run_id, "
+                    "verification_lease_expires_at = :lease, "
+                    "verification_processing_at = :now"
                 ),
                 ConditionExpression=(
-                    "verification_status = :pending "
-                    "AND agent_decision = :verification "
+                    "agent_decision = :verification "
                     "AND #state <> :resolved "
                     "AND #state <> :cancelled "
-                    "AND #state <> :expired"
+                    "AND #state <> :expired "
+                    "AND (attribute_not_exists(verification_deadline_at) "
+                    "OR verification_deadline_at <= :now_epoch) "
+                    "AND (verification_status = :pending "
+                    "OR (verification_status = :processing "
+                    "AND verification_lease_expires_at < :now_epoch))"
                 ),
                 ExpressionAttributeNames={"#state": "state"},
                 ExpressionAttributeValues={
-                    ":timed_out": "TIMED_OUT",
+                    ":processing": "PROCESSING",
                     ":pending": "PENDING",
                     ":verification": "REQUEST_USER_VERIFICATION",
                     ":resolved": IncidentState.RESOLVED.value,
                     ":cancelled": IncidentState.CANCELLED.value,
                     ":expired": IncidentState.EXPIRED.value,
-                    ":now": now,
+                    ":run_id": run_id,
+                    ":lease": lease_until,
+                    ":now": now_dt.isoformat(),
+                    ":now_epoch": now_epoch,
                 },
             )
-            return True
+            return "ACQUIRED"
         except Exception as error:
             code = getattr(error, "response", {}).get("Error", {}).get("Code")
-            if code == "ConditionalCheckFailedException":
-                return False
-            raise
+            if code != "ConditionalCheckFailedException":
+                raise
+            latest = table.get_item(
+                Key={"incident_id": incident_id},
+                ConsistentRead=True,
+            ).get("Item") or {}
+            if latest.get("verification_status") == "TIMED_OUT":
+                return "COMPLETED"
+            if latest.get("verification_status") == "PROCESSING":
+                return "BUSY"
+            return "NOOP"
 
-    # Local test mode uses the same semantic claim without DynamoDB.
-    incident["verification_status"] = "TIMED_OUT"
-    incident["verification_completed_at"] = now
-    return True
+    if os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true":
+        status = str(incident.get("verification_status") or "")
+        if status == "PROCESSING":
+            if int(incident.get("verification_lease_expires_at") or 0) >= now_epoch:
+                return "BUSY"
+        elif status != "PENDING":
+            return "NOOP"
+        incident["verification_status"] = "PROCESSING"
+        incident["verification_run_id"] = run_id
+        incident["verification_lease_expires_at"] = lease_until
+        incident["verification_processing_at"] = now_dt.isoformat()
+        return "ACQUIRED"
+    return "NOOP"
 
+
+def _complete_verification_timeout(
+    incident_id: str,
+    run_id: str,
+) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression=(
+                "SET verification_status = :timed_out, "
+                "verification_completed_at = :now "
+                "REMOVE verification_run_id, verification_lease_expires_at"
+            ),
+            ConditionExpression=(
+                "verification_status = :processing AND verification_run_id = :run_id"
+            ),
+            ExpressionAttributeValues={
+                ":timed_out": "TIMED_OUT",
+                ":processing": "PROCESSING",
+                ":run_id": run_id,
+                ":now": now,
+            },
+        )
+        return
+
+    incident = get_incident(incident_id)
+    if (
+        incident
+        and incident.get("verification_status") == "PROCESSING"
+        and incident.get("verification_run_id") == run_id
+    ):
+        incident["verification_status"] = "TIMED_OUT"
+        incident["verification_completed_at"] = now
+        incident.pop("verification_run_id", None)
+        incident.pop("verification_lease_expires_at", None)
 
 def _handle_verification_timeout(
     incident_id: str,
     correlation_id: str,
 ) -> Dict[str, Any]:
-    if not _claim_verification_timeout(incident_id):
+    claim = _claim_verification_timeout(incident_id, correlation_id)
+    if claim == "BUSY":
+        raise RuntimeError("Verification timeout execution is already running")
+    if claim in {"NOOP", "COMPLETED", "EARLY"}:
         return {
             "incident_id": incident_id,
-            "status": "VERIFICATION_TIMEOUT_NOOP",
+            "status": f"VERIFICATION_TIMEOUT_{claim}",
         }
 
     incident = get_incident(incident_id) or {}
@@ -733,12 +824,15 @@ def _handle_verification_timeout(
             "status": "VERIFICATION_TIMEOUT_NOOP_TERMINAL",
         }
 
+    provenance = incident.get("trigger_provenance") or {}
     policy = evaluate_safety_policy(
         event_type=str(incident.get("event_type", "")),
         risk_level=str((incident.get("risk_assessment") or {}).get("level", "MEDIUM")),
         incident_state=str(incident.get("state", "")),
         is_isolated=bool((incident.get("location") or {}).get("is_isolated", False)),
         verification_timed_out=True,
+        trigger_origin=str(provenance.get("origin", "")),
+        trigger_trust_level=str(provenance.get("trust_level", "")),
     )
     authorizations = issue_policy_authorizations(
         incident_id=incident_id,
@@ -806,6 +900,8 @@ def _handle_verification_timeout(
             "deterministic policy escalated independent emergency channels."
         )
 
+    _complete_verification_timeout(incident_id, correlation_id)
+
     return {
         "incident_id": incident_id,
         "status": "VERIFICATION_TIMEOUT_ESCALATED",
@@ -814,7 +910,10 @@ def _handle_verification_timeout(
     }
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def _process_workflow_event(
+    event: Dict[str, Any],
+    context: Any,
+) -> Dict[str, Any]:
     detail = event.get("detail", {}) or {}
     incident_id = detail.get("incident_id") or event.get("incident_id")
     timeout_type = detail.get("timeout_type")
@@ -831,7 +930,24 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if timeout_type == "USER_VERIFICATION":
             result = _handle_verification_timeout(incident_id, correlation_id)
         elif timeout_type == "ESCALATION_CHECK":
-            result = process_incident_redispatch_eval(incident_id)
+            idempotency_key = str(
+                detail.get("idempotency_key")
+                or f"deadline:{detail.get('deadline_at') or 'legacy'}"
+            )
+            claim = claim_escalation_evaluation(
+                incident_id,
+                idempotency_key,
+            )
+            if claim == "COMPLETED":
+                result = {
+                    "incident_id": incident_id,
+                    "status": "ESCALATION_CHECK_ALREADY_COMPLETED",
+                }
+            elif claim == "BUSY":
+                raise RuntimeError("Responder escalation evaluation is already running")
+            else:
+                result = process_incident_redispatch_eval(incident_id)
+                complete_escalation_evaluation(incident_id, idempotency_key)
         elif timeout_type:
             return {
                 "statusCode": 400,
@@ -846,11 +962,47 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 raise RuntimeError("Agent execution lease is currently held; retry event")
         return {"statusCode": 200, "body": result}
     except Exception:
-        # Only initial reasoning owns the initial-agent lease. Timeout workflows
-        # have independent idempotency claims and must not mutate that lease.
         if not timeout_type:
             try:
                 finish_agent_run(incident_id, correlation_id, success=False)
             except Exception:
                 logger.exception("Failed to release agent lease after execution error")
         raise
+
+
+def _requeue_early_deadline(payload: Dict[str, Any], remaining_seconds: int) -> None:
+    queue_url = os.environ.get("WORKFLOW_QUEUE_URL", "").strip()
+    if not (BOTO3_AVAILABLE and queue_url):
+        raise RuntimeError("Workflow queue is unavailable for early deadline requeue")
+    boto3.client("sqs", region_name=AWS_REGION).send_message(
+        QueueUrl=queue_url,
+        MessageBody=json.dumps(payload),
+        DelaySeconds=max(1, min(int(remaining_seconds), 900)),
+    )
+
+
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    records = event.get("Records")
+    if isinstance(records, list):
+        failures = []
+        for record in records:
+            message_id = str(record.get("messageId") or "")
+            try:
+                body = json.loads(record.get("body") or "{}")
+                detail = body.get("detail", {}) or {}
+                deadline_at = int(detail.get("deadline_at") or 0)
+                now_epoch = int(datetime.now(timezone.utc).timestamp())
+                if deadline_at and now_epoch < deadline_at:
+                    _requeue_early_deadline(body, deadline_at - now_epoch)
+                    continue
+                response = _process_workflow_event(body, context)
+                if int(response.get("statusCode", 500)) >= 500:
+                    raise RuntimeError("Workflow deadline processing failed")
+            except Exception:
+                logger.exception("Workflow queue message failed")
+                if message_id:
+                    failures.append({"itemIdentifier": message_id})
+        return {"batchItemFailures": failures}
+
+    return _process_workflow_event(event, context)
+

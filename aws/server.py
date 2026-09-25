@@ -3,8 +3,6 @@ Guardian AWS Backend Server (FastAPI / Serverless Local Runner)
 v3.0 — Full AWS-Only Stack: Cognito Auth + DynamoDB + SNS Push + Bedrock AI
 
 Mirrors real AWS API Gateway + Lambda endpoints:
-  POST   /auth/send-otp              → Cognito: send phone OTP
-  POST   /auth/verify-otp            → Cognito: verify OTP, get JWT tokens
   POST   /auth/refresh               → Cognito: refresh access token
   POST   /auth/sign-out              → Cognito: global sign out
 
@@ -28,6 +26,7 @@ Mirrors real AWS API Gateway + Lambda endpoints:
 """
 
 import os
+import logging
 import sys
 from pathlib import Path
 
@@ -81,13 +80,12 @@ from aws.agent.safety_policy import evaluate_safety_policy
 # AWS Services
 from aws.cognito_service import (
     authenticate_with_google,
-    initiate_phone_auth,
-    verify_otp,
+    bootstrap_cognito_identity,
+    validate_refresh_token_owner,
     refresh_tokens,
     sign_out,
     update_user_profile,
     get_user_profile,
-    save_fcm_token,
 )
 from aws.session_service import (
     create_session,
@@ -99,6 +97,8 @@ from aws.session_service import (
 )
 from aws.sns_push_service import (
     register_device_endpoint,
+    disable_all_device_endpoints,
+    disable_device_endpoints_for_session,
     send_push_to_user,
     send_sms_alert,
 )
@@ -108,6 +108,13 @@ from aws.auth_middleware import (
     authenticated_user_id,
     is_dev_mode,
 )
+from aws.google_maps_service import (
+    autocomplete_places,
+    place_details,
+    compute_walking_route,
+)
+
+logger = logging.getLogger("guardian_server")
 
 app = FastAPI(
     title="Guardian AWS Agentic Backend",
@@ -246,19 +253,32 @@ def health_check():
 # AUTH ENDPOINTS (AWS Cognito)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class SendOtpRequest(BaseModel):
-    phone_number: str
-
 
 class GoogleAuthRequest(BaseModel):
+    """Development-only direct Google bootstrap request."""
+
     id_token: str = Field(min_length=1)
+    device_label: str = Field(default="Guardian mobile device", max_length=80)
+    platform: str = Field(default="unknown", max_length=20)
+
+
+class SessionBootstrapRequest(BaseModel):
+    """Create a Guardian device session from Cognito federated tokens."""
+
+    access_token: str = Field(min_length=16)
+    refresh_token: str = Field(min_length=16)
     device_label: str = Field(default="Guardian mobile device", max_length=80)
     platform: str = Field(default="unknown", max_length=20)
 
 
 @app.post("/auth/google")
 def api_google_auth(req: GoogleAuthRequest):
-    """Authenticate via Google ID token, link profile in DynamoDB, and issue session."""
+    """Development-only direct bootstrap; production uses Cognito Google federation."""
+    if not is_dev_mode():
+        raise HTTPException(
+            status_code=410,
+            detail="Direct Google bootstrap is retired; use Cognito managed login.",
+        )
     try:
         result = authenticate_with_google(req.id_token)
         guardian_session = create_session(
@@ -269,18 +289,41 @@ def api_google_auth(req: GoogleAuthRequest):
         )
         result.update(guardian_session)
         return result
-    except ValueError as ve:
-        raise HTTPException(status_code=401, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Google authentication failed: {str(e)}")
+    except ValueError as error:
+        raise HTTPException(status_code=401, detail=str(error))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Google development bootstrap failed")
 
 
-class VerifyOtpRequest(BaseModel):
-    phone_number: str
-    otp_code: str
-    session: str
-    device_label: str = Field(default="Guardian mobile device", max_length=80)
-    platform: str = Field(default="unknown", max_length=20)
+@app.post("/auth/session")
+def api_bootstrap_session(req: SessionBootstrapRequest):
+    """Bind verified Cognito federation to one revocable Guardian device session."""
+    try:
+        identity = bootstrap_cognito_identity(req.access_token)
+        validate_refresh_token_owner(
+            req.refresh_token,
+            identity["user_id"],
+        )
+        guardian_session = create_session(
+            identity["user_id"],
+            req.refresh_token,
+            req.device_label,
+            req.platform,
+        )
+        return {**identity, **guardian_session}
+    except ValueError as error:
+        raise HTTPException(status_code=401, detail=str(error))
+    except RuntimeError:
+        raise HTTPException(
+            status_code=503,
+            detail="Guardian session bootstrap is temporarily unavailable",
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Guardian session bootstrap is temporarily unavailable",
+        )
+
 
 
 class RefreshTokenRequest(BaseModel):
@@ -295,35 +338,37 @@ class AssistantRequest(BaseModel):
     incident_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
 
 
-@app.post("/auth/send-otp")
-def api_send_otp(req: SendOtpRequest):
-    """Initiate phone number authentication — sends SMS OTP via Cognito."""
-    try:
-        result = initiate_phone_auth(req.phone_number)
-        return result
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OTP dispatch failed: {str(e)}")
+class PlacesAutocompleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=2, max_length=200)
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    radius_meters: float = Field(default=30000, ge=100, le=50000)
+    region_code: str = Field(default="IN", min_length=2, max_length=2)
+    session_token: Optional[str] = Field(default=None, min_length=8, max_length=128)
 
 
-@app.post("/auth/verify-otp")
-def api_verify_otp(req: VerifyOtpRequest):
-    """Verify SMS OTP and return JWT tokens (access + id + refresh)."""
-    try:
-        result = verify_otp(req.phone_number, req.otp_code, req.session)
-        guardian_session = create_session(
-            result["user_id"],
-            result["refresh_token"],
-            req.device_label,
-            req.platform,
-        )
-        result.update(guardian_session)
-        return result
-    except ValueError as ve:
-        raise HTTPException(status_code=401, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OTP verification failed: {str(e)}")
+class PlaceDetailsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    place_id: str = Field(min_length=1, max_length=256)
+    session_token: Optional[str] = Field(default=None, min_length=8, max_length=128)
+
+
+class RoutePoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
+class WalkingRouteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    origin: RoutePoint
+    destination: RoutePoint
+
 
 
 @app.post("/auth/refresh")
@@ -341,9 +386,17 @@ def api_refresh_token(req: RefreshTokenRequest):
 
 @app.post("/auth/sign-out")
 def api_sign_out(request: Request):
-    """Revoke all tokens — global sign out from Cognito."""
+    """Revoke all tokens, sessions, and user-bound push endpoints."""
+    user_id = authenticated_user_id(request)
+    try:
+        disable_all_device_endpoints(user_id)
+    except Exception as error:
+        logger.warning(
+            "Push endpoint cleanup failed during sign-out: %s",
+            type(error).__name__,
+        )
     result = sign_out(request.state.access_token)
-    revoke_all_sessions(authenticated_user_id(request))
+    revoke_all_sessions(user_id)
     return result
 
 
@@ -361,10 +414,76 @@ def api_list_sessions(request: Request):
 @app.delete("/auth/sessions/{session_id}")
 def api_revoke_session(session_id: str, request: Request):
     try:
-        revoke_session(authenticated_user_id(request), session_id)
+        user_id = authenticated_user_id(request)
+        try:
+            disable_device_endpoints_for_session(user_id, session_id)
+        except Exception as error:
+            logger.warning(
+                "Push endpoint cleanup failed during session revocation: %s",
+                type(error).__name__,
+            )
+        revoke_session(user_id, session_id)
         return {"success": True}
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error))
+
+
+@app.post("/maps/places/autocomplete")
+def api_places_autocomplete(req: PlacesAutocompleteRequest, request: Request):
+    """Authenticated Guardian proxy for Google Places Autocomplete (New)."""
+    authenticated_user_id(request)
+    try:
+        if (req.latitude is None) != (req.longitude is None):
+            raise HTTPException(
+                status_code=422,
+                detail="latitude and longitude must be supplied together",
+            )
+        return autocomplete_places(
+            req.query,
+            latitude=req.latitude,
+            longitude=req.longitude,
+            radius_meters=req.radius_meters,
+            region_code=req.region_code,
+            session_token=req.session_token,
+        )
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error))
+
+
+@app.post("/maps/places/details")
+def api_place_details(req: PlaceDetailsRequest, request: Request):
+    """Authenticated Guardian proxy for minimum Google Place Details fields."""
+    authenticated_user_id(request)
+    try:
+        return place_details(
+            req.place_id,
+            session_token=req.session_token,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error))
+
+
+@app.post("/maps/routes/walking")
+def api_walking_route(req: WalkingRouteRequest, request: Request):
+    """Return Google walking geometry only; Guardian does not call it a safe route."""
+    authenticated_user_id(request)
+    try:
+        return compute_walking_route(
+            origin_latitude=req.origin.latitude,
+            origin_longitude=req.origin.longitude,
+            destination_latitude=req.destination.latitude,
+            destination_longitude=req.destination.longitude,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error))
 
 
 @app.post("/assistant/chat")
@@ -400,8 +519,11 @@ class UpdateProfileRequest(BaseModel):
 
 
 class RegisterDeviceRequest(BaseModel):
-    device_token: str
-    platform: str = "android"  # "android" | "ios"
+    model_config = ConfigDict(extra="forbid")
+
+    device_token: str = Field(min_length=16, max_length=4096)
+    device_id: str = Field(min_length=8, max_length=128)
+    platform: str = Field(default="android", pattern="^(android|ios)$")
 
 
 class EmergencyContactRequest(BaseModel):
@@ -456,9 +578,13 @@ def api_register_device(user_id: str, req: RegisterDeviceRequest, request: Reque
     """Register device push token with AWS SNS — returns endpoint ARN."""
     if user_id != authenticated_user_id(request):
         raise HTTPException(status_code=403, detail="Device registration denied")
-    result = register_device_endpoint(user_id, req.device_token, req.platform)
-    # Also save token for reference
-    save_fcm_token(user_id, req.device_token)
+    result = register_device_endpoint(
+        user_id=user_id,
+        session_id=request.state.session_id,
+        device_id=req.device_id,
+        device_token=req.device_token,
+        platform=req.platform,
+    )
     return result
 
 
@@ -791,32 +917,83 @@ class AbuseReportRequest(BaseModel):
     description: str = Field(min_length=5)
 
 @app.post("/incidents/{incident_id}/report")
-def api_report_incident(incident_id: str, req: AbuseReportRequest, request: Request):
-    """P1-03: Submit abuse report and freeze trust score."""
+def api_report_incident(
+    incident_id: str,
+    req: AbuseReportRequest,
+    request: Request,
+):
+    """Record a moderation report only from a participant in the incident."""
     from aws.incident_handler.handler import get_dynamo_resource
-    from aws.agent.tools import DYNAMODB_INCIDENTS_TABLE, DYNAMODB_RESPONDERS_TABLE, _dev_mode
-    user_id = authenticated_user_id(request)
-    
+    from aws.agent.tools import _incident_missions, _dev_mode
+
+    reporter_id = authenticated_user_id(request)
+    incident = get_incident(incident_id)
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    reporter_role = None
+    if incident.get("user_id") == reporter_id:
+        reporter_role = "OWNER"
+    else:
+        missions = _incident_missions(incident_id)
+        if any(m.get("responder_id") == reporter_id for m in missions):
+            reporter_role = "RESPONDER"
+    if reporter_role is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the incident owner or an associated responder can report it.",
+        )
+
+    report_id = f"report_{uuid.uuid4().hex}"
+    now = datetime.now(timezone.utc)
+    report = {
+        "report_id": report_id,
+        "incident_id": incident_id,
+        "reporter_user_id": reporter_id,
+        "reporter_role": reporter_role,
+        "reason": req.reason[:120],
+        "description": req.description[:1000],
+        "review_status": "PENDING",
+        "created_at": now.isoformat(),
+        "expires_at": int(now.timestamp()) + (180 * 24 * 60 * 60),
+    }
+
     dynamo = get_dynamo_resource()
     if dynamo:
         try:
+            dynamo.Table(
+                os.environ.get(
+                    "DYNAMODB_ABUSE_REPORTS_TABLE",
+                    "guardian-abuse-reports",
+                )
+            ).put_item(
+                Item=report,
+                ConditionExpression="attribute_not_exists(report_id)",
+            )
             dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
                 Key={"incident_id": incident_id},
-                UpdateExpression="SET moderation_status = :flagged, reported_by = :reporter, moderation_reason = :reason",
+                UpdateExpression=(
+                    "SET moderation_status = :flagged, "
+                    "last_reported_at = :reported_at"
+                ),
+                ConditionExpression="attribute_exists(incident_id)",
                 ExpressionAttributeValues={
                     ":flagged": "NEEDS_REVIEW",
-                    ":reporter": user_id,
-                    ":reason": req.reason
-                }
+                    ":reported_at": now.isoformat(),
+                },
             )
-            # Do not mutate the reporter's responder status. A moderator must
-            # identify and review the actual subject before any trust action.
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+        except Exception as error:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not record moderation report: {type(error).__name__}",
+            )
     elif not _dev_mode():
         raise HTTPException(status_code=500, detail="Database unavailable")
-        
-    return {"status": "REPORT_RECEIVED"}
+
+    return {
+        "status": "REPORT_RECEIVED",
+        "report_id": report_id,
+    }
 
 @app.post("/incidents/{incident_id}/dispatch-community")
 def api_dispatch_community(

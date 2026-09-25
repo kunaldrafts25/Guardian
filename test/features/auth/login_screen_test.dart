@@ -48,7 +48,7 @@ void main() {
   }
 
   group('LoginScreen UI Tests', () {
-    testWidgets('renders all key elements from Stitch Screen 14',
+    testWidgets('renders the Google-only production sign-in surface',
         (tester) async {
       await tester.pumpWidget(
         buildTestableWidget(
@@ -59,29 +59,23 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Verify title & subtitle
       expect(find.text('Welcome to Guardian'), findsOneWidget);
       expect(
-        find.text('Durable protection and peace of mind.'),
+        find.text('Sign in securely with your Google account.'),
         findsOneWidget,
       );
-
-      // Verify Google Sign-In button
       expect(find.text('Continue with Google'), findsOneWidget);
-
-      // Verify Divider
-      expect(find.text('OR CONTINUE WITH PHONE'), findsOneWidget);
-
-      // Verify Phone input & button
-      expect(find.text('Mobile number'), findsOneWidget);
-      expect(find.text('Send verification code'), findsOneWidget);
-
-      // Verify Safety Disclaimer
       expect(
         find.text(
-            'Guardian provides durable telemetry and trusted contact escalation. It does not guarantee municipal police dispatch.'),
+          'Phone OTP sign-in is not used. Emergency contact phone numbers are separate from account authentication.',
+        ),
         findsOneWidget,
       );
+
+      // Phone OTP controls must not return accidentally.
+      expect(find.text('OR CONTINUE WITH PHONE'), findsNothing);
+      expect(find.text('Mobile number'), findsNothing);
+      expect(find.text('Send verification code'), findsNothing);
     });
 
     testWidgets('displays loading indicator during Google sign-in',

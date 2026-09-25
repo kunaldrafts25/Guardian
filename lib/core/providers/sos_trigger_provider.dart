@@ -6,8 +6,6 @@
  * 
  * Integrates:
  * - Shake detection
- * - Multi-tap screen detection (5 taps)
- * - Voice command triggers
  */
 
 import 'dart:async';
@@ -17,7 +15,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:guardian/core/providers/emergency_provider.dart';
 import 'package:guardian/core/providers/sos_settings_provider.dart';
 import 'package:guardian/core/services/shake_detection_service.dart';
-import 'package:guardian/core/services/voice_recognition_service.dart';
 import 'package:guardian/core/services/sos_service.dart';
 import 'package:guardian/core/services/safety_service_bridge.dart';
 import 'package:guardian/core/utils/logger.dart';
@@ -25,36 +22,24 @@ import 'package:guardian/core/utils/logger.dart';
 /// State for SOS triggers
 class SosTriggerState {
   final bool shakeDetectionActive;
-  final bool voiceDetectionActive;
   final bool isEnabled;
   final int shakeCount;
-  final int tapCount;
-  final DateTime? lastTapTime;
 
   const SosTriggerState({
     this.shakeDetectionActive = false,
-    this.voiceDetectionActive = false,
     this.isEnabled = true,
     this.shakeCount = 0,
-    this.tapCount = 0,
-    this.lastTapTime,
   });
 
   SosTriggerState copyWith({
     bool? shakeDetectionActive,
-    bool? voiceDetectionActive,
     bool? isEnabled,
     int? shakeCount,
-    int? tapCount,
-    DateTime? lastTapTime,
   }) {
     return SosTriggerState(
       shakeDetectionActive: shakeDetectionActive ?? this.shakeDetectionActive,
-      voiceDetectionActive: voiceDetectionActive ?? this.voiceDetectionActive,
       isEnabled: isEnabled ?? this.isEnabled,
       shakeCount: shakeCount ?? this.shakeCount,
-      tapCount: tapCount ?? this.tapCount,
-      lastTapTime: lastTapTime ?? this.lastTapTime,
     );
   }
 }
@@ -63,12 +48,7 @@ class SosTriggerState {
 class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
   final Ref _ref;
   ShakeDetectionService? _shakeService;
-  VoiceRecognitionService? _voiceService;
   SafetyServiceBridge? _bridge;
-
-  // Multi-tap settings
-  static const int _tapsRequired = 5;
-  static const Duration _tapWindow = Duration(seconds: 2);
 
   SosTriggerNotifier(this._ref) : super(const SosTriggerState()) {
     Logger.info('🔧 SosTriggerNotifier initializing...');
@@ -222,70 +202,6 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
     _triggerSosIfNotActive(SosTriggerSource.shake);
   }
 
-  // ============ VOICE DETECTION ============
-
-  /// Start voice recognition
-  Future<void> startVoiceDetection() async {
-    if (kIsWeb) return;
-    if (state.voiceDetectionActive) return;
-
-    _voiceService = VoiceRecognitionService.instance;
-
-    final started = await _voiceService!.startListening(
-      onTrigger: _onVoiceTriggerDetected,
-    );
-
-    if (started) {
-      state = state.copyWith(voiceDetectionActive: true);
-      Logger.info('🎤 ✅ Voice-to-SOS ACTIVATED');
-    }
-  }
-
-  /// Stop voice recognition
-  Future<void> stopVoiceDetection() async {
-    await _voiceService?.stopListening();
-    state = state.copyWith(voiceDetectionActive: false);
-    Logger.info('🎤 Voice-to-SOS deactivated');
-  }
-
-  /// Handle voice trigger
-  void _onVoiceTriggerDetected(String phrase) {
-    Logger.info('🚨🚨🚨 VOICE TRIGGER: "$phrase" - Triggering SOS...');
-    _triggerSosIfNotActive(SosTriggerSource.voiceCommand);
-  }
-
-  // ============ MULTI-TAP DETECTION ============
-
-  /// Register a screen tap - call this from UI
-  void registerTap() {
-    final now = DateTime.now();
-    final lastTap = state.lastTapTime;
-
-    // Reset if tap window expired
-    if (lastTap == null || now.difference(lastTap) > _tapWindow) {
-      state = state.copyWith(tapCount: 1, lastTapTime: now);
-      Logger.debug('👆 Tap 1/$_tapsRequired');
-      return;
-    }
-
-    // Increment tap count
-    final newCount = state.tapCount + 1;
-    state = state.copyWith(tapCount: newCount, lastTapTime: now);
-    Logger.info('👆 Tap $newCount/$_tapsRequired');
-
-    // Check if threshold reached
-    if (newCount >= _tapsRequired) {
-      Logger.info('🚨🚨🚨 MULTI-TAP TRIGGERED ($newCount taps)!');
-      state = state.copyWith(tapCount: 0, lastTapTime: null);
-      _triggerSosIfNotActive(SosTriggerSource.multiTap);
-    }
-  }
-
-  /// Reset tap counter
-  void resetTapCount() {
-    state = state.copyWith(tapCount: 0, lastTapTime: null);
-  }
-
   // ============ COMMON TRIGGER LOGIC ============
 
   /// Trigger SOS if not already active
@@ -342,14 +258,12 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
       }
     } else {
       stopShakeDetection();
-      stopVoiceDetection();
     }
   }
 
   @override
   void dispose() {
     _shakeService?.dispose();
-    _voiceService?.dispose();
     _bridge?.dispose();
     super.dispose();
   }
@@ -364,9 +278,4 @@ final sosTriggerProvider =
 /// Shake detection active provider
 final shakeDetectionActiveProvider = Provider<bool>((ref) {
   return ref.watch(sosTriggerProvider).shakeDetectionActive;
-});
-
-/// Voice detection active provider
-final voiceDetectionActiveProvider = Provider<bool>((ref) {
-  return ref.watch(sosTriggerProvider).voiceDetectionActive;
 });

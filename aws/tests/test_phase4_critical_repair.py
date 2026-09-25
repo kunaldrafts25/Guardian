@@ -1,5 +1,6 @@
 """Regression tests for Phase 4 critical emergency-orchestration repairs."""
 
+import time
 from unittest.mock import patch
 
 from aws.agent import tools
@@ -65,9 +66,24 @@ def test_inferred_sensor_events_require_verification_but_explicit_panic_is_immed
             risk_level="HIGH",
             incident_state="CLOUD_ACCEPTED",
             is_isolated=False,
+            trigger_origin="DEVICE_REPORTED",
+            trigger_trust_level="UNATTESTED_CLIENT",
         )
         assert policy.decision == "REQUEST_USER_VERIFICATION"
         assert not policy.authorized_actions
+
+        # A client-authored CRITICAL label must not upgrade an un-attested
+        # automatic sensor report directly to community responder dispatch.
+        critical = evaluate_safety_policy(
+            event_type=event_type,
+            risk_level="CRITICAL",
+            incident_state="CLOUD_ACCEPTED",
+            is_isolated=False,
+            trigger_origin="DEVICE_REPORTED",
+            trigger_trust_level="UNATTESTED_CLIENT",
+        )
+        assert critical.decision == "REQUEST_USER_VERIFICATION"
+        assert not critical.authorized_actions
 
     panic = evaluate_safety_policy(
         event_type="ANDROID_POWER_GESTURE",
@@ -203,12 +219,20 @@ def test_verification_timeout_is_idempotent_and_escalates_without_flutter():
     assert initial["decision"] == "REQUEST_USER_VERIFICATION"
     assert get_incident(incident_id)["verification_status"] == "PENDING"
 
+    # The deadline in DynamoDB/local incident state is authoritative. Simulate
+    # expiry rather than bypassing the production early-execution guard.
+    from aws.incident_handler.handler import _LOCAL_INCIDENTS
+    _LOCAL_INCIDENTS[incident_id]["verification_deadline_at"] = int(time.time()) - 1
+
     timeout = _handle_verification_timeout(incident_id, "timeout-run")
     assert timeout["status"] == "VERIFICATION_TIMEOUT_ESCALATED"
     assert timeout["community_dispatch"]["status"] == "INVITATIONS_CREATED"
 
     duplicate = _handle_verification_timeout(incident_id, "timeout-run-duplicate")
-    assert duplicate["status"].startswith("VERIFICATION_TIMEOUT_NOOP")
+    assert duplicate["status"] in {
+        "VERIFICATION_TIMEOUT_COMPLETED",
+        "VERIFICATION_TIMEOUT_NOOP_ALREADY_HANDLED",
+    }
 
 
 def test_contact_provider_failure_does_not_block_responder_dispatch():
@@ -250,7 +274,7 @@ def test_per_recipient_local_sms_acceptance_only_skips_that_contact():
             "location": {"latitude": 19.0760, "longitude": 72.8777},
             "motion_data": {
                 "local_sms_delivery": [
-                    {"contact_id": "local-ok", "state": "OS_ACCEPTED"},
+                    {"contact_id": "local-ok", "state": "SENT"},
                     {"contact_id": "needs-cloud", "state": "FAILED"},
                 ]
             },

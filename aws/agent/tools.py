@@ -14,6 +14,7 @@ import hmac
 import logging
 import secrets
 import uuid
+import threading
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone, timedelta
 
@@ -33,17 +34,46 @@ from aws.sns_push_service import send_push_to_user, send_sms_alert
 
 try:
     import boto3
+    from boto3.dynamodb.types import TypeSerializer
     BOTO3_AVAILABLE = True
 except ImportError:
     BOTO3_AVAILABLE = False
+    TypeSerializer = None
 
 DYNAMODB_RESPONDERS_TABLE = os.environ.get("DYNAMODB_RESPONDERS_TABLE", "guardian-responders")
 DYNAMODB_MISSIONS_TABLE = os.environ.get("DYNAMODB_MISSIONS_TABLE", "guardian-missions")
 logger = logging.getLogger(__name__)
+_LOCAL_RESPONDER_LOCK = threading.RLock()
 
 
 def _dev_mode() -> bool:
     return os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+
+
+def _query_all(table, **kwargs) -> List[Dict[str, Any]]:
+    """Read every DynamoDB query page. Safety discovery must not stop at page 1."""
+    items: List[Dict[str, Any]] = []
+    request = dict(kwargs)
+    while True:
+        response = table.query(**request)
+        items.extend(response.get("Items", []))
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            return items
+        request["ExclusiveStartKey"] = last_key
+
+
+def _scan_all(table, **kwargs) -> List[Dict[str, Any]]:
+    """Read every DynamoDB scan page for explicitly bounded fallback paths."""
+    items: List[Dict[str, Any]] = []
+    request = dict(kwargs)
+    while True:
+        response = table.scan(**request)
+        items.extend(response.get("Items", []))
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            return items
+        request["ExclusiveStartKey"] = last_key
 
 
 def _schedule_agent_timeout(
@@ -53,69 +83,50 @@ def _schedule_agent_timeout(
     *,
     idempotency_key: str,
 ) -> Dict[str, Any]:
-    """Create an idempotent one-shot EventBridge Scheduler invocation."""
+    """Queue a durable deadline check using SQS delayed delivery.
+
+    The deadline persisted on the incident remains authoritative. SQS is only
+    the wake-up transport; the worker rechecks time/state before acting.
+    """
+    queue_url = os.environ.get("WORKFLOW_QUEUE_URL", "").strip()
     if not (
         BOTO3_AVAILABLE
         and os.environ.get("AWS_EXECUTION_ENV")
-        and os.environ.get("SCHEDULER_ROLE_ARN")
+        and queue_url
     ):
-        return {"scheduled": False, "reason": "scheduler_unavailable"}
-
-    scheduler = boto3.client("scheduler", region_name=AWS_REGION)
-    sts = boto3.client("sts", region_name=AWS_REGION)
-    account_id = sts.get_caller_identity()["Account"]
-    lambda_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
-    if not lambda_name:
-        return {"scheduled": False, "reason": "lambda_name_unavailable"}
+        return {"scheduled": False, "reason": "workflow_queue_unavailable"}
 
     delay = max(1, int(delay_seconds))
-    target_time = datetime.now(timezone.utc) + timedelta(seconds=delay)
-    schedule_expr = f"at({target_time.strftime('%Y-%m-%dT%H:%M:%S')})"
+    now = datetime.now(timezone.utc)
+    target_time = now + timedelta(seconds=delay)
+    deadline_at = int(target_time.timestamp())
     digest = hashlib.sha256(
-        f"{incident_id}:{timeout_type}:{idempotency_key}".encode("utf-8")
-    ).hexdigest()[:24]
-    schedule_name = f"guardian-{timeout_type.lower().replace('_', '-')}-{digest}"[:64]
+        f"{incident_id}:{timeout_type}:{idempotency_key}:{deadline_at}".encode("utf-8")
+    ).hexdigest()[:32]
     payload = {
         "detail": {
             "incident_id": incident_id,
             "timeout_type": timeout_type,
             "idempotency_key": idempotency_key,
+            "deadline_at": deadline_at,
+            "message_id": digest,
         }
     }
     try:
-        scheduler.create_schedule(
-            Name=schedule_name,
-            ClientToken=digest,
-            ScheduleExpression=schedule_expr,
-            ScheduleExpressionTimezone="UTC",
-            FlexibleTimeWindow={"Mode": "OFF"},
-            ActionAfterCompletion="DELETE",
-            Target={
-                "Arn": f"arn:aws:lambda:{AWS_REGION}:{account_id}:function:{lambda_name}",
-                "RoleArn": os.environ["SCHEDULER_ROLE_ARN"],
-                "Input": json.dumps(payload),
-                "RetryPolicy": {
-                    "MaximumEventAgeInSeconds": 3600,
-                    "MaximumRetryAttempts": 3,
-                },
-            },
+        sqs = boto3.client("sqs", region_name=AWS_REGION)
+        response = sqs.send_message(
+            QueueUrl=queue_url,
+            MessageBody=json.dumps(payload),
+            DelaySeconds=min(delay, 900),
         )
         return {
             "scheduled": True,
-            "schedule_name": schedule_name,
-            "deadline_at": int(target_time.timestamp()),
+            "message_id": response.get("MessageId"),
+            "deadline_at": deadline_at,
         }
     except Exception as error:
-        code = getattr(error, "response", {}).get("Error", {}).get("Code")
-        if code in {"ConflictException", "ResourceConflictException"}:
-            return {
-                "scheduled": True,
-                "schedule_name": schedule_name,
-                "deadline_at": int(target_time.timestamp()),
-                "existing": True,
-            }
         logger.error(
-            "Failed to schedule %s for incident %s: %s",
+            "Failed to queue %s deadline for incident %s: %s",
             timeout_type,
             incident_id,
             type(error).__name__,
@@ -123,8 +134,8 @@ def _schedule_agent_timeout(
         return {
             "scheduled": False,
             "reason": type(error).__name__,
+            "deadline_at": deadline_at,
         }
-
 
 def _persist_verification_request(
     incident_id: str,
@@ -132,11 +143,14 @@ def _persist_verification_request(
     schedule_result: Dict[str, Any],
 ) -> None:
     requested_at = datetime.now(timezone.utc)
-    deadline = requested_at + timedelta(seconds=max(1, timeout_seconds))
+    fallback_deadline = int(
+        (requested_at + timedelta(seconds=max(1, timeout_seconds))).timestamp()
+    )
+    deadline_epoch = int(schedule_result.get("deadline_at") or fallback_deadline)
     dynamo = get_dynamo_resource()
     values = {
         ":requested": requested_at.isoformat(),
-        ":deadline": int(deadline.timestamp()),
+        ":deadline": deadline_epoch,
         ":status": "PENDING",
     }
     if dynamo:
@@ -256,6 +270,7 @@ def notify_trusted_contact(
         expected_action="notify_trusted_contact",
     )
     ctx = get_incident_context(incident_id)
+    ctx = _ensure_accepted_responder_count(incident_id, ctx)
     if ctx.get("state") in {
         IncidentState.CONTACTS_NOTIFIED.value,
         IncidentState.COMMUNITY_OFFERED.value,
@@ -292,14 +307,30 @@ def notify_trusted_contact(
         else "Current location was unavailable.\n\n"
     )
     
+    verification_status = str(ctx.get("verification_status") or "").upper()
+    event_type = str(ctx.get("event_type") or "UNKNOWN").upper()
+    if verification_status == "TIMED_OUT":
+        reason_line = (
+            "Guardian requested a safety confirmation and did not receive "
+            "a safe response before the deadline."
+        )
+    elif event_type == "MANUAL_SOS":
+        reason_line = "The user deliberately activated Guardian SOS."
+    elif event_type in {"ANDROID_POWER_GESTURE", "MULTI_TAP", "VOICE_SOS"}:
+        reason_line = "Guardian recorded a deliberate device emergency trigger."
+    else:
+        reason_line = (
+            "Guardian recorded a potential emergency condition and escalated "
+            "under the configured safety policy."
+        )
+
     alert_message = (
-        f"🚨 GUARDIAN EMERGENCY ALERT 🚨\n\n"
-        f"User: {ctx.get('user_id')}\n"
+        f"GUARDIAN SAFETY ALERT\n\n"
         f"Incident ID: {incident_id}\n"
-        f"Event: {ctx.get('event_type')}\n"
+        f"Event: {event_type}\n"
         f"Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
         f"{maps_line}"
-        f"The user did not respond to safety verification. Immediate assistance requested."
+        f"{reason_line}"
     )
 
     notified = []
@@ -324,7 +355,7 @@ def notify_trusted_contact(
             contact_key,
             str(c.get("delivery_state") or "").upper(),
         )
-        if local_state == "OS_ACCEPTED":
+        if local_state in {"SENT", "DELIVERED"}:
             skipped.append(c.get("name", "Unknown"))
             continue
 
@@ -360,7 +391,7 @@ def notify_trusted_contact(
         actor="AGENT",
         note=(
             f"Contact escalation recorded: {len(notified)} cloud provider accepted, "
-            f"{len(skipped)} already accepted by the local OS."
+            f"{len(skipped)} already had stronger local send evidence."
         ),
     )
 
@@ -858,13 +889,13 @@ def _responder_missions(responder_id: str) -> List[Dict[str, Any]]:
     now = int(datetime.now(timezone.utc).timestamp())
     dynamo = get_dynamo_resource()
     if dynamo:
-        missions = dynamo.Table(DYNAMODB_MISSIONS_TABLE).query(
+        missions = _query_all(
+            dynamo.Table(DYNAMODB_MISSIONS_TABLE),
             IndexName="ResponderMissionsIndex",
             KeyConditionExpression="responder_id = :responder",
             ExpressionAttributeValues={":responder": responder_id},
             ScanIndexForward=False,
-            Limit=50,
-        ).get("Items", [])
+        )
     elif _dev_mode():
         missions = [
             mission
@@ -904,120 +935,267 @@ def list_responder_missions(responder_id: str) -> List[Dict[str, Any]]:
     return [_public_mission(mission) for mission in _responder_missions(responder_id)]
 
 
-def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]:
-    """
-    Tool 7: Responder accepts rescue mission.
-    Conditionally accepts an invitation and issues a short-lived navigation grant.
-    """
-    resp = _get_responder(responder_id)
-    if not resp or resp.get("trust_score", 0) < 70 or (
-        not _dev_mode() and resp.get("verification_status") != "APPROVED"
-    ):
-        raise PermissionError(f"Responder {responder_id} does not meet trust score criteria.")
+def _ensure_accepted_responder_count(
+    incident_id: str,
+    incident: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Backfill the Phase-5 capacity counter for incidents created pre-migration."""
+    if "accepted_responder_count" in incident:
+        return incident
 
-    from aws.agent.escalation_policy import MAX_ACCEPTED_RESPONDERS
-    active_accepted = [
-        m for m in _incident_missions(incident_id)
-        if m.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}
-        and m.get("responder_id") != responder_id
-    ]
-    if len(active_accepted) >= MAX_ACCEPTED_RESPONDERS:
-        raise PermissionError(
-            f"The maximum responder capacity ({MAX_ACCEPTED_RESPONDERS}) for this incident has been reached."
-        )
-
-    ctx = get_incident_context(incident_id)
-    now = datetime.now(timezone.utc)
-    grant = secrets.token_urlsafe(32)
-    acceptance_record = {
-        "mission_id": _mission_id(incident_id, responder_id),
-        "incident_id": incident_id,
-        "responder_id": responder_id,
-        "accepted_at": now.isoformat(),
-        "updated_at": now.isoformat(),
-        "status": "ACCEPTED",
-        "navigation_grant_hash": hashlib.sha256(grant.encode("utf-8")).hexdigest(),
-        "navigation_grant_expires_at": int(now.timestamp()) + 900,
-    }
-    mission_id = acceptance_record["mission_id"]
+    active_statuses = {"ACCEPTED", "EN_ROUTE", "ARRIVED"}
+    active_count = sum(
+        1
+        for mission in _incident_missions(incident_id)
+        if mission.get("status") in active_statuses
+    )
     dynamo = get_dynamo_resource()
     if dynamo:
+        table = dynamo.Table(DYNAMODB_INCIDENTS_TABLE)
         try:
-            result = dynamo.Table(DYNAMODB_MISSIONS_TABLE).update_item(
-                Key={"mission_id": mission_id},
+            table.update_item(
+                Key={"incident_id": incident_id},
                 UpdateExpression=(
-                    "SET #status = :accepted, accepted_at = :accepted_at, "
-                    "updated_at = :updated_at, navigation_grant_hash = :grant, "
-                    "navigation_grant_expires_at = :grant_expiry"
+                    "SET accepted_responder_count = :count, updated_at = :updated"
                 ),
                 ConditionExpression=(
-                    "#status = :invited AND responder_id = :responder "
-                    "AND invitation_expires_at > :now"
+                    "attribute_exists(incident_id) AND "
+                    "attribute_not_exists(accepted_responder_count)"
                 ),
-                ExpressionAttributeNames={"#status": "status"},
                 ExpressionAttributeValues={
-                    ":accepted": "ACCEPTED",
-                    ":invited": "INVITED",
-                    ":responder": responder_id,
-                    ":now": int(now.timestamp()),
-                    ":accepted_at": now.isoformat(),
-                    ":updated_at": now.isoformat(),
-                    ":grant": acceptance_record["navigation_grant_hash"],
-                    ":grant_expiry": acceptance_record["navigation_grant_expires_at"],
+                    ":count": active_count,
+                    ":updated": datetime.now(timezone.utc).isoformat(),
                 },
-                ReturnValues="ALL_NEW",
             )
-            acceptance_record = result["Attributes"]
         except Exception as error:
             code = getattr(error, "response", {}).get("Error", {}).get("Code")
-            if code == "ConditionalCheckFailedException":
-                raise PermissionError("Mission invitation is unavailable or expired") from error
-            raise
-    elif _dev_mode():
-        existing = _LOCAL_MISSIONS.get(mission_id)
-        if existing is None:
-            # Direct tool tests create incidents without running dispatch first.
-            existing = {
-                "status": "INVITED",
-                "invitation_expires_at": int(now.timestamp()) + 180,
-                "expires_at": int(now.timestamp()) + 30 * 24 * 60 * 60,
-            }
-        if existing.get("status") == "ACCEPTED":
+            if code != "ConditionalCheckFailedException":
+                raise
+        latest = get_incident_context(incident_id)
+        return latest if latest else incident
+
+    if _dev_mode():
+        from aws.incident_handler.handler import _LOCAL_INCIDENTS
+
+        stored = _LOCAL_INCIDENTS.get(incident_id)
+        if stored is not None:
+            stored.setdefault("accepted_responder_count", active_count)
+            return stored
+    return incident
+
+
+def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]:
+    """Atomically accept one responder invitation and reserve incident capacity."""
+    responder = _get_responder(responder_id)
+    if not responder or responder.get("trust_score", 0) < 70 or (
+        not _dev_mode() and responder.get("verification_status") != "APPROVED"
+    ):
+        raise PermissionError(
+            f"Responder {responder_id} does not meet trust score criteria."
+        )
+
+    from aws.agent.escalation_policy import MAX_ACCEPTED_RESPONDERS
+
+    ctx = _ensure_accepted_responder_count(
+        incident_id,
+        get_incident_context(incident_id),
+    )
+    if ctx.get("state") in {
+        IncidentState.RESOLVED.value,
+        IncidentState.CANCELLED.value,
+        IncidentState.EXPIRED.value,
+    }:
+        raise PermissionError("Incident is closed; responder acceptance is unavailable")
+
+    now = datetime.now(timezone.utc)
+    now_epoch = int(now.timestamp())
+    mission_id = _mission_id(incident_id, responder_id)
+    grant = secrets.token_urlsafe(32)
+    grant_hash = hashlib.sha256(grant.encode("utf-8")).hexdigest()
+    grant_expiry = now_epoch + 900
+
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        mission_table = dynamo.Table(DYNAMODB_MISSIONS_TABLE)
+        existing = mission_table.get_item(
+            Key={"mission_id": mission_id},
+            ConsistentRead=True,
+        ).get("Item")
+        if existing and existing.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}:
             return {
                 "incident_id": incident_id,
-                "mission": existing,
+                "mission": _public_mission(existing),
                 "approximate_location": _coarse_location(ctx.get("location") or {}),
                 "navigation_grant": None,
             }
-        if existing.get("status") != "INVITED" or existing.get(
-            "invitation_expires_at", existing.get("expires_at", 0)
-        ) <= int(now.timestamp()):
-            if existing.get("status") == "INVITED":
-                _persist_mission_expired(existing)
+
+        if TypeSerializer is None:
+            raise RuntimeError("DynamoDB transaction serializer is unavailable")
+        serializer = TypeSerializer()
+
+        def av(value: Any) -> Dict[str, Any]:
+            return serializer.serialize(value)
+
+        client = dynamo.meta.client
+        try:
+            client.transact_write_items(
+                TransactItems=[
+                    {
+                        "Update": {
+                            "TableName": DYNAMODB_INCIDENTS_TABLE,
+                            "Key": {"incident_id": av(incident_id)},
+                            "UpdateExpression": (
+                                "SET accepted_responder_count = "
+                                "if_not_exists(accepted_responder_count, :zero) + :one, "
+                                "updated_at = :updated"
+                            ),
+                            "ConditionExpression": (
+                                "attribute_exists(incident_id) AND "
+                                "#state <> :resolved AND #state <> :cancelled AND #state <> :expired AND "
+                                "(attribute_not_exists(accepted_responder_count) OR "
+                                "accepted_responder_count < :max)"
+                            ),
+                            "ExpressionAttributeNames": {"#state": "state"},
+                            "ExpressionAttributeValues": {
+                                ":zero": av(0),
+                                ":one": av(1),
+                                ":updated": av(now.isoformat()),
+                                ":resolved": av(IncidentState.RESOLVED.value),
+                                ":cancelled": av(IncidentState.CANCELLED.value),
+                                ":expired": av(IncidentState.EXPIRED.value),
+                                ":max": av(MAX_ACCEPTED_RESPONDERS),
+                            },
+                        }
+                    },
+                    {
+                        "Update": {
+                            "TableName": DYNAMODB_MISSIONS_TABLE,
+                            "Key": {"mission_id": av(mission_id)},
+                            "UpdateExpression": (
+                                "SET #status = :accepted, accepted_at = :accepted_at, "
+                                "updated_at = :updated_at, navigation_grant_hash = :grant, "
+                                "navigation_grant_expires_at = :grant_expiry"
+                            ),
+                            "ConditionExpression": (
+                                "#status = :invited AND responder_id = :responder "
+                                "AND incident_id = :incident AND invitation_expires_at > :now"
+                            ),
+                            "ExpressionAttributeNames": {"#status": "status"},
+                            "ExpressionAttributeValues": {
+                                ":accepted": av("ACCEPTED"),
+                                ":invited": av("INVITED"),
+                                ":responder": av(responder_id),
+                                ":incident": av(incident_id),
+                                ":now": av(now_epoch),
+                                ":accepted_at": av(now.isoformat()),
+                                ":updated_at": av(now.isoformat()),
+                                ":grant": av(grant_hash),
+                                ":grant_expiry": av(grant_expiry),
+                            },
+                        }
+                    },
+                ]
+            )
+        except Exception as error:
+            code = getattr(error, "response", {}).get("Error", {}).get("Code")
+            if code in {"TransactionCanceledException", "ConditionalCheckFailedException"}:
+                latest_incident = get_incident_context(incident_id)
+                if latest_incident.get("state") in {
+                    IncidentState.RESOLVED.value,
+                    IncidentState.CANCELLED.value,
+                    IncidentState.EXPIRED.value,
+                }:
+                    raise PermissionError("Incident is closed; responder acceptance is unavailable") from error
+                if int(latest_incident.get("accepted_responder_count") or 0) >= MAX_ACCEPTED_RESPONDERS:
+                    raise PermissionError(
+                        f"The maximum responder capacity ({MAX_ACCEPTED_RESPONDERS}) "
+                        "for this incident has been reached."
+                    ) from error
+                raise PermissionError("Mission invitation is unavailable or expired") from error
+            raise
+
+        acceptance_record = mission_table.get_item(
+            Key={"mission_id": mission_id},
+            ConsistentRead=True,
+        ).get("Item")
+        if not acceptance_record:
+            raise RuntimeError("Mission acceptance committed but could not be reloaded")
+    elif _dev_mode():
+        existing = _LOCAL_MISSIONS.get(mission_id)
+        if existing is None:
+            existing = {
+                "mission_id": mission_id,
+                "incident_id": incident_id,
+                "responder_id": responder_id,
+                "status": "INVITED",
+                "invitation_expires_at": now_epoch + 180,
+                "expires_at": now_epoch + 30 * 24 * 60 * 60,
+            }
+        if existing.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}:
+            return {
+                "incident_id": incident_id,
+                "mission": _public_mission(existing),
+                "approximate_location": _coarse_location(ctx.get("location") or {}),
+                "navigation_grant": None,
+            }
+        if existing.get("status") != "INVITED" or int(
+            existing.get("invitation_expires_at", existing.get("expires_at", 0))
+        ) <= now_epoch:
             raise PermissionError("Mission invitation is unavailable or expired")
-        _LOCAL_MISSIONS[mission_id] = {**existing, **acceptance_record}
+
+        with _LOCAL_RESPONDER_LOCK:
+            from aws.incident_handler.handler import _LOCAL_INCIDENTS
+
+            latest = _LOCAL_INCIDENTS.get(incident_id)
+            if not latest:
+                raise PermissionError("Incident is unavailable")
+            if latest.get("state") in {
+                IncidentState.RESOLVED.value,
+                IncidentState.CANCELLED.value,
+                IncidentState.EXPIRED.value,
+            }:
+                raise PermissionError("Incident is closed; responder acceptance is unavailable")
+            count = int(latest.get("accepted_responder_count") or 0)
+            if count >= MAX_ACCEPTED_RESPONDERS:
+                raise PermissionError(
+                    f"The maximum responder capacity ({MAX_ACCEPTED_RESPONDERS}) "
+                    "for this incident has been reached."
+                )
+            latest["accepted_responder_count"] = count + 1
+            acceptance_record = {
+                **existing,
+                "status": "ACCEPTED",
+                "accepted_at": now.isoformat(),
+                "updated_at": now.isoformat(),
+                "navigation_grant_hash": grant_hash,
+                "navigation_grant_expires_at": grant_expiry,
+            }
+            _LOCAL_MISSIONS[mission_id] = acceptance_record
     else:
         raise RuntimeError("Mission store is unavailable")
 
-    # Record on timeline
-    update_incident_status(
-        incident_id=incident_id,
-        new_state=IncidentState.RESPONDERS_ACCEPTED.value,
-        actor="COMMUNITY_RESPONDER",
-        note=f"Verified helper {resp.get('name')} accepted the responder mission.",
-    )
+    try:
+        update_incident_status(
+            incident_id=incident_id,
+            new_state=IncidentState.RESPONDERS_ACCEPTED.value,
+            actor="COMMUNITY_RESPONDER",
+            note="An approved responder accepted the responder mission.",
+        )
+    except ValueError:
+        latest = get_incident_context(incident_id)
+        if latest.get("state") in {
+            IncidentState.RESOLVED.value,
+            IncidentState.CANCELLED.value,
+            IncidentState.EXPIRED.value,
+        }:
+            raise PermissionError("Incident closed during responder acceptance")
 
     return {
         "incident_id": incident_id,
-        "mission": {
-            key: value
-            for key, value in acceptance_record.items()
-            if key not in {"navigation_grant_hash"}
-        },
+        "mission": _public_mission(acceptance_record),
         "approximate_location": _coarse_location(ctx.get("location") or {}),
         "navigation_grant": grant,
     }
-
 
 def get_authorized_incident_location(
     incident_id: str, responder_id: str, navigation_grant: str
@@ -1143,38 +1321,103 @@ def transition_rescue_mission(
 
     now = datetime.now(timezone.utc).isoformat()
     terminal = target in {"COMPLETED", "WITHDRAWN", "CANCELLED", "EXPIRED"}
+    incident_id = str(existing["incident_id"])
+    releases_capacity = (
+        current in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}
+        and target in {"COMPLETED", "WITHDRAWN", "CANCELLED", "EXPIRED"}
+    )
     if table:
         update_expression = "SET #status = :target, updated_at = :updated"
         if terminal:
             update_expression += " REMOVE navigation_grant_hash, navigation_grant_expires_at"
         try:
-            result = table.update_item(
-                Key={"mission_id": mission_id},
-                UpdateExpression=update_expression,
-                ConditionExpression="#status = :current AND responder_id = :responder",
-                ExpressionAttributeNames={"#status": "status"},
-                ExpressionAttributeValues={
-                    ":target": target,
-                    ":current": current,
-                    ":responder": responder_id,
-                    ":updated": now,
-                },
-                ReturnValues="ALL_NEW",
-            )
-            updated = result["Attributes"]
+            if releases_capacity:
+                if TypeSerializer is None:
+                    raise RuntimeError("DynamoDB transaction serializer is unavailable")
+                serializer = TypeSerializer()
+                av = serializer.serialize
+                dynamo.meta.client.transact_write_items(
+                    TransactItems=[
+                        {
+                            "Update": {
+                                "TableName": DYNAMODB_MISSIONS_TABLE,
+                                "Key": {"mission_id": av(mission_id)},
+                                "UpdateExpression": update_expression,
+                                "ConditionExpression": (
+                                    "#status = :current AND responder_id = :responder"
+                                ),
+                                "ExpressionAttributeNames": {"#status": "status"},
+                                "ExpressionAttributeValues": {
+                                    ":target": av(target),
+                                    ":current": av(current),
+                                    ":responder": av(responder_id),
+                                    ":updated": av(now),
+                                },
+                            }
+                        },
+                        {
+                            "Update": {
+                                "TableName": DYNAMODB_INCIDENTS_TABLE,
+                                "Key": {"incident_id": av(incident_id)},
+                                "UpdateExpression": (
+                                    "SET accepted_responder_count = "
+                                    "accepted_responder_count - :one, updated_at = :updated"
+                                ),
+                                "ConditionExpression": (
+                                    "attribute_exists(incident_id) AND "
+                                    "accepted_responder_count >= :one"
+                                ),
+                                "ExpressionAttributeValues": {
+                                    ":one": av(1),
+                                    ":updated": av(now),
+                                },
+                            }
+                        },
+                    ]
+                )
+                updated = table.get_item(
+                    Key={"mission_id": mission_id},
+                    ConsistentRead=True,
+                ).get("Item")
+                if not updated:
+                    raise RuntimeError("Mission transition committed but reload failed")
+            else:
+                result = table.update_item(
+                    Key={"mission_id": mission_id},
+                    UpdateExpression=update_expression,
+                    ConditionExpression="#status = :current AND responder_id = :responder",
+                    ExpressionAttributeNames={"#status": "status"},
+                    ExpressionAttributeValues={
+                        ":target": target,
+                        ":current": current,
+                        ":responder": responder_id,
+                        ":updated": now,
+                    },
+                    ReturnValues="ALL_NEW",
+                )
+                updated = result["Attributes"]
         except Exception as error:
             code = getattr(error, "response", {}).get("Error", {}).get("Code")
-            if code == "ConditionalCheckFailedException":
+            if code in {"ConditionalCheckFailedException", "TransactionCanceledException"}:
                 raise ValueError("Mission changed; refresh before trying again") from error
             raise
     else:
-        updated = {**existing, "status": target, "updated_at": now}
-        if terminal:
-            updated.pop("navigation_grant_hash", None)
-            updated.pop("navigation_grant_expires_at", None)
-        _LOCAL_MISSIONS[mission_id] = updated
+        with _LOCAL_RESPONDER_LOCK:
+            updated = {**existing, "status": target, "updated_at": now}
+            if terminal:
+                updated.pop("navigation_grant_hash", None)
+                updated.pop("navigation_grant_expires_at", None)
+            _LOCAL_MISSIONS[mission_id] = updated
+            if releases_capacity:
+                from aws.incident_handler.handler import _LOCAL_INCIDENTS
 
-    incident_id = str(existing["incident_id"])
+                incident = _LOCAL_INCIDENTS.get(incident_id)
+                if incident is not None:
+                    incident["accepted_responder_count"] = max(
+                        0,
+                        int(incident.get("accepted_responder_count") or 0) - 1,
+                    )
+
     if target == "EN_ROUTE":
         update_incident_status(
             incident_id,
@@ -1211,11 +1454,12 @@ def _incident_missions(incident_id: str) -> List[Dict[str, Any]]:
     """Load missions for an incident using declared IncidentMissionsIndex or local store."""
     dynamo = get_dynamo_resource()
     if dynamo:
-        missions = dynamo.Table(DYNAMODB_MISSIONS_TABLE).query(
+        missions = _query_all(
+            dynamo.Table(DYNAMODB_MISSIONS_TABLE),
             IndexName="IncidentMissionsIndex",
             KeyConditionExpression="incident_id = :incident",
             ExpressionAttributeValues={":incident": incident_id},
-        ).get("Items", [])
+        )
     elif _dev_mode():
         missions = [
             mission
@@ -1269,6 +1513,25 @@ def cancel_incident_missions(incident_id: str, reason: str) -> int:
             mission.pop("navigation_grant_hash", None)
             mission.pop("navigation_grant_expires_at", None)
         cancelled += 1
+    if dynamo:
+        try:
+            dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+                Key={"incident_id": incident_id},
+                UpdateExpression="SET accepted_responder_count = :zero",
+                ExpressionAttributeValues={":zero": 0},
+                ConditionExpression="attribute_exists(incident_id)",
+            )
+        except Exception:
+            logger.warning(
+                "Could not reset accepted responder count for terminal incident %s",
+                incident_id,
+            )
+    elif _dev_mode():
+        from aws.incident_handler.handler import _LOCAL_INCIDENTS
+
+        incident = _LOCAL_INCIDENTS.get(incident_id)
+        if incident is not None:
+            incident["accepted_responder_count"] = 0
     return cancelled
 
 
@@ -1697,6 +1960,116 @@ def advance_incident_escalation(
         "current_stage": stage_count,
         "dispatched_count": len(ctx.get("dispatched_responder_ids") or []),
     }
+
+
+def claim_escalation_evaluation(
+    incident_id: str,
+    idempotency_key: str,
+    *,
+    lease_seconds: int = 90,
+) -> str:
+    """Acquire a recoverable lease for one responder deadline evaluation.
+
+    Returns ACQUIRED, COMPLETED, or BUSY. A crashed worker can be retried after
+    the short lease expires, while a completed deadline key is permanently
+    idempotent.
+    """
+    key = str(idempotency_key or "").strip()
+    if not key:
+        key = "legacy"
+    now_epoch = int(datetime.now(timezone.utc).timestamp())
+    lease_until = now_epoch + max(30, int(lease_seconds))
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        table = dynamo.Table(DYNAMODB_INCIDENTS_TABLE)
+        current = table.get_item(
+            Key={"incident_id": incident_id},
+            ConsistentRead=True,
+        ).get("Item")
+        if not current:
+            raise ValueError(f"Incident {incident_id} not found")
+        if current.get("last_escalation_eval_completed_key") == key:
+            return "COMPLETED"
+        try:
+            table.update_item(
+                Key={"incident_id": incident_id},
+                UpdateExpression=(
+                    "SET escalation_eval_claim_key = :key, "
+                    "escalation_eval_claim_expires_at = :expiry"
+                ),
+                ConditionExpression=(
+                    "(attribute_not_exists(last_escalation_eval_completed_key) "
+                    "OR last_escalation_eval_completed_key <> :key) AND "
+                    "(attribute_not_exists(escalation_eval_claim_key) "
+                    "OR escalation_eval_claim_key <> :key "
+                    "OR escalation_eval_claim_expires_at < :now)"
+                ),
+                ExpressionAttributeValues={
+                    ":key": key,
+                    ":expiry": lease_until,
+                    ":now": now_epoch,
+                },
+            )
+            return "ACQUIRED"
+        except Exception as error:
+            code = getattr(error, "response", {}).get("Error", {}).get("Code")
+            if code != "ConditionalCheckFailedException":
+                raise
+            latest = table.get_item(
+                Key={"incident_id": incident_id},
+                ConsistentRead=True,
+            ).get("Item") or {}
+            if latest.get("last_escalation_eval_completed_key") == key:
+                return "COMPLETED"
+            return "BUSY"
+
+    if _dev_mode():
+        from aws.incident_handler.handler import _LOCAL_INCIDENTS, _LOCAL_STORE_LOCK
+        with _LOCAL_STORE_LOCK:
+            current = _LOCAL_INCIDENTS.get(incident_id)
+            if not current:
+                raise ValueError(f"Incident {incident_id} not found")
+            if current.get("last_escalation_eval_completed_key") == key:
+                return "COMPLETED"
+            if (
+                current.get("escalation_eval_claim_key") == key
+                and int(current.get("escalation_eval_claim_expires_at") or 0) >= now_epoch
+            ):
+                return "BUSY"
+            current["escalation_eval_claim_key"] = key
+            current["escalation_eval_claim_expires_at"] = lease_until
+            return "ACQUIRED"
+    raise RuntimeError("Incident store is unavailable")
+
+
+def complete_escalation_evaluation(
+    incident_id: str,
+    idempotency_key: str,
+) -> None:
+    key = str(idempotency_key or "").strip() or "legacy"
+    dynamo = get_dynamo_resource()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if dynamo:
+        dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression=(
+                "SET last_escalation_eval_completed_key = :key, "
+                "last_escalation_eval_completed_at = :now "
+                "REMOVE escalation_eval_claim_key, escalation_eval_claim_expires_at"
+            ),
+            ConditionExpression="escalation_eval_claim_key = :key",
+            ExpressionAttributeValues={":key": key, ":now": now_iso},
+        )
+        return
+    if _dev_mode():
+        from aws.incident_handler.handler import _LOCAL_INCIDENTS, _LOCAL_STORE_LOCK
+        with _LOCAL_STORE_LOCK:
+            current = _LOCAL_INCIDENTS.get(incident_id)
+            if current and current.get("escalation_eval_claim_key") == key:
+                current["last_escalation_eval_completed_key"] = key
+                current["last_escalation_eval_completed_at"] = now_iso
+                current.pop("escalation_eval_claim_key", None)
+                current.pop("escalation_eval_claim_expires_at", None)
 
 
 def process_incident_redispatch_eval(incident_id: str) -> Dict[str, Any]:
