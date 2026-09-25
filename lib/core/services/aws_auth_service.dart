@@ -334,9 +334,7 @@ class AwsAuthService {
           .replaceAll('=', '');
 
   static bool _isCognitoAuthCallback(Uri uri) =>
-      uri.scheme == 'guardian' &&
-      uri.host == 'auth' &&
-      uri.path == '/callback';
+      uri.scheme == 'guardian' && uri.host == 'auth' && uri.path == '/callback';
 
   Future<Map<String, dynamic>> _exchangeAuthorizationCode({
     required String code,
@@ -344,22 +342,20 @@ class AwsAuthService {
   }) async {
     final domain = _requireCognitoAuthDomain();
     final clientId = _requireCognitoClientId();
-    final response = await http
-        .post(
-          Uri.parse('$domain/oauth2/token'),
-          headers: const {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json',
-          },
-          body: {
-            'grant_type': 'authorization_code',
-            'client_id': clientId,
-            'code': code,
-            'redirect_uri': _cognitoRedirectUri,
-            'code_verifier': verifier,
-          },
-        )
-        .timeout(const Duration(seconds: 20));
+    final response = await http.post(
+      Uri.parse('$domain/oauth2/token'),
+      headers: const {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
+      },
+      body: {
+        'grant_type': 'authorization_code',
+        'client_id': clientId,
+        'code': code,
+        'redirect_uri': _cognitoRedirectUri,
+        'code_verifier': verifier,
+      },
+    ).timeout(const Duration(seconds: 20));
     final payload = response.body.isEmpty
         ? <String, dynamic>{}
         : jsonDecode(response.body) as Map<String, dynamic>;
@@ -375,7 +371,8 @@ class AwsAuthService {
         idToken.isEmpty ||
         refreshToken == null ||
         refreshToken.isEmpty) {
-      throw Exception('Cognito did not return a complete authenticated session.');
+      throw Exception(
+          'Cognito did not return a complete authenticated session.');
     }
     return payload;
   }
@@ -830,7 +827,9 @@ class AwsAuthService {
   }
 
   bool _isPublicAuthPath(String path) =>
-      path == '/auth/google' || path == '/auth/session' || path == '/auth/refresh';
+      path == '/auth/google' ||
+      path == '/auth/session' ||
+      path == '/auth/refresh';
 
   Future<void> _persistSession(Map<String, dynamic> resp) async {
     _userId = resp['user_id'] as String;

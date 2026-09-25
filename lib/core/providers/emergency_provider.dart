@@ -716,10 +716,9 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
         (event['accepted_contact_ids'] as List? ?? const [])
             .map((value) => value.toString())
             .toSet();
-    final failedContactIds =
-        (event['failed_contact_ids'] as List? ?? const [])
-            .map((value) => value.toString())
-            .toSet();
+    final failedContactIds = (event['failed_contact_ids'] as List? ?? const [])
+        .map((value) => value.toString())
+        .toSet();
     final occurredAt = DateTime.fromMillisecondsSinceEpoch(
       (event['occurred_at_ms'] as num?)?.toInt() ??
           DateTime.now().millisecondsSinceEpoch,
