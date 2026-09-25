@@ -13,6 +13,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:guardian/core/utils/logger.dart';
 import 'package:guardian/core/services/safety_service_bridge.dart';
+import 'package:uuid/uuid.dart';
 
 /// Storage keys
 const _kUserId = 'aws_user_id';
@@ -25,6 +26,7 @@ const _kDisplayName = 'aws_user_display_name';
 const _kPhotoUrl = 'aws_user_photo_url';
 const _kAuthProvider = 'aws_auth_provider';
 const _kSessionId = 'guardian_session_id';
+const _kDeviceId = 'guardian_device_id';
 
 /// Canonical authentication lifecycle states for mobile UI and services.
 enum AuthStatus {
@@ -508,16 +510,32 @@ class AwsAuthService {
   }
 
   /// Register this device for push notifications via AWS SNS.
-  Future<String?> registerDevice(String deviceToken,
-      {String platform = 'android'}) async {
-    if (_userId == null) return null;
+  Future<String> _ensureDeviceId() async {
+    final existing = await _storage.read(key: _kDeviceId);
+    if (existing != null && existing.isNotEmpty) return existing;
+    final created = const Uuid().v4();
+    await _storage.write(key: _kDeviceId, value: created);
+    return created;
+  }
+
+  Future<String?> registerDevice(
+    String deviceToken, {
+    String platform = 'android',
+  }) async {
+    if (_userId == null || _sessionId == null) return null;
     try {
+      final deviceId = await _ensureDeviceId();
       final resp = await _post('/users/$_userId/device', {
         'device_token': deviceToken,
+        'device_id': deviceId,
         'platform': platform,
       });
       final arn = resp['endpoint_arn'] as String?;
-      Logger.info('AwsAuthService: device registered, ARN=$arn');
+      Logger.info(
+        arn == null
+            ? 'AwsAuthService: device push registration unavailable'
+            : 'AwsAuthService: device push registration updated',
+      );
       return arn;
     } catch (e) {
       Logger.warning('AwsAuthService: device registration failed: $e');
