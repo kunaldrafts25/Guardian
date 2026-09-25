@@ -840,12 +840,6 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     return true;
   }
 
-  String _normalizedPhone(String phone) {
-    final trimmed = phone.trim();
-    final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
-    return trimmed.startsWith('+') ? '+$digits' : digits;
-  }
-
   /// Add a responder
   String _eventTypeForSource(SosTriggerSource source) => switch (source) {
         SosTriggerSource.hardwarePower => 'ANDROID_POWER_GESTURE',
