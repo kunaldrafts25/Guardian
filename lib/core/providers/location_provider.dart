@@ -100,8 +100,7 @@ class LocationNotifier extends StateNotifier<LocationState> {
       final position = await LocationService.getCurrentLocation();
 
       if (position != null) {
-        Logger.info(
-            '📍 Location updated: ${position.latitude}, ${position.longitude}');
+        Logger.info('Location fix refreshed');
         state = state.copyWith(
           position: position,
           isLoading: false,
