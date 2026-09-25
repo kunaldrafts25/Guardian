@@ -225,7 +225,7 @@ class CloudSyncWorker(
         motion.put("snapshot_version", event.optInt("snapshot_version", 0))
         motion.put(
             "local_sms_accepted_count",
-            event.optJSONArray("accepted_phones")?.length() ?: 0,
+            event.optJSONArray("accepted_contact_ids")?.length() ?: 0,
         )
 
         val localDelivery = org.json.JSONArray()
