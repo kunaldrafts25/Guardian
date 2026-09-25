@@ -152,6 +152,10 @@ def authenticate_with_google(id_token_str: str) -> Dict[str, Any]:
         try:
             id_info = _verify_google_payload(id_token_str)
 
+            if not GOOGLE_CLIENT_ID or id_info.get("aud") != GOOGLE_CLIENT_ID:
+                raise ValueError("Invalid Google token audience")
+            if id_info.get("email_verified") is not True:
+                raise ValueError("Google account email must be verified")
             sub = id_info.get("sub", "")
             email = id_info.get("email", "")
             if not sub or not email:
