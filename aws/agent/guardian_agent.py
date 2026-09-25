@@ -488,11 +488,19 @@ def execute_agent_reasoning(
         elif bedrock_threat == "HIGH" and effective_risk_level not in ("CRITICAL", "HIGH") and confidence >= 0.80:
             effective_risk_level = "HIGH"
 
+    abuse_signals = (context.get("risk_assessment") or {}).get(
+        "abuse_signals",
+        {},
+    )
+    buddy_safety_required = bool(
+        (context.get("location") or {}).get("is_isolated", False)
+        or abuse_signals.get("high_frequency_creation", False)
+    )
     policy = evaluate_safety_policy(
         event_type=str(context.get("event_type", "")),
         risk_level=effective_risk_level,
         incident_state=str(context.get("state", "")),
-        is_isolated=bool((context.get("location") or {}).get("is_isolated", False)),
+        is_isolated=buddy_safety_required,
     )
     decision = policy.decision
     provider_name = (
