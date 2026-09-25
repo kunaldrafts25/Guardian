@@ -6,6 +6,7 @@ import 'package:guardian/core/database/guardian_database.dart';
 import 'package:guardian/core/services/aws_auth_service.dart';
 import 'package:guardian/core/services/aws_incident_service.dart';
 import 'package:guardian/core/services/connectivity_orchestrator.dart';
+import 'package:guardian/core/services/cloud_incident_binding_service.dart';
 import 'package:guardian/core/utils/logger.dart';
 
 final offlineSyncProvider = Provider<OfflineSyncService>((ref) {
@@ -57,8 +58,14 @@ class OfflineSyncService {
     final userId = AwsAuthService.instance.currentUserId;
     if (userId == null) return;
 
-    final operations = await _db.getDueOutboxOperations();
+    final operations = await _db.getDueOutboxOperations(
+      ownerUserId: userId,
+    );
     for (final operation in operations) {
+      if (operation.ownerUserId != userId) {
+        Logger.warning('Skipped outbox operation with owner mismatch');
+        continue;
+      }
       try {
         final payload = jsonDecode(operation.payloadJson);
         if (payload is! Map<String, dynamic>) {
@@ -96,6 +103,13 @@ class OfflineSyncService {
             await _db.recordCloudIncidentCreated(
               alertId: operation.aggregateId,
               cloudIncidentId: cloudIncidentId,
+            );
+            CloudIncidentBindingService.instance.publish(
+              CloudIncidentBinding(
+                ownerUserId: userId,
+                localAlertId: operation.aggregateId,
+                cloudIncidentId: cloudIncidentId,
+              ),
             );
             break;
           case 'updateIncidentStatus':
@@ -136,7 +150,7 @@ class OfflineSyncService {
   Future<void> _syncLegacyAlerts() async {
     final userId = AwsAuthService.instance.currentUserId;
     if (userId == null) return;
-    final alerts = await _db.getUnsyncedAlerts();
+    final alerts = await _db.getUnsyncedAlerts(userId);
     for (final alert in alerts) {
       if (const {'resolved', 'cancelled', 'expired'}.contains(alert.status)) {
         await _db.markAlertSynced(alert.alertId);
@@ -169,6 +183,13 @@ class OfflineSyncService {
         await _db.recordCloudIncidentCreated(
           alertId: alert.alertId,
           cloudIncidentId: cloudIncidentId,
+        );
+        CloudIncidentBindingService.instance.publish(
+          CloudIncidentBinding(
+            ownerUserId: userId,
+            localAlertId: alert.alertId,
+            cloudIncidentId: cloudIncidentId,
+          ),
         );
       } catch (error) {
         Logger.warning('Alert ${alert.alertId} remains queued: $error');
