@@ -419,69 +419,6 @@ def send_sms_alert(
         return {"success": False, "error": str(ce)}
 
 
-def send_emergency_contact_alerts(
-    user_id: str,
-    incident_id: str,
-    location: Dict[str, float],
-    message_template: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Notify ALL trusted emergency contacts for a user via:
-    1. Push notification (if they have the app)
-    2. SMS fallback (always sent for critical events)
-    """
-    dynamo = _dynamo()
-    results = []
-
-    # Get user's emergency contacts from DynamoDB
-    contacts = []
-    if dynamo:
-        try:
-            table = dynamo.Table(DYNAMODB_USERS_TABLE)
-            resp = table.get_item(Key={"user_id": user_id})
-            user = resp.get("Item", {})
-            contacts = user.get("emergency_contacts", [])
-        except Exception as e:
-            logger.error(f"Failed to get emergency contacts: {e}")
-
-    if not contacts:
-        logger.warning("No emergency contacts found for authenticated user")
-        return {"success": False, "error": "No emergency contacts configured", "results": []}
-
-    lat = location.get("latitude", 0)
-    lng = location.get("longitude", 0)
-    maps_link = f"https://www.google.com/maps?q={lat},{lng}"
-
-    for contact in contacts:
-        phone = contact.get("phone", "")
-        name = contact.get("name", "Someone")
-
-        if not phone:
-            continue
-
-        msg = message_template or (
-            f"🆘 GUARDIAN SOS ALERT\n"
-            f"{name}, your trusted contact needs help!\n"
-            f"Incident: {incident_id}\n"
-            f"Location: {maps_link}\n"
-            f"Time: {datetime.now(timezone.utc).strftime('%H:%M UTC')}\n"
-            f"Please call them immediately or contact emergency services."
-        )
-
-        # Send SMS (always)
-        sms_result = send_sms_alert(phone, msg)
-        results.append({
-            "contact": name,
-            "phone": phone,
-            "sms": sms_result,
-        })
-
-    return {
-        "success": True,
-        "contacts_alerted": len(results),
-        "results": results,
-        "incident_id": incident_id,
-    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
