@@ -67,7 +67,43 @@ object NativeEmergencyDispatcher {
                 contactIdByPhone[phone] = contactId
             }
         }
-        val dispatchResults = SmsHelper.sendEmergencySms(context, phones.distinct(), message)
+        val phoneHashByContact = JSONObject()
+        contactIdByPhone.forEach { (phone, contactId) ->
+            phoneHashByContact.put(contactId, phone.hashCode())
+        }
+        val event = JSONObject().apply {
+            put("schema_version", 1)
+            put("event_id", eventId)
+            put("owner_user_id", ownerUserId ?: JSONObject.NULL)
+            put("source", source)
+            if (!operationId.isNullOrBlank()) put("operation_id", operationId)
+            put("occurred_at_ms", now)
+            put("snapshot_version", snapshot?.optInt("version", 0) ?: 0)
+            put("accepted_phones", JSONArray())
+            put("failed_phones", JSONArray())
+            put("accepted_contact_ids", JSONArray())
+            put("failed_contact_ids", JSONArray())
+            put("phone_hash_by_contact", phoneHashByContact)
+            put("latitude", location?.latitude ?: JSONObject.NULL)
+            put("longitude", location?.longitude ?: JSONObject.NULL)
+            put("accuracy", location?.accuracy ?: JSONObject.NULL)
+            put("location_time_ms", location?.time ?: JSONObject.NULL)
+            put("location_provider", location?.provider ?: JSONObject.NULL)
+            put("sensor_evidence", sensorEvidence ?: JSONObject.NULL)
+            put("consumed", false)
+            put("cloud_synced", false)
+        }
+
+        // Persist before calling SmsManager so an immediate sent callback can
+        // always attach evidence to the canonical event.
+        NativeEmergencyStore.appendEvent(context, event)
+
+        val dispatchResults = SmsHelper.sendEmergencySms(
+            context = context,
+            eventId = eventId,
+            phoneNumbers = phones.distinct(),
+            message = message,
+        )
         val acceptedPhones = JSONArray()
         val failedPhones = JSONArray()
         val acceptedContactIds = JSONArray()
@@ -81,29 +117,18 @@ object NativeEmergencyDispatcher {
                 contactIdByPhone[phone]?.let(failedContactIds::put)
             }
         }
-
-        val event = JSONObject().apply {
-            put("schema_version", 1)
-            put("event_id", eventId)
-            put("owner_user_id", ownerUserId ?: JSONObject.NULL)
-            put("source", source)
-            if (!operationId.isNullOrBlank()) put("operation_id", operationId)
-            put("occurred_at_ms", now)
-            put("snapshot_version", snapshot?.optInt("version", 0) ?: 0)
-            put("accepted_phones", acceptedPhones)
-            put("failed_phones", failedPhones)
-            put("accepted_contact_ids", acceptedContactIds)
-            put("failed_contact_ids", failedContactIds)
-            put("latitude", location?.latitude ?: JSONObject.NULL)
-            put("longitude", location?.longitude ?: JSONObject.NULL)
-            put("accuracy", location?.accuracy ?: JSONObject.NULL)
-            put("location_time_ms", location?.time ?: JSONObject.NULL)
-            put("location_provider", location?.provider ?: JSONObject.NULL)
-            put("sensor_evidence", sensorEvidence ?: JSONObject.NULL)
-            put("consumed", false)
-            put("cloud_synced", false)
-        }
-        NativeEmergencyStore.appendEvent(context, event)
+        NativeEmergencyStore.updateSmsSubmissionResults(
+            context,
+            eventId,
+            acceptedPhones,
+            failedPhones,
+            acceptedContactIds,
+            failedContactIds,
+        )
+        event.put("accepted_phones", acceptedPhones)
+        event.put("failed_phones", failedPhones)
+        event.put("accepted_contact_ids", acceptedContactIds)
+        event.put("failed_contact_ids", failedContactIds)
         acknowledgeOnDevice(context, dispatchResults.values.count { it }, phones.size)
 
         // P1-04: Queue resilient cloud upload using WorkManager
