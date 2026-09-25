@@ -1,21 +1,17 @@
 /*
- * Guardian 2.0 - Women's Safety App
- * © 2025 All Rights Reserved - Kunal Singh
- * 
- * Safe Route Provider - Route navigation with OSRM (Open Source Routing Machine)
+ * Guardian walking-route provider.
+ *
+ * Google Routes supplies ordinary walking geometry/distance/duration through
+ * the authenticated Guardian backend. Guardian does not label provider routes
+ * "safe"; safety state and route-deviation policy remain Guardian-owned.
  */
 
-import 'dart:convert';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
-import 'package:http/http.dart' as http;
-import 'package:guardian/core/config/map_routing_config.dart';
-import 'package:guardian/core/utils/logger.dart';
+import 'package:guardian/core/services/aws_auth_service.dart';
 import 'package:guardian/core/services/safety_service_bridge.dart';
+import 'package:guardian/core/utils/logger.dart';
+import 'package:latlong2/latlong.dart';
 
-/// Route information
 class RouteInfo {
   final List<LatLng> polylinePoints;
   final String distance;
@@ -23,6 +19,8 @@ class RouteInfo {
   final String startAddress;
   final String endAddress;
   final List<String> steps;
+  final String provider;
+  final bool authoritativeGeometry;
 
   const RouteInfo({
     required this.polylinePoints,
@@ -31,10 +29,11 @@ class RouteInfo {
     required this.startAddress,
     required this.endAddress,
     this.steps = const [],
+    this.provider = 'google_routes',
+    this.authoritativeGeometry = true,
   });
 }
 
-/// Safe route state
 class SafeRouteState {
   final bool isLoading;
   final RouteInfo? currentRoute;
@@ -73,11 +72,9 @@ class SafeRouteState {
   bool get hasRoute => currentRoute != null;
 }
 
-/// Safe route notifier — uses FREE OSRM routing (replaces Google Directions API)
 class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
   SafeRouteNotifier() : super(const SafeRouteState());
 
-  /// Fetch walking route from OSRM (free, no API key needed)
   Future<void> fetchRoute({
     required LatLng origin,
     required LatLng destination,
@@ -92,150 +89,146 @@ class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
     );
 
     try {
-      // OSRM uses lon,lat order
-      final url = Uri.parse(
-        '${MapRoutingConfig.osrmBaseUrl}/route/v1/foot/'
-        '${origin.longitude},${origin.latitude};'
-        '${destination.longitude},${destination.latitude}'
-        '?overview=full&geometries=geojson&steps=false',
+      final response = await AwsAuthService.instance.post(
+        '/maps/routes/walking',
+        {
+          'origin': {
+            'latitude': origin.latitude,
+            'longitude': origin.longitude,
+          },
+          'destination': {
+            'latitude': destination.latitude,
+            'longitude': destination.longitude,
+          },
+        },
       );
 
-      Logger.info(
-          '🗺️ Fetching route from OSRM (${MapRoutingConfig.osrmBaseUrl})');
-      final response = await MapRoutingConfig.executeWithRetry(
-        () => http.get(url).timeout(MapRoutingConfig.defaultRoutingTimeout),
-        serviceName: 'OSRM',
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body) as Map<String, dynamic>;
-
-        if (data['code'] == 'Ok' && (data['routes'] as List).isNotEmpty) {
-          final route = data['routes'][0] as Map<String, dynamic>;
-          final geometry = route['geometry'] as Map<String, dynamic>;
-          final coords = geometry['coordinates'] as List;
-
-          final polylinePoints = coords.map((c) {
-            final coord = c as List;
-            return LatLng(coord[1] as double, coord[0] as double);
-          }).toList();
-
-          final distanceM = (route['distance'] as num).toDouble();
-          final durationS = (route['duration'] as num).toInt();
-          final distanceText = distanceM < 1000
-              ? '${distanceM.round()} m'
-              : '${(distanceM / 1000).toStringAsFixed(1)} km';
-          final durationText = '${(durationS / 60).ceil()} min walk';
-
-          final routeInfo = RouteInfo(
-            polylinePoints: polylinePoints,
-            distance: distanceText,
-            duration: durationText,
-            startAddress: 'Current Location',
-            endAddress: destinationName ?? 'Destination',
-            steps: [],
-          );
-
-          state = state.copyWith(
-            isLoading: false,
-            currentRoute: routeInfo,
-          );
-
-          // Sync polyline points to native foreground service for background route deviation detection
-          SafetyServiceBridge().setActiveRoute(
-            polylinePoints
-                .map((p) => {'latitude': p.latitude, 'longitude': p.longitude})
-                .toList(),
-          );
-
-          Logger.info('🗺️ OSRM route: $distanceText, $durationText');
-          return;
-        }
+      final encoded = response['encoded_polyline']?.toString() ?? '';
+      final polylinePoints = _decodePolyline(encoded);
+      if (polylinePoints.length < 2) {
+        throw StateError('Route geometry is unavailable.');
       }
 
-      throw Exception('No route found (OSRM returned ${response.statusCode})');
-    } catch (e) {
-      Logger.warning(
-          'OSRM routing failed: $e. Activating resilient geodesic direct route fallback.');
+      final distanceMeters = (response['distance_meters'] as num?)?.toDouble() ?? 0;
+      final durationSeconds = _durationSeconds(response['duration']?.toString() ?? '');
+      final distanceText = distanceMeters < 1000
+          ? '${distanceMeters.round()} m'
+          : '${(distanceMeters / 1000).toStringAsFixed(1)} km';
+      final durationText = durationSeconds <= 0
+          ? 'Walking route'
+          : '${(durationSeconds / 60).ceil()} min walk';
 
-      // Resilient fallback: Straight-line route so safety navigation & deviation tracking do not collapse
-      final polylinePoints = [origin, destination];
-      final distanceM =
-          const Distance().as(LengthUnit.Meter, origin, destination);
-      final distanceText = distanceM < 1000
-          ? '${distanceM.round()} m (direct)'
-          : '${(distanceM / 1000).toStringAsFixed(1)} km (direct)';
-      final durationM = (distanceM / 80).ceil(); // ~4.8 km/h average walk
-
-      final fallbackRoute = RouteInfo(
+      final routeInfo = RouteInfo(
         polylinePoints: polylinePoints,
         distance: distanceText,
-        duration: '$durationM min walk (direct)',
+        duration: durationText,
         startAddress: 'Current Location',
         endAddress: destinationName ?? 'Destination',
-        steps: [],
+        provider: response['provider']?.toString() ?? 'google_routes',
+        authoritativeGeometry:
+            response['geometry_type']?.toString() == 'authoritative_route',
       );
 
       state = state.copyWith(
         isLoading: false,
-        currentRoute: fallbackRoute,
-        errorMessage:
-            'Detailed turn-by-turn unavailable; direct emergency line active.',
+        currentRoute: routeInfo,
+        errorMessage: null,
       );
 
-      // P0-07: Do NOT send geodesic fallbacks to the native deviation engine.
-      // A straight line is not routable and will trigger false positive deviations.
-      SafetyServiceBridge().clearActiveRoute();
+      if (routeInfo.authoritativeGeometry) {
+        await SafetyServiceBridge().setActiveRoute(
+          polylinePoints
+              .map(
+                (point) => {
+                  'latitude': point.latitude,
+                  'longitude': point.longitude,
+                },
+              )
+              .toList(),
+        );
+      } else {
+        await SafetyServiceBridge().clearActiveRoute();
+      }
+      Logger.info('Google walking route loaded');
+    } catch (error) {
+      Logger.warning('Walking route provider unavailable: $error');
+
+      // A direct geodesic line is display-only degraded guidance. It is never
+      // armed in the native deviation detector because it is not routable road
+      // or pedestrian geometry.
+      final distanceMeters =
+          const Distance().as(LengthUnit.Meter, origin, destination);
+      final routeInfo = RouteInfo(
+        polylinePoints: [origin, destination],
+        distance: distanceMeters < 1000
+            ? '${distanceMeters.round()} m direct'
+            : '${(distanceMeters / 1000).toStringAsFixed(1)} km direct',
+        duration: 'Routing unavailable',
+        startAddress: 'Current Location',
+        endAddress: destinationName ?? 'Destination',
+        provider: 'degraded_direct_line',
+        authoritativeGeometry: false,
+      );
+      state = state.copyWith(
+        isLoading: false,
+        currentRoute: routeInfo,
+        errorMessage:
+            'Walking directions are temporarily unavailable. The displayed line is not a navigable route.',
+      );
+      await SafetyServiceBridge().clearActiveRoute();
     }
   }
 
-  // ignore: unused_element
-  /// Decode Google's encoded polyline format
-  // ignore: unused_element
+  int _durationSeconds(String value) {
+    if (!value.endsWith('s')) return 0;
+    final raw = value.substring(0, value.length - 1);
+    return double.tryParse(raw)?.round() ?? 0;
+  }
+
   List<LatLng> _decodePolyline(String encoded) {
-    final List<LatLng> points = [];
-    int index = 0;
-    int lat = 0;
-    int lng = 0;
+    if (encoded.isEmpty) return const [];
+    final points = <LatLng>[];
+    var index = 0;
+    var latitude = 0;
+    var longitude = 0;
 
     while (index < encoded.length) {
-      // Decode latitude
       int shift = 0;
       int result = 0;
       int byte;
       do {
+        if (index >= encoded.length) {
+          throw const FormatException('Truncated encoded polyline');
+        }
         byte = encoded.codeUnitAt(index++) - 63;
         result |= (byte & 0x1f) << shift;
         shift += 5;
       } while (byte >= 0x20);
-      int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-      lat += dlat;
+      latitude += (result & 1) != 0 ? ~(result >> 1) : result >> 1;
 
-      // Decode longitude
       shift = 0;
       result = 0;
       do {
+        if (index >= encoded.length) {
+          throw const FormatException('Truncated encoded polyline');
+        }
         byte = encoded.codeUnitAt(index++) - 63;
         result |= (byte & 0x1f) << shift;
         shift += 5;
       } while (byte >= 0x20);
-      int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-      lng += dlng;
+      longitude += (result & 1) != 0 ? ~(result >> 1) : result >> 1;
 
-      points.add(LatLng(lat / 1e5, lng / 1e5));
+      points.add(LatLng(latitude / 1e5, longitude / 1e5));
     }
-
     return points;
   }
 
-  /// Clear current route
   void clearRoute() {
     state = const SafeRouteState();
     SafetyServiceBridge().clearActiveRoute();
-    Logger.info('🗺️ Route cleared');
+    Logger.info('Walking route cleared');
   }
 
-  /// Set destination without fetching route yet
   void setDestination(LatLng destination, String name) {
     state = state.copyWith(
       destination: destination,
@@ -244,93 +237,7 @@ class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
   }
 }
 
-/// Safe route provider
 final safeRouteProvider =
     StateNotifierProvider<SafeRouteNotifier, SafeRouteState>((ref) {
   return SafeRouteNotifier();
-});
-
-/// Current route polyline provider (for map display)
-final routePolylinesProvider = Provider<List<Polyline>>((ref) {
-  final routeState = ref.watch(safeRouteProvider);
-
-  if (!routeState.hasRoute) {
-    return [];
-  }
-
-  return [
-    // Outer casing / shadow line
-    Polyline(
-      points: routeState.currentRoute!.polylinePoints,
-      color: const Color(0xFF173A2C).withValues(alpha: 0.35),
-      strokeWidth: 8,
-    ),
-    // Core safe walking line in signature deep forest green
-    Polyline(
-      points: routeState.currentRoute!.polylinePoints,
-      color: const Color(0xFF244D3C),
-      strokeWidth: 5,
-    ),
-  ];
-});
-
-/// Route markers provider (start and end)
-final routeMarkersProvider = Provider<List<Marker>>((ref) {
-  final routeState = ref.watch(safeRouteProvider);
-
-  if (!routeState.hasRoute) {
-    return [];
-  }
-
-  final points = routeState.currentRoute!.polylinePoints;
-  if (points.isEmpty) return [];
-
-  return [
-    // Origin marker
-    Marker(
-      point: points.first,
-      width: 32,
-      height: 32,
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF244D3C),
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 3),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: const Center(
-          child: Icon(Icons.circle, color: Colors.white, size: 10),
-        ),
-      ),
-    ),
-    // Destination marker
-    Marker(
-      point: points.last,
-      width: 40,
-      height: 40,
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF39705A),
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 3),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF39705A).withValues(alpha: 0.4),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: const Center(
-          child: Icon(Icons.flag_rounded, color: Colors.white, size: 20),
-        ),
-      ),
-    ),
-  ];
 });
