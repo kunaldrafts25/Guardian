@@ -1,7 +1,7 @@
 /*
  * Guardian - Women's Safety App
  * AWS Authentication Service
- * Replaces Firebase Auth with AWS Cognito (phone OTP)
+ * Uses Google identity with AWS Cognito-issued API tokens.
  * Works in dev mode without any AWS credentials configured.
  */
 
@@ -143,7 +143,6 @@ class AwsAuthService {
   String? _accessToken;
   String? _phone;
   String? _sessionId;
-  String? _pendingSession; // Cognito auth session for OTP verification
   AwsAuthUser? _currentUser;
   Future<bool>? _refreshInFlight;
   final StreamController<AwsAuthUser?> _authStateController =
@@ -332,46 +331,6 @@ class AwsAuthService {
     return _currentUser;
   }
 
-  // ─── Phone OTP Flow ─────────────────────────────────────────────────────
-
-  /// Step 1: Send OTP to phone number via Cognito SMS.
-  /// Returns the session token needed for verification.
-  Future<Map<String, dynamic>> sendOtp(String phoneNumber) async {
-    Logger.info('AwsAuthService: sending OTP to $phoneNumber');
-    final resp = await _post('/auth/send-otp', {'phone_number': phoneNumber});
-
-    if (resp['session'] != null) {
-      _pendingSession = resp['session'] as String;
-      _phone = phoneNumber;
-    }
-
-    return resp;
-  }
-
-  /// Step 2: Verify the OTP code.
-  /// On success, stores tokens securely and returns user info.
-  Future<Map<String, dynamic>> verifyOtp(String otp) async {
-    if (_phone == null || _pendingSession == null) {
-      throw Exception('No pending OTP session. Call sendOtp() first.');
-    }
-
-    Logger.info('AwsAuthService: verifying OTP');
-    final resp = await _post('/auth/verify-otp', {
-      'phone_number': _phone!,
-      'otp_code': otp,
-      'session': _pendingSession!,
-      'device_label':
-          'Guardian ${kIsWeb ? 'web' : defaultTargetPlatform.name} device',
-      'platform': kIsWeb ? 'web' : defaultTargetPlatform.name,
-    });
-
-    if (resp['user_id'] != null) {
-      await _persistSession(resp);
-    }
-
-    return resp;
-  }
-
   /// Refresh expired access token using the stored refresh token.
   Future<bool> refreshSession() {
     final inFlight = _refreshInFlight;
@@ -480,7 +439,6 @@ class AwsAuthService {
     _accessToken = null;
     _phone = null;
     _sessionId = null;
-    _pendingSession = null;
     _currentUser = null;
     _updateAuthStatus(AuthStatus.signedOut);
     for (final key in [
