@@ -35,93 +35,21 @@ Parameters:
     Type: String
     Default: ''
     Description: Existing SNS platform application ARN for iOS APNs
+  GoogleClientId:
+    Type: String
+    MinLength: 20
+    Description: Google OAuth 2.0 web/server client ID accepted by Guardian backend
 
 Resources:
-  DefineAuthChallengeFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: .
-      Handler: cognito_triggers.define_auth_challenge
-
-  CreateAuthChallengeFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: .
-      Handler: cognito_triggers.create_auth_challenge
-      Environment:
-        Variables:
-          OTP_TTL_SECONDS: '300'
-          OTP_MAX_ATTEMPTS: '5'
-      Policies:
-        - Statement:
-            - Effect: Allow
-              Action: sns:Publish
-              Resource: '*'
-
-  VerifyAuthChallengeFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: .
-      Handler: cognito_triggers.verify_auth_challenge
-
-  AllowCognitoDefineChallenge:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref DefineAuthChallengeFunction
-      Principal: cognito-idp.amazonaws.com
-      SourceArn: !GetAtt GuardianUserPool.Arn
-  AllowCognitoCreateChallenge:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref CreateAuthChallengeFunction
-      Principal: cognito-idp.amazonaws.com
-      SourceArn: !GetAtt GuardianUserPool.Arn
-  AllowCognitoVerifyChallenge:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref VerifyAuthChallengeFunction
-      Principal: cognito-idp.amazonaws.com
-      SourceArn: !GetAtt GuardianUserPool.Arn
-
-  CognitoSmsRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub guardian-${EnvironmentName}-cognito-sms-role
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: cognito-idp.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: CognitoSmsPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action: sns:Publish
-                Resource: '*'
-
   GuardianUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
       UserPoolName: !Sub guardian-${EnvironmentName}-users
-      UsernameAttributes: [phone_number]
-      AutoVerifiedAttributes: [phone_number]
-      SmsConfiguration:
-        SnsCallerArn: !GetAtt CognitoSmsRole.Arn
+      AutoVerifiedAttributes: [email]
       AccountRecoverySetting:
         RecoveryMechanisms:
-          - Name: verified_phone_number
+          - Name: verified_email
             Priority: 1
-      LambdaConfig:
-        DefineAuthChallenge: !GetAtt DefineAuthChallengeFunction.Arn
-        CreateAuthChallenge: !GetAtt CreateAuthChallengeFunction.Arn
-        VerifyAuthChallengeResponse: !GetAtt VerifyAuthChallengeFunction.Arn
       Policies:
         PasswordPolicy:
           MinimumLength: 16
@@ -141,8 +69,7 @@ Resources:
       GenerateSecret: false
       EnableTokenRevocation: true
       PreventUserExistenceErrors: ENABLED
-
-      ExplicitAuthFlows: [ALLOW_CUSTOM_AUTH, ALLOW_REFRESH_TOKEN_AUTH, ALLOW_ADMIN_USER_PASSWORD_AUTH]
+      ExplicitAuthFlows: [ALLOW_REFRESH_TOKEN_AUTH, ALLOW_ADMIN_USER_PASSWORD_AUTH]
       AccessTokenValidity: 15
       IdTokenValidity: 15
       RefreshTokenValidity: 30
@@ -244,17 +171,7 @@ Resources:
       SSESpecification: {SSEEnabled: true}
       AttributeDefinitions: [{AttributeName: user_id, AttributeType: S}]
       KeySchema: [{AttributeName: user_id, KeyType: HASH}]
-  AuthThrottleTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub guardian-${EnvironmentName}-auth-throttle
-      BillingMode: PAY_PER_REQUEST
-      SSESpecification: {SSEEnabled: true}
-      TimeToLiveSpecification:
-        AttributeName: expires_at
-        Enabled: true
-      AttributeDefinitions: [{AttributeName: throttle_key, AttributeType: S}]
-      KeySchema: [{AttributeName: throttle_key, KeyType: HASH}]
+
   SessionsTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Retain
@@ -317,12 +234,12 @@ Resources:
         Variables:
           COGNITO_USER_POOL_ID: !Ref GuardianUserPool
           COGNITO_CLIENT_ID: !Ref GuardianUserPoolClient
+          GOOGLE_CLIENT_ID: !Ref GoogleClientId
           DYNAMODB_INCIDENTS_TABLE: !Ref IncidentsTable
           DYNAMODB_EVENTS_TABLE: !Ref IncidentEventsTable
           DYNAMODB_RESPONDERS_TABLE: !Ref RespondersTable
           DYNAMODB_MISSIONS_TABLE: !Ref MissionsTable
           DYNAMODB_USERS_TABLE: !Ref UsersTable
-          DYNAMODB_AUTH_THROTTLE_TABLE: !Ref AuthThrottleTable
           DYNAMODB_SESSIONS_TABLE: !Ref SessionsTable
           DYNAMODB_AGENT_LEDGER_TABLE: !Ref AgentLedgerTable
           DYNAMODB_AGENT_AUTHORIZATIONS_TABLE: !Ref AgentAuthorizationsTable
@@ -337,7 +254,6 @@ Resources:
         - DynamoDBCrudPolicy: {TableName: !Ref RespondersTable}
         - DynamoDBCrudPolicy: {TableName: !Ref MissionsTable}
         - DynamoDBCrudPolicy: {TableName: !Ref UsersTable}
-        - DynamoDBCrudPolicy: {TableName: !Ref AuthThrottleTable}
         - DynamoDBCrudPolicy: {TableName: !Ref SessionsTable}
         - Statement:
             - Effect: Allow
@@ -358,7 +274,6 @@ Resources:
             - Effect: Allow
               Action:
                 - cognito-idp:InitiateAuth
-                - cognito-idp:RespondToAuthChallenge
               Resource: '*'
             - Effect: Allow
               Action: [sns:CreatePlatformEndpoint, sns:GetEndpointAttributes, sns:SetEndpointAttributes, sns:Publish]
@@ -373,12 +288,6 @@ Resources:
         PublicRoot:
           Type: Api
           Properties: {Path: /, Method: get, Auth: {Authorizer: NONE}}
-        SendOtp:
-          Type: Api
-          Properties: {Path: /auth/send-otp, Method: post, Auth: {Authorizer: NONE}}
-        VerifyOtp:
-          Type: Api
-          Properties: {Path: /auth/verify-otp, Method: post, Auth: {Authorizer: NONE}}
         RefreshToken:
           Type: Api
           Properties: {Path: /auth/refresh, Method: post, Auth: {Authorizer: NONE}}
@@ -419,12 +328,12 @@ Resources:
         Variables:
           COGNITO_USER_POOL_ID: !Ref GuardianUserPool
           COGNITO_CLIENT_ID: !Ref GuardianUserPoolClient
+          GOOGLE_CLIENT_ID: !Ref GoogleClientId
           DYNAMODB_INCIDENTS_TABLE: !Ref IncidentsTable
           DYNAMODB_EVENTS_TABLE: !Ref IncidentEventsTable
           DYNAMODB_RESPONDERS_TABLE: !Ref RespondersTable
           DYNAMODB_MISSIONS_TABLE: !Ref MissionsTable
           DYNAMODB_USERS_TABLE: !Ref UsersTable
-          DYNAMODB_AUTH_THROTTLE_TABLE: !Ref AuthThrottleTable
           DYNAMODB_SESSIONS_TABLE: !Ref SessionsTable
           DYNAMODB_AGENT_LEDGER_TABLE: !Ref AgentLedgerTable
           DYNAMODB_AGENT_AUTHORIZATIONS_TABLE: !Ref AgentAuthorizationsTable
