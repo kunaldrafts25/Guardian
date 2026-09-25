@@ -498,11 +498,14 @@ def execute_agent_reasoning(
         (context.get("location") or {}).get("is_isolated", False)
         or abuse_signals.get("high_frequency_creation", False)
     )
+    provenance = context.get("trigger_provenance") or {}
     policy = evaluate_safety_policy(
         event_type=str(context.get("event_type", "")),
         risk_level=effective_risk_level,
         incident_state=str(context.get("state", "")),
         is_isolated=buddy_safety_required,
+        trigger_origin=str(provenance.get("origin", "")),
+        trigger_trust_level=str(provenance.get("trust_level", "")),
     )
     decision = policy.decision
     provider_name = (
@@ -821,12 +824,15 @@ def _handle_verification_timeout(
             "status": "VERIFICATION_TIMEOUT_NOOP_TERMINAL",
         }
 
+    provenance = incident.get("trigger_provenance") or {}
     policy = evaluate_safety_policy(
         event_type=str(incident.get("event_type", "")),
         risk_level=str((incident.get("risk_assessment") or {}).get("level", "MEDIUM")),
         incident_state=str(incident.get("state", "")),
         is_isolated=bool((incident.get("location") or {}).get("is_isolated", False)),
         verification_timed_out=True,
+        trigger_origin=str(provenance.get("origin", "")),
+        trigger_trust_level=str(provenance.get("trust_level", "")),
     )
     authorizations = issue_policy_authorizations(
         incident_id=incident_id,
