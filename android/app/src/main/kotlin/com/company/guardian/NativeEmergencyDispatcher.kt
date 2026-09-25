@@ -87,6 +87,7 @@ object NativeEmergencyDispatcher {
             put("event_id", eventId)
             put("owner_user_id", ownerUserId ?: JSONObject.NULL)
             put("source", source)
+            if (!operationId.isNullOrBlank()) put("operation_id", operationId)
             put("occurred_at_ms", now)
             put("snapshot_version", snapshot?.optInt("version", 0) ?: 0)
             put("accepted_phones", acceptedPhones)
