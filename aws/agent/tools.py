@@ -305,6 +305,7 @@ def notify_trusted_contact(
     notified = []
     skipped = []
     failed = []
+    dev_not_sent = []
 
     local_delivery = {}
     for item in (ctx.get("motion_data") or {}).get("local_sms_delivery") or []:
@@ -328,13 +329,27 @@ def notify_trusted_contact(
             continue
 
         if _dev_mode() and not os.environ.get("AWS_EXECUTION_ENV"):
-            notified.append(c.get("name", "Unknown"))
+            # Local test mode must never pretend that an external SMS provider
+            # accepted a message. Keep the incident state unchanged unless
+            # there is real native OS-accepted evidence for a recipient.
+            dev_not_sent.append(c.get("name", "Unknown"))
         else:
             dispatch = send_sms_alert(str(c.get("phone", "")), alert_message)
             if dispatch.get("success"):
                 notified.append(c.get("name", "Unknown"))
             else:
                 failed.append(c.get("name", "Unknown"))
+
+    if not notified and not skipped and dev_not_sent:
+        return {
+            "incident_id": incident_id,
+            "contacts_notified_cloud": [],
+            "contacts_skipped_native": [],
+            "contacts_failed": [],
+            "contacts_dev_not_sent": dev_not_sent,
+            "delivery_status": "DEV_MODE_NOT_SENT",
+            "state": ctx.get("state"),
+        }
 
     if not notified and not skipped:
         raise RuntimeError(f"AWS SNS SMS failed for all {len(failed)} targets.")
@@ -343,7 +358,10 @@ def notify_trusted_contact(
         incident_id=incident_id,
         new_state=IncidentState.CONTACTS_NOTIFIED.value,
         actor="AGENT",
-        note=f"Escalated via SNS to {len(notified)} contacts ({len(skipped)} already notified natively).",
+        note=(
+            f"Contact escalation recorded: {len(notified)} cloud provider accepted, "
+            f"{len(skipped)} already accepted by the local OS."
+        ),
     )
 
     return {
@@ -351,7 +369,10 @@ def notify_trusted_contact(
         "contacts_notified_cloud": notified,
         "contacts_skipped_native": skipped,
         "contacts_failed": failed,
-        "delivery_status": "PROVIDER_ACCEPTED" if notified else "LOCAL_PROVIDER_ACCEPTED",
+        "contacts_dev_not_sent": dev_not_sent,
+        "delivery_status": (
+            "PROVIDER_ACCEPTED" if notified else "LOCAL_PROVIDER_ACCEPTED"
+        ),
         "state": res.get("state"),
     }
 
@@ -1703,12 +1724,19 @@ def process_incident_redispatch_eval(incident_id: str) -> Dict[str, Any]:
         }
 
     now = int(datetime.now(timezone.utc).timestamp())
+    local_simulation = _dev_mode() and not os.environ.get("AWS_EXECUTION_ENV")
     pending_live = [
         mission
         for mission in missions
         if mission.get("status") == "INVITED"
         and int(mission.get("invitation_expires_at", 0)) > now
-        and mission.get("invitation_delivery_status") == "PROVIDER_ACCEPTED"
+        and (
+            mission.get("invitation_delivery_status") == "PROVIDER_ACCEPTED"
+            or (
+                local_simulation
+                and mission.get("invitation_delivery_status") == "DEV_MODE_NOT_SENT"
+            )
+        )
     ]
     if pending_live:
         return {
