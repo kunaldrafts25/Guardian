@@ -119,14 +119,15 @@ def test_google_auth_refresh_and_authenticated_call():
     assert refreshed_data["session_id"] == session_id
     assert refreshed_data["access_token"].startswith(f"dev_access_token_{user_id}")
 
-    user_resp = client.get(
-        f"/users/{user_id}",
+    sessions_resp = client.get(
+        "/auth/sessions",
         headers={
             "Authorization": f"Bearer {refreshed_data['access_token']}",
             "X-Guardian-Session-ID": session_id,
         },
     )
-    assert user_resp.status_code == 200
+    assert sessions_resp.status_code == 200
+    assert sessions_resp.json()["sessions"][0]["current"] is True
 
 
 
