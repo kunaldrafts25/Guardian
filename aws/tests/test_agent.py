@@ -69,7 +69,8 @@ def test_agent_tools_execution():
     )
     assert n_res["state"] == "CLOUD_ACCEPTED"
     assert n_res["delivery_status"] == "DEV_MODE_NOT_SENT"
-    assert n_res["contact_notified"] is None
+    assert n_res["contacts_notified_cloud"] == []
+    assert n_res["contacts_dev_not_sent"] == ["Test Contact"]
 
 
 def test_agent_autonomous_reasoning_flow():
@@ -101,6 +102,7 @@ def test_agent_critical_immediate_escalation():
     res = execute_agent_reasoning(iid)
     assert "ESCALATE_IMMEDIATELY" in res["decision"]
     assert res["action_result"]["contact_alert"]["delivery_status"] == "DEV_MODE_NOT_SENT"
+    assert res["action_result"]["contact_alert"]["contacts_notified_cloud"] == []
     assert res["action_result"]["contact_alert"]["state"] == "CLOUD_ACCEPTED"
 
 
