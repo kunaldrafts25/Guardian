@@ -44,7 +44,20 @@ Parameters:
   GoogleClientId:
     Type: String
     MinLength: 20
-    Description: Google OAuth 2.0 web/server client ID accepted by Guardian backend
+    Description: Google OAuth 2.0 web client ID used by Cognito federation
+  GoogleClientSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Description: Google OAuth 2.0 client secret used only by Cognito as the Google IdP
+  GuardianAuthCallbackUrl:
+    Type: String
+    Default: guardian://auth/callback
+    Description: Registered mobile OAuth callback URL for Cognito authorization code flow
+  GuardianAuthLogoutUrl:
+    Type: String
+    Default: guardian://auth/logout
+    Description: Registered mobile logout callback URL
 
 Resources:
   GuardianUserPool:
@@ -67,15 +80,43 @@ Resources:
       UserPoolAddOns:
         AdvancedSecurityMode: ENFORCED
 
+  GuardianGoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref GuardianUserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Ref GoogleClientId
+        client_secret: !Ref GoogleClientSecret
+        authorize_scopes: openid email profile
+      AttributeMapping:
+        email: email
+        name: name
+        picture: picture
+
+  GuardianUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub guardian-${EnvironmentName}-${AWS::AccountId}
+      UserPoolId: !Ref GuardianUserPool
+
   GuardianUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
+    DependsOn: GuardianGoogleIdentityProvider
     Properties:
       ClientName: !Sub guardian-${EnvironmentName}-mobile
       UserPoolId: !Ref GuardianUserPool
       GenerateSecret: false
       EnableTokenRevocation: true
       PreventUserExistenceErrors: ENABLED
-      ExplicitAuthFlows: [ALLOW_REFRESH_TOKEN_AUTH, ALLOW_ADMIN_USER_PASSWORD_AUTH]
+      SupportedIdentityProviders: [Google]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email, profile]
+      CallbackURLs: [!Ref GuardianAuthCallbackUrl]
+      LogoutURLs: [!Ref GuardianAuthLogoutUrl]
+      ExplicitAuthFlows: [ALLOW_REFRESH_TOKEN_AUTH]
       AccessTokenValidity: 15
       IdTokenValidity: 15
       RefreshTokenValidity: 30
@@ -341,9 +382,6 @@ Resources:
         - Statement:
             - Effect: Allow
               Action:
-                - cognito-idp:AdminCreateUser
-                - cognito-idp:AdminSetUserPassword
-                - cognito-idp:AdminInitiateAuth
                 - cognito-idp:GetUser
                 - cognito-idp:GlobalSignOut
                 - cognito-idp:AdminListGroupsForUser
@@ -368,9 +406,9 @@ Resources:
         RefreshToken:
           Type: Api
           Properties: {Path: /auth/refresh, Method: post, Auth: {Authorizer: NONE}}
-        GoogleAuth:
+        SessionBootstrap:
           Type: Api
-          Properties: {Path: /auth/google, Method: post, Auth: {Authorizer: NONE}}
+          Properties: {Path: /auth/session, Method: post, Auth: {Authorizer: NONE}}
         ProtectedApi:
           Type: Api
           Properties: {Path: '/{proxy+}', Method: any}
@@ -475,3 +513,5 @@ Outputs:
     Value: !Ref GuardianUserPool
   CognitoClientId:
     Value: !Ref GuardianUserPoolClient
+  CognitoAuthDomain:
+    Value: !Sub 'https://guardian-${EnvironmentName}-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com'
