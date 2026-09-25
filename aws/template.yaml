@@ -320,7 +320,7 @@ Resources:
           Properties: {Path: /auth/google, Method: post, Auth: {Authorizer: NONE}}
         ProtectedApi:
           Type: Api
-          Properties: {Path: '/{proxy+}', Method: any, Auth: {Authorizer: NONE}}
+          Properties: {Path: '/{proxy+}', Method: any}
 
   AgentSchedulerRole:
     Type: AWS::IAM::Role
