@@ -83,7 +83,6 @@ from aws.cognito_service import (
     sign_out,
     update_user_profile,
     get_user_profile,
-    save_fcm_token,
 )
 from aws.session_service import (
     create_session,
@@ -95,6 +94,8 @@ from aws.session_service import (
 )
 from aws.sns_push_service import (
     register_device_endpoint,
+    disable_all_device_endpoints,
+    disable_device_endpoints_for_session,
     send_push_to_user,
     send_sms_alert,
 )
@@ -297,9 +298,11 @@ def api_refresh_token(req: RefreshTokenRequest):
 
 @app.post("/auth/sign-out")
 def api_sign_out(request: Request):
-    """Revoke all tokens — global sign out from Cognito."""
+    """Revoke all tokens, sessions, and user-bound push endpoints."""
+    user_id = authenticated_user_id(request)
+    disable_all_device_endpoints(user_id)
     result = sign_out(request.state.access_token)
-    revoke_all_sessions(authenticated_user_id(request))
+    revoke_all_sessions(user_id)
     return result
 
 
@@ -317,7 +320,9 @@ def api_list_sessions(request: Request):
 @app.delete("/auth/sessions/{session_id}")
 def api_revoke_session(session_id: str, request: Request):
     try:
-        revoke_session(authenticated_user_id(request), session_id)
+        user_id = authenticated_user_id(request)
+        disable_device_endpoints_for_session(user_id, session_id)
+        revoke_session(user_id, session_id)
         return {"success": True}
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error))
@@ -356,8 +361,11 @@ class UpdateProfileRequest(BaseModel):
 
 
 class RegisterDeviceRequest(BaseModel):
-    device_token: str
-    platform: str = "android"  # "android" | "ios"
+    model_config = ConfigDict(extra="forbid")
+
+    device_token: str = Field(min_length=16, max_length=4096)
+    device_id: str = Field(min_length=8, max_length=128)
+    platform: str = Field(default="android", pattern="^(android|ios)$")
 
 
 class EmergencyContactRequest(BaseModel):
@@ -412,9 +420,13 @@ def api_register_device(user_id: str, req: RegisterDeviceRequest, request: Reque
     """Register device push token with AWS SNS — returns endpoint ARN."""
     if user_id != authenticated_user_id(request):
         raise HTTPException(status_code=403, detail="Device registration denied")
-    result = register_device_endpoint(user_id, req.device_token, req.platform)
-    # Also save token for reference
-    save_fcm_token(user_id, req.device_token)
+    result = register_device_endpoint(
+        user_id=user_id,
+        session_id=request.state.session_id,
+        device_id=req.device_id,
+        device_token=req.device_token,
+        platform=req.platform,
+    )
     return result
 
 
