@@ -173,7 +173,7 @@ sequenceDiagram
     
     Sync->>Drift: Query pending outbox entries
     Drift-->>Sync: Return pending SOS incident
-    Sync->>Backend: POST /incidents (event_id: uuid, timestamp: T0, location)
+    Sync->>Backend: POST /incidents (event_id: uuid, event_type, location, motion_data)
     Backend-->>Sync: 201 Created (incident_id: inc-123)
     Sync->>Drift: Update outbox record (synced: true, cloud_incident_id: inc-123)
     Sync->>UI: Notify emergency state updated (cloudAcknowledged)
@@ -191,23 +191,29 @@ sequenceDiagram
     participant Service as SafetyForegroundService
     participant Store as NativeEmergencyStore (Encrypted)
     participant Sms as Native SmsManager
+    participant Worker as CloudSyncWorker / WorkManager
     participant Flutter as Flutter Engine (Killed / Sleeping)
     participant Backend as AWS API Gateway
 
-    Victim->>HW: Rapid 3-tap power/screen toggle
-    HW->>Service: PowerButtonReceiver onReceive()
-    Service->>Store: Check debounce window & retrieve cached emergency contacts
-    Store-->>Service: Valid non-debounced panic event
-    Service->>Sms: Directly send emergency SMS with cached GPS coordinates
-    Service->>Store: Buffer pending native emergency event (nonce: uuid)
-    
-    Note over Flutter: User opens app OR OS restarts Flutter in background
-    
+    Victim->>HW: Supported panic gesture
+    HW->>Service: Native trigger detected
+    Service->>Store: Atomically claim trigger and create stable event_id
+    Service->>Sms: Attempt direct SMS submission to cached contacts
+    Service->>Store: Persist per-recipient SMS evidence and original GPS capture time
+    Service->>Worker: Enqueue account-bound cloud sync work
+
+    alt Network and native auth available
+        Worker->>Backend: POST /incidents (same event_id, access token, Guardian session)
+        Backend-->>Worker: Deterministic incident accepted / existing incident returned
+        Worker->>Store: Mark native event cloud_synced
+    else Offline / temporary auth failure
+        Worker->>Worker: Retry without changing event_id
+    end
+
+    Note over Flutter: Flutter may open later; it reconciles the same native event.
     Flutter->>Service: getPendingNativeEmergencyEvents()
-    Service-->>Flutter: Return buffered panic event (nonce, timestamp, coords)
-    Flutter->>Flutter: Acknowledge native event & trigger emergency provider
-    Flutter->>Backend: POST /incidents (event_id: native_nonce)
-    Backend-->>Flutter: 201 Created
+    Service-->>Flutter: Return pending canonical native event
+    Flutter->>Flutter: Import/reconcile without creating a second emergency identity
 ```
 
 ---
@@ -241,6 +247,8 @@ sequenceDiagram
 
 ### 5. Responder Discovery Sequence
 
+Current mobile availability policy uses an approximately 15-minute heartbeat cadence, movement-triggered updates after substantial movement, and a roughly 30-minute server availability TTL. Eligibility is determined from the stored expiry, not a hard-coded 300-second age check.
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -252,7 +260,7 @@ sequenceDiagram
     participant Responder as Approved Responder Device
 
     Escalation->>Dynamo: Query available responders in current geohash cell
-    Dynamo-->>Escalation: Return active responder candidates (heartbeat age < 300s)
+    Dynamo-->>Escalation: Return approved, active responder candidates whose availability TTL has not expired
     Escalation->>Policy: Evaluate candidate eligibility & cap (stage 1: max 3)
     Policy-->>Escalation: Authorized candidate list (coarse coordinates only)
     loop For each authorized responder
