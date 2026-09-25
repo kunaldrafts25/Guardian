@@ -340,6 +340,36 @@ class TestMultiResponderPolicyAndAbuse:
         with pytest.raises(PermissionError, match="maximum responder capacity"):
             tools.accept_rescue_mission(iid, "mr_3")
 
+    def test_legacy_incident_capacity_is_backfilled_before_new_acceptance(self):
+        """Pre-Phase-5 accepted missions must count toward the atomic capacity cap."""
+        tools._LOCAL_RESPONDERS.clear()
+        tools._LOCAL_MISSIONS.clear()
+        inc = create_incident({
+            "event_id": "evt_legacy_capacity",
+            "user_id": "usr_legacy_capacity",
+            "location": {"latitude": 19.0760, "longitude": 72.8777},
+        })
+        iid = inc["incident_id"]
+        _seed_responder("legacy_accepted", 19.0761, 72.8777)
+        _seed_responder("legacy_second", 19.0762, 72.8777)
+        _seed_responder("legacy_third", 19.0763, 72.8777)
+
+        tools.advance_incident_escalation(iid)
+        first_id = tools._mission_id(iid, "legacy_accepted")
+        tools._LOCAL_MISSIONS[first_id]["status"] = "ACCEPTED"
+        tools._LOCAL_MISSIONS[first_id]["accepted_at"] = datetime.now(timezone.utc).isoformat()
+
+        # Simulate an incident created before accepted_responder_count existed.
+        _LOCAL_INCIDENTS[iid].pop("accepted_responder_count", None)
+
+        second = tools.accept_rescue_mission(iid, "legacy_second")
+        assert second["mission"]["status"] == "ACCEPTED"
+        assert _LOCAL_INCIDENTS[iid]["accepted_responder_count"] == 2
+
+        with pytest.raises(PermissionError, match="maximum responder capacity"):
+            tools.accept_rescue_mission(iid, "legacy_third")
+
+
     def test_fake_sos_abuse_signal_without_dropping_emergency(self):
         user_id = "frequent_caller_99"
         loc = {"latitude": 19.0760, "longitude": 72.8777}
