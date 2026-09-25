@@ -32,6 +32,11 @@ def _gateway_identity(request: Request) -> Optional[Tuple[str, FrozenSet[str]]]:
         .get("authorizer", {})
         .get("claims", {})
     )
+    # Guardian protected APIs accept Cognito access tokens only. API Gateway
+    # can authenticate both ID and access tokens when no OAuth scope is attached
+    # to a route, so enforce token_use here before trusting gateway claims.
+    if str(claims.get("token_use") or "").lower() != "access":
+        return None
     user_id = claims.get("sub") or claims.get("username") or claims.get("cognito:username")
     if not user_id:
         return None
