@@ -221,14 +221,14 @@ class TestProgressiveEscalationAndRedispatch:
         tools.transition_rescue_mission(mission_id, "helper_w", "WITHDRAWN")
 
         inc_w = get_incident(iid)
-        assert inc_w["current_escalation_stage"] == 4
+        assert inc_w["current_escalation_stage"] == 2
         assert "helper_backup" in inc_w["dispatched_responder_ids"]
 
-        # DEV_MODE_NOT_SENT is deliberately not treated as a reachable invitation.
-        # With no provider-accepted delivery, the safety engine continues through
-        # the remaining stages instead of falsely waiting for an unreachable helper.
+        # Local dev creates the Stage-2 mission but does not fabricate push
+        # provider acceptance. A subsequent evaluation therefore advances again.
         eval_res = tools.process_incident_redispatch_eval(iid)
-        assert eval_res["status"] == "MAX_RADIUS_REACHED"
+        assert eval_res["status"] == "INVITATIONS_CREATED"
+        assert eval_res["stage"] == 3
 
 
 class TestNavigationGrantLifecycle:
