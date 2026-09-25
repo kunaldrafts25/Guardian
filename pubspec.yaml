@@ -44,12 +44,6 @@ dependencies:
   sensors_plus: ^4.0.2
 
   # ═══════════════════════════════════════════════
-  # Audio — voice SOS + emergency recording
-  # ═══════════════════════════════════════════════
-  speech_to_text: ^7.0.0
-  record: ^6.1.2                     # Emergency audio recording
-
-  # ═══════════════════════════════════════════════
   # UI Components
   # ═══════════════════════════════════════════════
   flutter_svg: ^2.0.9
