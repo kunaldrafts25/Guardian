@@ -9,6 +9,7 @@ import android.telephony.SmsManager
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import java.security.MessageDigest
 
 /**
  * Guardian — SmsHelper
@@ -89,11 +90,11 @@ object SmsHelper {
                 }
 
                 Log.i(TAG, "Emergency SMS dispatched to [REDACTED]")
-                results[phone] = true
+                results[rawPhone] = true
 
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send SMS: ${e.javaClass.simpleName}")
-                results[phone] = false
+                results[rawPhone] = false
             }
         }
 
@@ -101,8 +102,8 @@ object SmsHelper {
     }
 
     /**
-     * Build a PendingIntent for SMS delivery confirmation.
-     * Used to track whether SMS was actually sent by the carrier.
+     * Build a PendingIntent for asynchronous device/radio send-result evidence.
+     * This is not handset/carrier delivery confirmation.
      */
     private fun buildSentIntent(
         context: Context,
@@ -111,21 +112,33 @@ object SmsHelper {
         partIndex: Int,
         totalParts: Int,
     ): PendingIntent {
-        val phoneHash = phone.hashCode()
+        val recipientToken = recipientToken(eventId, phone)
         val intent = Intent(context, SmsSentReceiver::class.java).apply {
             action = SmsSentReceiver.ACTION_SMS_SENT
             putExtra(SmsSentReceiver.EXTRA_EVENT_ID, eventId)
-            putExtra(SmsSentReceiver.EXTRA_PHONE_HASH, phoneHash)
+            putExtra(SmsSentReceiver.EXTRA_RECIPIENT_TOKEN, recipientToken)
             putExtra(SmsSentReceiver.EXTRA_PART_INDEX, partIndex)
             putExtra(SmsSentReceiver.EXTRA_TOTAL_PARTS, totalParts)
         }
-        val requestCode = 31 * eventId.hashCode() + 17 * phoneHash + partIndex
+        val requestCode =
+            31 * eventId.hashCode() + 17 * recipientToken.hashCode() + partIndex
         return PendingIntent.getBroadcast(
             context,
             requestCode,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+    }
+
+    /**
+     * Event-scoped recipient correlation token. SHA-256 avoids the collision
+     * risk of Kotlin's 32-bit String.hashCode without persisting phone numbers.
+     */
+    fun recipientToken(eventId: String, phone: String): String {
+        val normalized = sanitizePhone(phone)
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest("$eventId|$normalized".toByteArray(Charsets.UTF_8))
+        return digest.joinToString(separator = "") { byte -> "%02x".format(byte) }
     }
 
     /**
