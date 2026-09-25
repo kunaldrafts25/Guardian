@@ -297,6 +297,30 @@ class MainActivity : FlutterActivity() {
                             eventId != null && NativeEmergencyStore.acknowledge(this, eventId)
                         )
                     }
+                    "triggerCheckInEmergency" -> {
+                        val operationId = call.argument<String>("operationId")
+                        if (operationId.isNullOrBlank()) {
+                            result.error(
+                                "INVALID_CHECK_IN",
+                                "operationId is required",
+                                null,
+                            )
+                        } else {
+                            // AlarmManager and Flutter intentionally converge on
+                            // the same native operation claim. Whichever arrives
+                            // first creates the event; the other receives that
+                            // same canonical event instead of creating a second SOS.
+                            val created = NativeEmergencyDispatcher.trigger(
+                                this,
+                                "CHECK_IN_EXPIRED",
+                                operationId,
+                            )
+                            val canonical = created
+                                ?: NativeEmergencyStore.eventByOperationId(this, operationId)
+                            CheckInScheduler.cancel(this)
+                            result.success(canonical?.let(::jsonObjectToMap))
+                        }
+                    }
                     "scheduleCheckIn" -> {
                         try {
                             val operationId = call.argument<String>("operationId") ?: ""
