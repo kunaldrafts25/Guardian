@@ -1884,6 +1884,116 @@ def advance_incident_escalation(
     }
 
 
+def claim_escalation_evaluation(
+    incident_id: str,
+    idempotency_key: str,
+    *,
+    lease_seconds: int = 90,
+) -> str:
+    """Acquire a recoverable lease for one responder deadline evaluation.
+
+    Returns ACQUIRED, COMPLETED, or BUSY. A crashed worker can be retried after
+    the short lease expires, while a completed deadline key is permanently
+    idempotent.
+    """
+    key = str(idempotency_key or "").strip()
+    if not key:
+        key = "legacy"
+    now_epoch = int(datetime.now(timezone.utc).timestamp())
+    lease_until = now_epoch + max(30, int(lease_seconds))
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        table = dynamo.Table(DYNAMODB_INCIDENTS_TABLE)
+        current = table.get_item(
+            Key={"incident_id": incident_id},
+            ConsistentRead=True,
+        ).get("Item")
+        if not current:
+            raise ValueError(f"Incident {incident_id} not found")
+        if current.get("last_escalation_eval_completed_key") == key:
+            return "COMPLETED"
+        try:
+            table.update_item(
+                Key={"incident_id": incident_id},
+                UpdateExpression=(
+                    "SET escalation_eval_claim_key = :key, "
+                    "escalation_eval_claim_expires_at = :expiry"
+                ),
+                ConditionExpression=(
+                    "(attribute_not_exists(last_escalation_eval_completed_key) "
+                    "OR last_escalation_eval_completed_key <> :key) AND "
+                    "(attribute_not_exists(escalation_eval_claim_key) "
+                    "OR escalation_eval_claim_key <> :key "
+                    "OR escalation_eval_claim_expires_at < :now)"
+                ),
+                ExpressionAttributeValues={
+                    ":key": key,
+                    ":expiry": lease_until,
+                    ":now": now_epoch,
+                },
+            )
+            return "ACQUIRED"
+        except Exception as error:
+            code = getattr(error, "response", {}).get("Error", {}).get("Code")
+            if code != "ConditionalCheckFailedException":
+                raise
+            latest = table.get_item(
+                Key={"incident_id": incident_id},
+                ConsistentRead=True,
+            ).get("Item") or {}
+            if latest.get("last_escalation_eval_completed_key") == key:
+                return "COMPLETED"
+            return "BUSY"
+
+    if _dev_mode():
+        from aws.incident_handler.handler import _LOCAL_INCIDENTS, _LOCAL_STORE_LOCK
+        with _LOCAL_STORE_LOCK:
+            current = _LOCAL_INCIDENTS.get(incident_id)
+            if not current:
+                raise ValueError(f"Incident {incident_id} not found")
+            if current.get("last_escalation_eval_completed_key") == key:
+                return "COMPLETED"
+            if (
+                current.get("escalation_eval_claim_key") == key
+                and int(current.get("escalation_eval_claim_expires_at") or 0) >= now_epoch
+            ):
+                return "BUSY"
+            current["escalation_eval_claim_key"] = key
+            current["escalation_eval_claim_expires_at"] = lease_until
+            return "ACQUIRED"
+    raise RuntimeError("Incident store is unavailable")
+
+
+def complete_escalation_evaluation(
+    incident_id: str,
+    idempotency_key: str,
+) -> None:
+    key = str(idempotency_key or "").strip() or "legacy"
+    dynamo = get_dynamo_resource()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if dynamo:
+        dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression=(
+                "SET last_escalation_eval_completed_key = :key, "
+                "last_escalation_eval_completed_at = :now "
+                "REMOVE escalation_eval_claim_key, escalation_eval_claim_expires_at"
+            ),
+            ConditionExpression="escalation_eval_claim_key = :key",
+            ExpressionAttributeValues={":key": key, ":now": now_iso},
+        )
+        return
+    if _dev_mode():
+        from aws.incident_handler.handler import _LOCAL_INCIDENTS, _LOCAL_STORE_LOCK
+        with _LOCAL_STORE_LOCK:
+            current = _LOCAL_INCIDENTS.get(incident_id)
+            if current and current.get("escalation_eval_claim_key") == key:
+                current["last_escalation_eval_completed_key"] = key
+                current["last_escalation_eval_completed_at"] = now_iso
+                current.pop("escalation_eval_claim_key", None)
+                current.pop("escalation_eval_claim_expires_at", None)
+
+
 def process_incident_redispatch_eval(incident_id: str) -> Dict[str, Any]:
     """Advance when no accepted responder and no reachable live invitation remains."""
     ctx = get_incident_context(incident_id)
