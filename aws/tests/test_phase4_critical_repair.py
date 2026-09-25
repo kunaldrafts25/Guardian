@@ -168,8 +168,9 @@ def test_redispatch_advances_to_next_stage_when_no_reachable_invitation_remains(
     # Dev transport is intentionally not delivered, so it is not a reachable
     # live invitation and the deterministic evaluator may widen immediately.
     second = tools.process_incident_redispatch_eval(incident_id)
-    assert second["stage"] == 2
-    assert get_incident(incident_id)["current_escalation_stage"] == 2
+    assert second["status"] == "MAX_RADIUS_REACHED"
+    assert get_incident(incident_id)["current_escalation_stage"] == 4
+    assert "stage2" in get_incident(incident_id)["dispatched_responder_ids"]
 
 
 def test_verification_timeout_is_idempotent_and_escalates_without_flutter():
@@ -267,7 +268,9 @@ def test_per_recipient_local_sms_acceptance_only_skips_that_contact():
         _policy_token(incident["incident_id"], "notify_trusted_contact"),
     )
     assert result["contacts_skipped_native"] == ["Local Contact"]
-    assert result["contacts_notified_cloud"] == ["Cloud Contact"]
+    assert result["contacts_notified_cloud"] == []
+    assert result["contacts_dev_not_sent"] == ["Cloud Contact"]
+    assert result["delivery_status"] == "LOCAL_PROVIDER_ACCEPTED"
 
 
 def test_action_execution_lease_suppresses_concurrent_duplicate_side_effect():
