@@ -354,7 +354,7 @@ def notify_trusted_contact(
             contact_key,
             str(c.get("delivery_state") or "").upper(),
         )
-        if local_state == "OS_ACCEPTED":
+        if local_state in {"SENT", "DELIVERED"}:
             skipped.append(c.get("name", "Unknown"))
             continue
 
@@ -390,7 +390,7 @@ def notify_trusted_contact(
         actor="AGENT",
         note=(
             f"Contact escalation recorded: {len(notified)} cloud provider accepted, "
-            f"{len(skipped)} already accepted by the local OS."
+            f"{len(skipped)} already had stronger local send evidence."
         ),
     )
 
