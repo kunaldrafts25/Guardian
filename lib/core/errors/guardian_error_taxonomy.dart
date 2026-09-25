@@ -8,17 +8,27 @@ import 'package:guardian/core/utils/logger.dart';
 
 /// Standardized error codes for Guardian safety, telemetry, and diagnostics.
 enum GuardianErrorCode {
-  locationPermissionDenied('LOCATION_PERMISSION_DENIED', 'Location permission denied by user'),
+  locationPermissionDenied(
+      'LOCATION_PERMISSION_DENIED', 'Location permission denied by user'),
   gpsDisabled('GPS_DISABLED', 'Device GPS / location services are disabled'),
-  locationStale('LOCATION_STALE', 'Location fix is stale or exceeds freshness threshold'),
-  smsPermissionDenied('SMS_PERMISSION_DENIED', 'SMS dispatch permission not granted'),
-  smsSubmissionFailed('SMS_SUBMISSION_FAILED', 'Failed to submit SMS alert to mobile radio subsystem'),
-  networkUnavailable('NETWORK_UNAVAILABLE', 'Network connectivity is unavailable; queued locally'),
-  cloudQueued('CLOUD_QUEUED', 'Operation queued in local outbox pending cloud sync'),
-  authExpired('AUTH_EXPIRED', 'Authentication token has expired and refresh failed'),
-  sessionRevoked('SESSION_REVOKED', 'Authenticated session has been revoked by server or user'),
-  responderUnavailable('RESPONDER_UNAVAILABLE', 'No verified responders currently available in geographic range'),
-  navigationProviderFailed('NAVIGATION_PROVIDER_FAILED', 'Routing or navigation map service failed');
+  locationStale(
+      'LOCATION_STALE', 'Location fix is stale or exceeds freshness threshold'),
+  smsPermissionDenied(
+      'SMS_PERMISSION_DENIED', 'SMS dispatch permission not granted'),
+  smsSubmissionFailed('SMS_SUBMISSION_FAILED',
+      'Failed to submit SMS alert to mobile radio subsystem'),
+  networkUnavailable('NETWORK_UNAVAILABLE',
+      'Network connectivity is unavailable; queued locally'),
+  cloudQueued(
+      'CLOUD_QUEUED', 'Operation queued in local outbox pending cloud sync'),
+  authExpired(
+      'AUTH_EXPIRED', 'Authentication token has expired and refresh failed'),
+  sessionRevoked('SESSION_REVOKED',
+      'Authenticated session has been revoked by server or user'),
+  responderUnavailable('RESPONDER_UNAVAILABLE',
+      'No verified responders currently available in geographic range'),
+  navigationProviderFailed(
+      'NAVIGATION_PROVIDER_FAILED', 'Routing or navigation map service failed');
 
   final String code;
   final String description;

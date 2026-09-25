@@ -28,7 +28,7 @@ class VoiceRecognitionService {
   TriggerCallback? _onTriggerDetected;
 
   /// Trigger phrases that will activate SOS
-  /// P1-11: Voice SOS is experimental/foreground-only. Generic words like "help" 
+  /// P1-11: Voice SOS is experimental/foreground-only. Generic words like "help"
   /// are removed to prevent false positives. Specific wake phrases required.
   final List<String> _triggerPhrases = [
     'guardian help',

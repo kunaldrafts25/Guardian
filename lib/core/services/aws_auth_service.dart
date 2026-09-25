@@ -201,6 +201,33 @@ class AwsAuthService {
 
   bool get isResponder => roles.contains('responder');
 
+  Future<void> _syncNativeEmergencyAuth() async {
+    final userId = _userId;
+    final accessToken = _accessToken;
+    final sessionId = _sessionId;
+    if (userId == null ||
+        userId.isEmpty ||
+        accessToken == null ||
+        accessToken.isEmpty ||
+        sessionId == null ||
+        sessionId.isEmpty) {
+      return;
+    }
+    try {
+      final refreshToken = await _storage.read(key: _kRefreshToken);
+      await SafetyServiceBridge.updateEmergencyAuth(
+        userId: userId,
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+        sessionId: sessionId,
+        apiEndpoint: baseUrl,
+      );
+    } catch (error) {
+      Logger.warning(
+          'AwsAuthService: native emergency auth sync failed: $error');
+    }
+  }
+
   // ─── Initialization ─────────────────────────────────────────────────────
 
   /// Call this at app startup to restore cached session.
@@ -247,8 +274,12 @@ class AwsAuthService {
       } else {
         _updateAuthStatus(AuthStatus.signedOut);
       }
+      if (_authStatus == AuthStatus.authenticated) {
+        await _syncNativeEmergencyAuth();
+      }
       _authStateController.add(_currentUser);
-      Logger.info('AwsAuthService: restored user=$_userId (authStatus=$_authStatus)');
+      Logger.info(
+          'AwsAuthService: restored user=$_userId (authStatus=$_authStatus)');
     } catch (e) {
       Logger.warning('AwsAuthService: could not restore session: $e');
     }
@@ -383,13 +414,7 @@ class AwsAuthService {
         await _storage.write(key: _kAccessToken, value: _accessToken);
         await _storage.write(key: _kIdToken, value: resp['id_token'] ?? '');
         Logger.info('AwsAuthService: tokens refreshed');
-        // P1-04: Sync ID token to native snapshot for WorkManager uploads
-        try {
-          await SafetyServiceBridge.updateEmergencyAuth(
-            idToken: resp['id_token'],
-            apiEndpoint: baseUrl,
-          );
-        } catch (_) {}
+        await _syncNativeEmergencyAuth();
         return true;
       }
     } catch (e) {
@@ -415,9 +440,6 @@ class AwsAuthService {
     await _clearLocalSession();
     _authStateController.add(null);
     Logger.info('AwsAuthService: signed out');
-
-    // P0-06: Clear native emergency snapshot so previous user's contacts aren't notified on SOS
-    await SafetyServiceBridge.clearEmergencySnapshot();
   }
 
   Future<List<AuthenticatedSession>> listSessions() async {
@@ -475,6 +497,7 @@ class AwsAuthService {
     ]) {
       await _storage.delete(key: key);
     }
+    await SafetyServiceBridge.clearEmergencySnapshot();
   }
 
   // ─── User Profile ────────────────────────────────────────────────────────
@@ -679,6 +702,7 @@ class AwsAuthService {
     }
     await _storage.write(key: _kAuthProvider, value: authProvider);
 
+    await _syncNativeEmergencyAuth();
     Logger.info(
         'AwsAuthService: session persisted for user=$_userId ($authProvider)');
     _updateAuthStatus(AuthStatus.authenticated);

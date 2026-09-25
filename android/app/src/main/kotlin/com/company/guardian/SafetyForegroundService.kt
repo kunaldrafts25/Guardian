@@ -20,6 +20,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import kotlin.math.*
+import org.json.JSONObject
 
 /**
  * Guardian — SafetyForegroundService
@@ -197,8 +198,15 @@ class SafetyForegroundService : Service() {
             }
             ACTION_ROUTE_DEVIATION_SOS -> {
                 dismissRouteDeviationAlert()
-                val event = NativeEmergencyDispatcher.trigger(this, "ROUTE_DEVIATION")
-                if (event != null) onSosTrigger?.invoke("ROUTE_DEVIATION")
+                val event = NativeEmergencyDispatcher.trigger(
+                    this,
+                    "ROUTE_DEVIATION_USER_SOS",
+                    sensorEvidence = org.json.JSONObject().apply {
+                        put("detector_version", "route-deviation-v1")
+                        put("user_confirmed_help", true)
+                    },
+                )
+                if (event != null) onSosTrigger?.invoke("ROUTE_DEVIATION_USER_SOS")
                 return START_STICKY
             }
         }
@@ -613,17 +621,15 @@ class SafetyForegroundService : Service() {
             if (consecutiveDeviations >= 3) {
                 consecutiveDeviations = 0
                 Log.w(TAG, "🚨 CRITICAL ROUTE DEVIATION CONFIRMED (>150m for 3 consecutive fixes)!")
-                if (onRouteDeviation != null) {
-                    // P0-01: ONE canonical trigger path — onRouteDeviation is the authority.
-                    onRouteDeviation?.invoke(minDistanceMeters)
-                    // Supplemental evidence only — no trigger authority.
-                    onAnomalyDetected?.invoke("ROUTE_DEVIATION", mapOf(
-                        "deviation_meters" to minDistanceMeters,
-                        "trigger_authority" to false
-                    ))
-                } else {
-                    handleDurableRouteDeviation(minDistanceMeters)
-                }
+                // One policy regardless of Flutter availability: native owns
+                // the confirmation window and timeout. Flutter receives evidence
+                // only and must not turn mere deviation into an immediate SOS.
+                handleDurableRouteDeviation(minDistanceMeters)
+                onRouteDeviation?.invoke(minDistanceMeters)
+                onAnomalyDetected?.invoke("ROUTE_DEVIATION", mapOf(
+                    "deviation_meters" to minDistanceMeters,
+                    "trigger_authority" to false
+                ))
             }
         } else {
             consecutiveDeviations = 0
@@ -694,8 +700,18 @@ class SafetyForegroundService : Service() {
         routeDeviationRunnable = Runnable {
             Log.w(TAG, "🚨 Route deviation unacknowledged after 60s — escalating to native emergency dispatcher!")
             dismissRouteDeviationAlert()
-            val event = NativeEmergencyDispatcher.trigger(this@SafetyForegroundService, "ROUTE_DEVIATION")
-            if (event != null) onSosTrigger?.invoke("ROUTE_DEVIATION")
+            val evidence = org.json.JSONObject().apply {
+                put("detector_version", "route-deviation-v1")
+                put("deviation_meters", deviationMeters)
+                put("consecutive_deviation_count", 3)
+                put("confirmation_timeout_seconds", 60)
+            }
+            val event = NativeEmergencyDispatcher.trigger(
+                this@SafetyForegroundService,
+                "ROUTE_DEVIATION_TIMEOUT",
+                sensorEvidence = evidence,
+            )
+            if (event != null) onSosTrigger?.invoke("ROUTE_DEVIATION_TIMEOUT")
         }
         routeDeviationHandler.postDelayed(routeDeviationRunnable!!, 60_000L)
     }

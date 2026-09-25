@@ -482,21 +482,24 @@ class _ActiveIncident extends StatelessWidget {
                     leading: Icon(
                       statuses[index].deliveryState.isAcceptedForDispatch
                           ? Icons.outbox_rounded
-                          : (statuses[index].deliveryState == SmsDeliveryState.composerOpened
+                          : (statuses[index].deliveryState ==
+                                  SmsDeliveryState.composerOpened
                               ? Icons.sms_outlined
                               : Icons.error_outline_rounded),
                       color: guardianToneColor(
                         context,
                         statuses[index].deliveryState.isAcceptedForDispatch
                             ? GuardianStatusTone.success
-                            : (statuses[index].deliveryState == SmsDeliveryState.composerOpened
+                            : (statuses[index].deliveryState ==
+                                    SmsDeliveryState.composerOpened
                                 ? GuardianStatusTone.neutral
                                 : GuardianStatusTone.warning),
                       ),
                     ),
                     title: Text(statuses[index].contact.name),
                     subtitle: Text(
-                      statuses[index].deliveryState == SmsDeliveryState.composerOpened
+                      statuses[index].deliveryState ==
+                              SmsDeliveryState.composerOpened
                           ? 'Composer opened — dispatch not verified'
                           : (statuses[index].deliveryState.isAcceptedForDispatch
                               ? 'Dispatch accepted — awaiting delivery evidence'

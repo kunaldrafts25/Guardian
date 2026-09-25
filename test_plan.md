@@ -1,4 +1,4 @@
-# Guardian Comprehensive Safety & Quality Test Plan (Post-P0/P1/P2/P3)
+# Guardian Comprehensive Safety & Quality Test Plan (Post-P0/P1/P2/P3 + Phase 4 Critical Repair)
 
 This test plan defines the formal verification suite and regression acceptance criteria for Guardian across mobile clients (Flutter & Android native) and cloud infrastructure (AWS API Gateway, Lambda, DynamoDB, Cognito, SNS, Bedrock).
 
@@ -36,11 +36,14 @@ This test plan defines the formal verification suite and regression acceptance c
 - [x] Verify server-side idempotency ensuring replay or duplicate sync does not duplicate emergency alerts.
 
 ### 2.3 Android Native Hardware Panic & Background Resilience
-- [x] Test rapid screen/power button toggle gesture triggering native broadcast receiver.
-- [x] Verify native atomic debounce filter (3-second window) preventing duplicate triggers.
-- [x] Verify `NativeEmergencyStore` reading encrypted contact snapshot and dispatching direct cellular SMS via `SmsManager`.
-- [x] Verify persistent foreground notification maintaining service survival under OS memory pressure.
-- [x] Test native panic event buffering and delivery to Flutter upon cold start (`getPendingNativeEmergencyEvents`).
+- [x] Unit/code-path verification for rapid screen/power toggle triggering the native dispatcher.
+- [x] Verify priority-aware native trigger arbitration so a lower-confidence event cannot suppress a later explicit panic.
+- [x] Verify `NativeEmergencyStore` reads the encrypted, account-bound contact snapshot and attempts direct cellular SMS through `SmsManager`.
+- [x] Verify pending native events use stable event IDs and remain independently tracked for Flutter replay and cloud synchronization.
+- [x] Verify WorkManager cloud sync uses `POST /incidents`, Cognito access token, `X-Guardian-Session-ID`, and the same stable event ID.
+- [x] Verify native access-token refresh uses Guardian's existing `POST /auth/refresh` session validation and encrypted refresh token.
+- [x] Verify native emergency events cannot upload or replay under a different signed-in Guardian account.
+- [ ] Physical-device verification under locked screen, Doze, process death, reboot, no-data/reconnect, and OEM task killing.
 
 ---
 
@@ -64,8 +67,8 @@ This test plan defines the formal verification suite and regression acceptance c
 ## 4. Responder Discovery, Escalation & Mission Lifecycle
 
 ### 4.1 Responder Availability & Heartbeat
-- [x] Test periodic responder heartbeat dispatch every 60 seconds (`POST /responders/heartbeat`).
-- [x] Verify DynamoDB geohash indexing and 300-second TTL expiration for responder availability.
+- [x] Verify responder heartbeat dispatch every 15 minutes while available, plus movement-triggered updates after 500m.
+- [x] Verify DynamoDB geohash indexing and 30-minute availability expiration, leaving margin for the 15-minute heartbeat cadence.
 - [x] Test immediate availability teardown and deactivation heartbeat upon toggling offline.
 
 ### 4.2 Progressive Radial Escalation
@@ -79,7 +82,7 @@ This test plan defines the formal verification suite and regression acceptance c
 
 ### 4.3 Mission Lifecycle & Precise Location Authorization
 - [x] Verify candidate invitation delivery with coarse location only (approximate neighborhood/distance).
-- [x] Test mission acceptance (`POST /missions/{id}/accept`) issuing single-use `navigation_grant`.
+- [x] Test mission acceptance (`POST /incidents/{id}/accept`) issuing a short-lived `navigation_grant`.
 - [x] Verify maximum accepted responder limit (`MAX_ACCEPTED_RESPONDERS = 2`) rejecting excess acceptances with `409 Conflict`.
 - [x] Test exchanging valid grant for precise coordinates (`POST /incidents/{id}/authorized-location`).
 - [x] Verify immediate revocation of navigation grant upon:
@@ -93,13 +96,11 @@ This test plan defines the formal verification suite and regression acceptance c
 ## 5. SMS Evidence & Truth-in-Advertising
 
 ### 5.1 Telephony State Semantics
-- [x] Verify distinct semantic states:
-  - `SmsDeliveryState.pending`: queued in memory
-  - `SmsDeliveryState.osAccepted`: handed to Android `SmsManager`
-  - `SmsDeliveryState.composerOpened`: native SMS app opened (no delivery proof)
-  - `SmsDeliveryState.deliveryConfirmed`: carrier PDU receipt confirmed
-  - `SmsDeliveryState.failed`: radio or SIM failure
-- [x] Verify UI copy accurately displays "Dispatch accepted — awaiting delivery evidence" instead of claiming verified delivery when only OS acceptance has occurred.
+- [x] Verify the modeled states remain distinct: `NOT_ATTEMPTED`, `COMPOSER_OPENED`, `SUBMISSION_REQUESTED`, `OS_ACCEPTED`, `PROVIDER_ACCEPTED`, `SENT`, `DELIVERED`, `FAILED`, and `UNKNOWN`.
+- [x] Verify iOS composer launch never suppresses cloud fallback.
+- [x] Verify Android native replay reconstructs per-recipient `OS_ACCEPTED` / `FAILED` evidence and cloud fallback skips only the exact locally accepted contact.
+- [x] Verify UI/backend wording treats current Android `SmsManager` success as OS submission acceptance, not handset delivery.
+- [ ] Persist and surface real carrier sent/delivery callbacks before treating `SENT` or `DELIVERED` as states produced by the Android transport.
 
 ---
 
@@ -108,8 +109,12 @@ This test plan defines the formal verification suite and regression acceptance c
 ### 6.1 Deterministic Policy Invariants
 - [x] Verify that safety-critical actions require signed, single-use capability tokens from deterministic policy.
 - [x] Verify atomic capability token consumption preventing replay attacks.
-- [x] Verify that Amazon Bedrock advisory advice CANNOT downgrade, cancel, or suppress explicit panic events.
-- [x] Test append-only action ledger recording all proposals, policy decisions, and execution outcomes.
+- [x] Verify that Amazon Bedrock advisory advice cannot downgrade, cancel, or suppress explicit panic events.
+- [x] Verify Bedrock alone cannot elevate a low deterministic anomaly directly into unrestricted CRITICAL dispatch.
+- [x] Verify contact-provider failure cannot prevent independently authorized responder dispatch.
+- [x] Verify initial agent execution uses an atomic recoverable lease and duplicate EventBridge delivery cannot execute a concurrent second run.
+- [x] Verify user-verification timeout is backend-owned and idempotent rather than Flutter-timer dependent.
+- [x] Verify agent-ledger write failure is treated as an observability degradation rather than an authorization bypass or mandatory-action blocker.
 
 ---
 
@@ -131,12 +136,19 @@ This test plan defines the formal verification suite and regression acceptance c
 All automated regression suites must be 100% green before staging promotion:
 
 ```powershell
-# 1. Backend Pytest Suite (71 tests)
-python -m pytest aws/tests -v
+# 1. Backend Pytest Suite
+python -m pytest aws/tests --quiet
 
-# 2. Flutter Unit & Widget Test Suite (145 tests)
+# 2. Flutter formatting, static analysis, and tests
+dart format --output=none --set-exit-if-changed lib test
+flutter analyze --no-fatal-infos
 flutter test
 
-# 3. Flutter Static Analysis (Zero errors, zero warnings)
-flutter analyze --no-fatal-infos
+# 3. AWS infrastructure validation
+sam validate --lint --template-file aws/template.yaml
+sam build --template-file aws/template.yaml
+
+# 4. Release-compilation gates exercised by CI
+flutter build apk --release
+flutter build ios --simulator --no-codesign
 ```

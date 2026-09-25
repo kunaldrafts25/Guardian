@@ -11,9 +11,11 @@ import os
 import json
 import hashlib
 import hmac
+import logging
 import secrets
+import uuid
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from aws.incident_handler.handler import (
     append_incident_event,
@@ -37,10 +39,122 @@ except ImportError:
 
 DYNAMODB_RESPONDERS_TABLE = os.environ.get("DYNAMODB_RESPONDERS_TABLE", "guardian-responders")
 DYNAMODB_MISSIONS_TABLE = os.environ.get("DYNAMODB_MISSIONS_TABLE", "guardian-missions")
+logger = logging.getLogger(__name__)
 
 
 def _dev_mode() -> bool:
     return os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+
+
+def _schedule_agent_timeout(
+    incident_id: str,
+    timeout_type: str,
+    delay_seconds: int,
+    *,
+    idempotency_key: str,
+) -> Dict[str, Any]:
+    """Create an idempotent one-shot EventBridge Scheduler invocation."""
+    if not (
+        BOTO3_AVAILABLE
+        and os.environ.get("AWS_EXECUTION_ENV")
+        and os.environ.get("SCHEDULER_ROLE_ARN")
+    ):
+        return {"scheduled": False, "reason": "scheduler_unavailable"}
+
+    scheduler = boto3.client("scheduler", region_name=AWS_REGION)
+    sts = boto3.client("sts", region_name=AWS_REGION)
+    account_id = sts.get_caller_identity()["Account"]
+    lambda_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
+    if not lambda_name:
+        return {"scheduled": False, "reason": "lambda_name_unavailable"}
+
+    delay = max(1, int(delay_seconds))
+    target_time = datetime.now(timezone.utc) + timedelta(seconds=delay)
+    schedule_expr = f"at({target_time.strftime('%Y-%m-%dT%H:%M:%S')})"
+    digest = hashlib.sha256(
+        f"{incident_id}:{timeout_type}:{idempotency_key}".encode("utf-8")
+    ).hexdigest()[:24]
+    schedule_name = f"guardian-{timeout_type.lower().replace('_', '-')}-{digest}"[:64]
+    payload = {
+        "detail": {
+            "incident_id": incident_id,
+            "timeout_type": timeout_type,
+            "idempotency_key": idempotency_key,
+        }
+    }
+    try:
+        scheduler.create_schedule(
+            Name=schedule_name,
+            ClientToken=digest,
+            ScheduleExpression=schedule_expr,
+            ScheduleExpressionTimezone="UTC",
+            FlexibleTimeWindow={"Mode": "OFF"},
+            ActionAfterCompletion="DELETE",
+            Target={
+                "Arn": f"arn:aws:lambda:{AWS_REGION}:{account_id}:function:{lambda_name}",
+                "RoleArn": os.environ["SCHEDULER_ROLE_ARN"],
+                "Input": json.dumps(payload),
+                "RetryPolicy": {
+                    "MaximumEventAgeInSeconds": 3600,
+                    "MaximumRetryAttempts": 3,
+                },
+            },
+        )
+        return {
+            "scheduled": True,
+            "schedule_name": schedule_name,
+            "deadline_at": int(target_time.timestamp()),
+        }
+    except Exception as error:
+        code = getattr(error, "response", {}).get("Error", {}).get("Code")
+        if code in {"ConflictException", "ResourceConflictException"}:
+            return {
+                "scheduled": True,
+                "schedule_name": schedule_name,
+                "deadline_at": int(target_time.timestamp()),
+                "existing": True,
+            }
+        logger.error(
+            "Failed to schedule %s for incident %s: %s",
+            timeout_type,
+            incident_id,
+            type(error).__name__,
+        )
+        return {
+            "scheduled": False,
+            "reason": type(error).__name__,
+        }
+
+
+def _persist_verification_request(
+    incident_id: str,
+    timeout_seconds: int,
+    schedule_result: Dict[str, Any],
+) -> None:
+    requested_at = datetime.now(timezone.utc)
+    deadline = requested_at + timedelta(seconds=max(1, timeout_seconds))
+    dynamo = get_dynamo_resource()
+    values = {
+        ":requested": requested_at.isoformat(),
+        ":deadline": int(deadline.timestamp()),
+        ":status": "PENDING",
+    }
+    if dynamo:
+        dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression=(
+                "SET verification_requested_at = :requested, "
+                "verification_deadline_at = :deadline, verification_status = :status"
+            ),
+            ExpressionAttributeValues=values,
+        )
+    elif _dev_mode():
+        from aws.incident_handler.handler import _LOCAL_INCIDENTS
+        inc = _LOCAL_INCIDENTS.get(incident_id)
+        if inc:
+            inc["verification_requested_at"] = values[":requested"]
+            inc["verification_deadline_at"] = values[":deadline"]
+            inc["verification_status"] = values[":status"]
 
 
 def get_incident_context(incident_id: str) -> Dict[str, Any]:
@@ -64,14 +178,26 @@ def get_incident_context(incident_id: str) -> Dict[str, Any]:
 
 
 def assess_risk(incident_id: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """
-    Tool 2: Execute deterministic risk assessment using multidimensional metrics.
-    """
+    """Execute deterministic risk assessment with victim-event time when available."""
     ctx = context or get_incident_context(incident_id)
+    motion = ctx.get("motion_data") or {}
+    event_time = None
+    raw_event_time = motion.get("event_occurred_at")
+    if raw_event_time:
+        try:
+            event_time = datetime.fromisoformat(
+                str(raw_event_time).replace("Z", "+00:00")
+            )
+            if event_time.tzinfo is None:
+                event_time = event_time.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            event_time = None
+
     assessment = assess_incident_risk(
         event_type=ctx.get("event_type", "unknown"),
         location=ctx.get("location"),
-        motion_data=ctx.get("motion_data"),
+        motion_data=motion,
+        timestamp=event_time,
     )
     return {
         "incident_id": incident_id,
@@ -80,45 +206,38 @@ def assess_risk(incident_id: str, context: Optional[Dict[str, Any]] = None) -> D
 
 
 def ask_user_confirmation(incident_id: str, timeout_seconds: int = 15) -> Dict[str, Any]:
-    """
-    Tool 3: Request confirmation without inventing a separate incident state.
-    """
+    """Request user verification and durably own the timeout in the backend."""
     incident = get_incident_context(incident_id)
-    
-    # P1-01: Create durable backend timeout
-    if BOTO3_AVAILABLE and os.environ.get("AWS_EXECUTION_ENV") and os.environ.get("SCHEDULER_ROLE_ARN"):
-        try:
-            scheduler = boto3.client("scheduler", region_name=AWS_REGION)
-            sts = boto3.client("sts", region_name=AWS_REGION)
-            account_id = sts.get_caller_identity()["Account"]
-            lambda_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
-            
-            target_time = datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
-            schedule_expr = f"at({target_time.strftime('%Y-%m-%dT%H:%M:%S')})"
-            
-            scheduler.create_schedule(
-                Name=f"timeout-verification-{incident_id[-10:]}-{uuid.uuid4().hex[:6]}",
-                ScheduleExpression=schedule_expr,
-                FlexibleTimeWindow={"Mode": "OFF"},
-                Target={
-                    "Arn": f"arn:aws:lambda:{AWS_REGION}:{account_id}:function:{lambda_name}",
-                    "RoleArn": os.environ.get("SCHEDULER_ROLE_ARN"),
-                    "Input": json.dumps({
-                        "detail": {
-                            "incident_id": incident_id,
-                            "timeout_type": "USER_VERIFICATION"
-                        }
-                    })
-                }
-            )
-        except Exception as e:
-            logger.error(f"Failed to schedule user verification timeout: {e}")
-            
+    if "error" in incident:
+        return incident
+    if incident.get("state") in {
+        IncidentState.RESOLVED.value,
+        IncidentState.CANCELLED.value,
+        IncidentState.EXPIRED.value,
+    }:
+        return {"incident_id": incident_id, "status": "INCIDENT_CLOSED"}
+
+    schedule = _schedule_agent_timeout(
+        incident_id,
+        "USER_VERIFICATION",
+        timeout_seconds,
+        idempotency_key="verification-v1",
+    )
+    _persist_verification_request(incident_id, timeout_seconds, schedule)
+    append_incident_event(
+        incident_id,
+        "verification_requested",
+        "AGENT",
+        f"User verification requested with {timeout_seconds}s deadline; "
+        f"backend_timer_scheduled={schedule.get('scheduled', False)}.",
+    )
     return {
         "incident_id": incident_id,
         "status": "CONFIRMATION_REQUESTED",
         "timeout_seconds": timeout_seconds,
         "current_state": incident.get("state"),
+        "backend_timer_scheduled": bool(schedule.get("scheduled")),
+        "verification_deadline_at": schedule.get("deadline_at"),
     }
 
 
@@ -162,8 +281,13 @@ def notify_trusted_contact(
     location = ctx.get("location") or {}
     lat = location.get("latitude")
     lng = location.get("longitude")
+    captured_at = location.get("captured_at")
     maps_line = (
-        f"Live GPS Location: https://maps.google.com/?q={lat},{lng}\n\n"
+        (
+            f"Latest recorded location"
+            f"{f' at {captured_at}' if captured_at else ''}: "
+            f"https://maps.google.com/?q={lat},{lng}\n\n"
+        )
         if isinstance(lat, (int, float)) and isinstance(lng, (int, float))
         else "Current location was unavailable.\n\n"
     )
@@ -181,21 +305,51 @@ def notify_trusted_contact(
     notified = []
     skipped = []
     failed = []
+    dev_not_sent = []
+
+    local_delivery = {}
+    for item in (ctx.get("motion_data") or {}).get("local_sms_delivery") or []:
+        if not isinstance(item, dict):
+            continue
+        contact_key = str(item.get("contact_id") or "").strip()
+        state = str(item.get("state") or "").upper()
+        if contact_key:
+            local_delivery[contact_key] = state
 
     for c in targets:
-        # P1-06: Check per-contact delivery state. Skip if already accepted natively.
-        if str(c.get("delivery_state")).upper() == "OS_ACCEPTED":
+        # Per-recipient truth: suppress cloud fallback only for the exact contact
+        # whose local Android dispatch was accepted by the OS.
+        contact_key = str(c.get("id") or "").strip()
+        local_state = local_delivery.get(
+            contact_key,
+            str(c.get("delivery_state") or "").upper(),
+        )
+        if local_state == "OS_ACCEPTED":
             skipped.append(c.get("name", "Unknown"))
             continue
-            
+
         if _dev_mode() and not os.environ.get("AWS_EXECUTION_ENV"):
-            notified.append(c.get("name", "Unknown"))
+            # Local test mode must never pretend that an external SMS provider
+            # accepted a message. Keep the incident state unchanged unless
+            # there is real native OS-accepted evidence for a recipient.
+            dev_not_sent.append(c.get("name", "Unknown"))
         else:
             dispatch = send_sms_alert(str(c.get("phone", "")), alert_message)
             if dispatch.get("success"):
                 notified.append(c.get("name", "Unknown"))
             else:
                 failed.append(c.get("name", "Unknown"))
+
+    if not notified and not skipped and dev_not_sent:
+        return {
+            "incident_id": incident_id,
+            "contacts_notified_cloud": [],
+            "contacts_skipped_native": [],
+            "contacts_failed": [],
+            "contacts_dev_not_sent": dev_not_sent,
+            "delivery_status": "DEV_MODE_NOT_SENT",
+            "state": ctx.get("state"),
+        }
 
     if not notified and not skipped:
         raise RuntimeError(f"AWS SNS SMS failed for all {len(failed)} targets.")
@@ -204,7 +358,10 @@ def notify_trusted_contact(
         incident_id=incident_id,
         new_state=IncidentState.CONTACTS_NOTIFIED.value,
         actor="AGENT",
-        note=f"Escalated via SNS to {len(notified)} contacts ({len(skipped)} already notified natively).",
+        note=(
+            f"Contact escalation recorded: {len(notified)} cloud provider accepted, "
+            f"{len(skipped)} already accepted by the local OS."
+        ),
     )
 
     return {
@@ -212,7 +369,10 @@ def notify_trusted_contact(
         "contacts_notified_cloud": notified,
         "contacts_skipped_native": skipped,
         "contacts_failed": failed,
-        "delivery_status": "PROVIDER_ACCEPTED" if notified else "LOCAL_PROVIDER_ACCEPTED",
+        "contacts_dev_not_sent": dev_not_sent,
+        "delivery_status": (
+            "PROVIDER_ACCEPTED" if notified else "LOCAL_PROVIDER_ACCEPTED"
+        ),
         "state": res.get("state"),
     }
 
@@ -551,29 +711,57 @@ def find_nearby_responders(incident_id: str, radius_meters: float = 1200.0) -> L
     return eligible_responders
 
 
+def _persist_escalation_policy(
+    incident_id: str,
+    constraints: Dict[str, Any],
+    policy_version: str,
+) -> None:
+    """Store the responder envelope so later scheduler stages use the same policy."""
+    max_per_stage = int(constraints.get("max_responder_invitations", 0))
+    quorum = int(constraints.get("required_responder_quorum", 0))
+    precision = int(constraints.get("location_precision_decimals", -1))
+    if not 1 <= max_per_stage <= 10 or not 1 <= quorum <= max_per_stage:
+        raise PermissionError("Policy authorization has invalid responder constraints")
+    if precision not in {1, 2}:
+        raise PermissionError("Policy authorization has invalid location precision")
+
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression=(
+                "SET responder_max_invitations_per_stage = :max, "
+                "responder_required_quorum = :quorum, "
+                "responder_location_precision = :precision, "
+                "responder_policy_version = :policy"
+            ),
+            ExpressionAttributeValues={
+                ":max": max_per_stage,
+                ":quorum": quorum,
+                ":precision": precision,
+                ":policy": policy_version,
+            },
+        )
+    elif _dev_mode():
+        from aws.incident_handler.handler import _LOCAL_INCIDENTS
+        inc = _LOCAL_INCIDENTS.get(incident_id)
+        if inc:
+            inc["responder_max_invitations_per_stage"] = max_per_stage
+            inc["responder_required_quorum"] = quorum
+            inc["responder_location_precision"] = precision
+            inc["responder_policy_version"] = policy_version
+
+
 def dispatch_community_alert(
     incident_id: str,
     authorization_token: str,
 ) -> Dict[str, Any]:
-    """
-    Tool 6: Creates bounded invitations for nearby verified responders.
-    Anti-Abuse Check 2: Anti-Solo Quorum Rule.
-    If the incident is isolated/at night, alerts are dispatched to at least 2 responders in parallel.
-    Anti-Abuse Check 3: Differential Geo-Obfuscation (General landmark given initially).
-    """
+    """Start the single deterministic 1→2→5→10 km responder engine."""
     authorization = consume_policy_authorization(
         authorization_token,
         expected_incident_id=incident_id,
         expected_action="dispatch_community_alert",
     )
-    constraints = authorization.get("constraints") or {}
-    max_invitations = int(constraints.get("max_responder_invitations", 0))
-    required_quorum = int(constraints.get("required_responder_quorum", 0))
-    precision = int(constraints.get("location_precision_decimals", -1))
-    if not 1 <= max_invitations <= 10 or not 1 <= required_quorum <= max_invitations:
-        raise PermissionError("Policy authorization has invalid responder constraints")
-    if precision not in {1, 2}:
-        raise PermissionError("Policy authorization has invalid location precision")
     ctx = get_incident_context(incident_id)
     if ctx.get("state") in {
         IncidentState.COMMUNITY_OFFERED.value,
@@ -583,176 +771,25 @@ def dispatch_community_alert(
         IncidentState.RESOLVED.value,
         IncidentState.CANCELLED.value,
         IncidentState.EXPIRED.value,
-    }:
+    } or int(ctx.get("current_escalation_stage") or 0) > 0:
         return {
             "incident_id": incident_id,
             "status": "ALREADY_DISPATCHED",
             "dispatched_count": 0,
-        }
-    responders = find_nearby_responders(incident_id)
-
-    if not responders:
-        return {
-            "incident_id": incident_id,
-            "status": "NO_ELIGIBLE_RESPONDERS",
-            "dispatched_count": 0,
+            "invite_count": 0,
         }
 
-    # Anti-Lure Defense: Quorum Check
-    if len(responders) < required_quorum:
-        # If alone in an isolated dark area, do NOT send a single responder alone.
-        # Fall back to routing towards public landmark or police.
-        return {
-            "incident_id": incident_id,
-            "status": "QUORUM_FALLBACK",
-            "message": "The policy-required responder quorum is unavailable; no community invitation was created.",
-            "dispatched_count": 0,
-            "responders": [],
-        }
-
-    # Prepare coarse, responder-bound invitation records. Delivery through
-    # targeted push is a separate transport step and is never implied here.
-    now = datetime.now(timezone.utc)
-    invitation_expiry = int(now.timestamp()) + 180
-    dynamo = get_dynamo_resource()
-    selected_responders = responders[:max_invitations]
-    created_missions = []
-    provider_accepted_count = 0
-    failed_count = 0
-    for responder in selected_responders:
-        approximate_location = {
-            "latitude": round(float(ctx["location"]["latitude"]), precision),
-            "longitude": round(float(ctx["location"]["longitude"]), precision),
-        }
-        mission = {
-            "mission_id": _mission_id(incident_id, responder["responder_id"]),
-            "incident_id": incident_id,
-            "responder_id": responder["responder_id"],
-            "status": "INVITED",
-            "invited_at": now.isoformat(),
-            "invitation_expires_at": invitation_expiry,
-            # DynamoDB TTL retains mission evidence for 30 days; invitation
-            # validity is enforced separately and never extended implicitly.
-            "expires_at": int(now.timestamp()) + 30 * 24 * 60 * 60,
-            "updated_at": now.isoformat(),
-            "approximate_location": approximate_location,
-            "invitation_delivery_status": "PENDING",
-        }
-        created = False
-        if dynamo:
-            try:
-                dynamo.Table(DYNAMODB_MISSIONS_TABLE).put_item(
-                    Item=mission,
-                    ConditionExpression="attribute_not_exists(mission_id)",
-                )
-                created = True
-            except Exception as error:
-                code = getattr(error, "response", {}).get("Error", {}).get("Code")
-                if code != "ConditionalCheckFailedException":
-                    raise
-        elif _dev_mode():
-            if mission["mission_id"] not in _LOCAL_MISSIONS:
-                _LOCAL_MISSIONS[mission["mission_id"]] = mission
-                created = True
-        else:
-            raise RuntimeError("Mission store is unavailable")
-
-        # A replay must not produce a second transport attempt.
-        if not created:
-            continue
-        created_missions.append(mission)
-
-        if _dev_mode() and not os.environ.get("AWS_EXECUTION_ENV"):
-            delivery = {"success": False, "status": "DEV_MODE_NOT_SENT"}
-        else:
-            delivery = send_push_to_user(
-                responder["responder_id"],
-                "Guardian safety request nearby",
-                "Open Guardian to review a time-limited nearby assistance request.",
-                data={
-                    "incident_id": incident_id,
-                    "mission_id": mission["mission_id"],
-                    "expires_at": str(invitation_expiry),
-                },
-                notification_type="responder_invitation",
-            )
-            delivery["status"] = (
-                "PROVIDER_ACCEPTED" if delivery.get("success") else "FAILED"
-            )
-        if delivery["status"] == "PROVIDER_ACCEPTED":
-            provider_accepted_count += 1
-        elif delivery["status"] == "FAILED":
-            failed_count += 1
-        _record_invitation_delivery(
-            mission["mission_id"],
-            delivery["status"],
-            delivery.get("message_id"),
-        )
-
-    invitation_payload = {
-        "incident_id": incident_id,
-        "event_type": ctx.get("event_type"),
-        "approximate_location": {
-            "latitude": round(float(ctx["location"]["latitude"]), precision),
-            "longitude": round(float(ctx["location"]["longitude"]), precision),
-            "distance_hint": f"~{responders[0]['distance_meters']}m from you",
-        },
-        "eligible_count": len(responders),
-        "invite_count": len(selected_responders),
-        "required_quorum": required_quorum,
-        "policy_version": authorization["policy_version"],
-    }
-
-    # Append to incident audit timeline
-    update_incident_status(
-        incident_id=incident_id,
-        new_state=IncidentState.COMMUNITY_OFFERED.value,
-        actor="AGENT",
-        note=(
-            f"Created {len(created_missions)} bounded invitations for verified "
-            f"nearby responders; provider accepted {provider_accepted_count}."
-        ),
+    constraints = authorization.get("constraints") or {}
+    _persist_escalation_policy(
+        incident_id,
+        constraints,
+        str(authorization.get("policy_version") or "unknown"),
     )
-
-    # P1-02: Create durable escalation timer
-    if BOTO3_AVAILABLE and os.environ.get("AWS_EXECUTION_ENV") and os.environ.get("SCHEDULER_ROLE_ARN"):
-        try:
-            scheduler = boto3.client("scheduler", region_name=AWS_REGION)
-            sts = boto3.client("sts", region_name=AWS_REGION)
-            account_id = sts.get_caller_identity()["Account"]
-            lambda_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
-            
-            # Wait 60 seconds for community responder acceptance
-            target_time = datetime.now(timezone.utc) + timedelta(seconds=60)
-            schedule_expr = f"at({target_time.strftime('%Y-%m-%dT%H:%M:%S')})"
-            
-            scheduler.create_schedule(
-                Name=f"timeout-escalation-{incident_id[-10:]}-{uuid.uuid4().hex[:6]}",
-                ScheduleExpression=schedule_expr,
-                FlexibleTimeWindow={"Mode": "OFF"},
-                Target={
-                    "Arn": f"arn:aws:lambda:{AWS_REGION}:{account_id}:function:{lambda_name}",
-                    "RoleArn": os.environ.get("SCHEDULER_ROLE_ARN"),
-                    "Input": json.dumps({
-                        "detail": {
-                            "incident_id": incident_id,
-                            "timeout_type": "ESCALATION_CHECK"
-                        }
-                    })
-                }
-            )
-        except Exception as e:
-            logger.error(f"Failed to schedule escalation timeout: {e}")
-
-    return {
-        "incident_id": incident_id,
-        "status": "INVITATIONS_CREATED",
-        "dispatched_count": provider_accepted_count,
-        "invite_count": len(created_missions),
-        "invitation_payload": invitation_payload,
-        "provider_accepted_count": provider_accepted_count,
-        "failed_count": failed_count,
-    }
+    return advance_incident_escalation(
+        incident_id,
+        target_stage=1,
+        policy_constraints=constraints,
+    )
 
 
 def _record_invitation_delivery(
@@ -967,7 +1004,7 @@ def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]
         incident_id=incident_id,
         new_state=IncidentState.RESPONDERS_ACCEPTED.value,
         actor="COMMUNITY_RESPONDER",
-        note=f"Verified helper {resp.get('name')} accepted mission and is en-route.",
+        note=f"Verified helper {resp.get('name')} accepted the responder mission.",
     )
 
     return {
@@ -1159,7 +1196,7 @@ def transition_rescue_mission(
             "COMMUNITY_RESPONDER",
             f"Responder mission {mission_id} changed from {current} to {target}.",
         )
-    if target == "WITHDRAWN":
+    if target in {"WITHDRAWN", "DECLINED"}:
         remaining = [
             m for m in _incident_missions(incident_id)
             if m.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}
@@ -1326,95 +1363,91 @@ def renew_mission_navigation_grant(
     }
 
 
-def advance_incident_escalation(
+def _dispatch_escalation_stage(
     incident_id: str,
-    target_stage: Optional[int] = None,
+    stage_index: int,
+    *,
+    policy_constraints: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """
-    Progressively widen search radius (1km -> 2km -> 5km -> 10km) according to escalation policy.
-    Durable across process restarts and Lambda invocations. Prevents duplicate notifications.
-    """
+    """Dispatch one responder stage and schedule its durable deadline."""
+    from aws.agent.escalation_policy import get_escalation_stage
+
     ctx = get_incident_context(incident_id)
-    state = str(ctx.get("state", ""))
+    stage = get_escalation_stage(stage_index)
+    stored_max = int(ctx.get("responder_max_invitations_per_stage") or 10)
+    stored_quorum = int(ctx.get("responder_required_quorum") or 1)
+    stored_precision = int(ctx.get("responder_location_precision") or 2)
+    if policy_constraints:
+        stored_max = min(
+            stored_max,
+            int(policy_constraints.get("max_responder_invitations", stored_max)),
+        )
+        stored_quorum = int(
+            policy_constraints.get("required_responder_quorum", stored_quorum)
+        )
+        stored_precision = int(
+            policy_constraints.get("location_precision_decimals", stored_precision)
+        )
 
-    # Terminal check: stop widening immediately if incident is closed
-    if state in {
-        IncidentState.RESOLVED.value,
-        IncidentState.CANCELLED.value,
-        IncidentState.EXPIRED.value,
-    }:
-        return {
-            "incident_id": incident_id,
-            "status": "INCIDENT_CLOSED",
-            "message": "Incident is already terminal; no escalation performed.",
-            "current_stage": ctx.get("current_escalation_stage", 1),
-            "dispatched_count": 0,
-        }
+    max_candidates = min(stage.max_candidates, max(1, stored_max))
+    required_quorum = max(1, min(stored_quorum, max_candidates))
+    precision = stored_precision if stored_precision in {1, 2} else 2
+    radius_meters = stage.radius_meters
 
-    # Check active accepted responders: if at least 1 responder is already en route or arrived, pause widening
-    accepted_missions = [
-        m for m in _incident_missions(incident_id)
-        if m.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}
-    ]
-    if len(accepted_missions) >= 1:
-        return {
-            "incident_id": incident_id,
-            "status": "ESCALATION_PAUSED_ACCEPTED",
-            "message": f"Help is already active ({len(accepted_missions)} responder accepted); radius expansion paused.",
-            "current_stage": ctx.get("current_escalation_stage", 1),
-            "dispatched_count": 0,
-        }
-
-    from aws.agent.escalation_policy import get_escalation_stage, get_stage_count
-
-    current_stage = int(ctx.get("current_escalation_stage", 0))
-    next_stage = target_stage if target_stage is not None else (current_stage + 1)
-
-    if current_stage >= get_stage_count() and target_stage is None:
-        return {
-            "incident_id": incident_id,
-            "status": "MAX_RADIUS_REACHED",
-            "message": "Maximum perimeter (10 km) reached; incident remains open for emergency services.",
-            "current_stage": current_stage,
-            "dispatched_count": 0,
-        }
-
-    stage_config = get_escalation_stage(next_stage)
-    radius_meters = stage_config.radius_meters
-
-    all_candidates = find_nearby_responders(incident_id, radius_meters=radius_meters)
-
-    # Duplicate responder prevention: filter out responders invited in earlier stages
+    all_candidates = find_nearby_responders(
+        incident_id,
+        radius_meters=radius_meters,
+    )
     dispatched_history = set(ctx.get("dispatched_responder_ids") or [])
-    new_candidates = [r for r in all_candidates if r["responder_id"] not in dispatched_history]
-    selected_responders = new_candidates[:stage_config.max_candidates]
+    new_candidates = [
+        responder
+        for responder in all_candidates
+        if responder["responder_id"] not in dispatched_history
+    ]
+    selected = new_candidates[:max_candidates]
+
+    if len(selected) < required_quorum:
+        append_incident_event(
+            incident_id,
+            "escalation_stage_empty",
+            "SYSTEM",
+            f"Stage {stage.stage_index} ({int(radius_meters/1000)} km) had "
+            f"{len(selected)} eligible new responders, below quorum {required_quorum}.",
+        )
+        return {
+            "incident_id": incident_id,
+            "stage": stage.stage_index,
+            "radius_meters": radius_meters,
+            "status": "NO_QUORUM",
+            "new_invitations": 0,
+        }
 
     now = datetime.now(timezone.utc)
-    invitation_expiry = int(now.timestamp()) + stage_config.invitation_timeout_seconds
+    invitation_expiry = int(now.timestamp()) + stage.invitation_timeout_seconds
     dynamo = get_dynamo_resource()
-    created_missions = []
+    location = ctx.get("current_emergency_location") or ctx.get("location") or {}
+    created_missions: List[Dict[str, Any]] = []
+    provider_accepted_count = 0
+    failed_count = 0
 
-    location = ctx.get("location") or {}
-    precision = 2
-
-    for responder in selected_responders:
-        m_id = _mission_id(incident_id, responder["responder_id"])
-        approximate_location = {
-            "latitude": round(float(location.get("latitude", 0.0)), precision),
-            "longitude": round(float(location.get("longitude", 0.0)), precision),
-        }
+    for responder in selected:
+        responder_id = responder["responder_id"]
+        mission_id = _mission_id(incident_id, responder_id)
         mission = {
-            "mission_id": m_id,
+            "mission_id": mission_id,
             "incident_id": incident_id,
-            "responder_id": responder["responder_id"],
+            "responder_id": responder_id,
             "status": "INVITED",
             "invited_at": now.isoformat(),
             "invitation_expires_at": invitation_expiry,
             "expires_at": int(now.timestamp()) + 30 * 24 * 60 * 60,
             "updated_at": now.isoformat(),
-            "approximate_location": approximate_location,
+            "approximate_location": {
+                "latitude": round(float(location.get("latitude", 0.0)), precision),
+                "longitude": round(float(location.get("longitude", 0.0)), precision),
+            },
             "invitation_delivery_status": "PENDING",
-            "escalation_stage": stage_config.stage_index,
+            "escalation_stage": stage.stage_index,
             "radius_meters": radius_meters,
         }
         created = False
@@ -1430,30 +1463,54 @@ def advance_incident_escalation(
                 if code != "ConditionalCheckFailedException":
                     raise
         elif _dev_mode():
-            if m_id not in _LOCAL_MISSIONS:
-                _LOCAL_MISSIONS[m_id] = mission
+            if mission_id not in _LOCAL_MISSIONS:
+                _LOCAL_MISSIONS[mission_id] = mission
                 created = True
         else:
             raise RuntimeError("Mission store is unavailable")
 
-        if created:
-            created_missions.append(mission)
-            dispatched_history.add(responder["responder_id"])
-            send_push_to_user(
-                responder["responder_id"],
+        if not created:
+            continue
+
+        created_missions.append(mission)
+        dispatched_history.add(responder_id)
+        if _dev_mode() and not os.environ.get("AWS_EXECUTION_ENV"):
+            delivery = {"success": False, "status": "DEV_MODE_NOT_SENT"}
+        else:
+            delivery = send_push_to_user(
+                responder_id,
                 "Guardian safety request nearby",
-                f"Assistance requested within {int(radius_meters/1000)} km. Open Guardian to review.",
+                f"Assistance requested within {int(radius_meters/1000)} km. "
+                "Open Guardian to review.",
                 data={
                     "incident_id": incident_id,
-                    "mission_id": m_id,
-                    "invitation_expires_at": invitation_expiry,
-                    "stage": stage_config.stage_index,
+                    "mission_id": mission_id,
+                    "invitation_expires_at": str(invitation_expiry),
+                    "stage": str(stage.stage_index),
                 },
-                notification_type="rescue_invitation",
+                notification_type="responder_invitation",
             )
+            delivery["status"] = (
+                "PROVIDER_ACCEPTED" if delivery.get("success") else "FAILED"
+            )
+        if delivery["status"] == "PROVIDER_ACCEPTED":
+            provider_accepted_count += 1
+        elif delivery["status"] == "FAILED":
+            failed_count += 1
+        _record_invitation_delivery(
+            mission_id,
+            delivery["status"],
+            delivery.get("message_id"),
+        )
 
-    new_dispatched_list = list(dispatched_history)
-    deadline_epoch = invitation_expiry
+    new_dispatched_list = sorted(dispatched_history)
+    update_values = {
+        ":stage": stage.stage_index,
+        ":radius": radius_meters,
+        ":dispatched": new_dispatched_list,
+        ":deadline": invitation_expiry,
+        ":now": now.isoformat(),
+    }
     if dynamo:
         dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
             Key={"incident_id": incident_id},
@@ -1461,66 +1518,191 @@ def advance_incident_escalation(
                 "SET current_escalation_stage = :stage, "
                 "current_radius_meters = :radius, "
                 "dispatched_responder_ids = :dispatched, "
-                "escalation_deadline_at = :deadline, "
-                "updated_at = :now"
+                "escalation_deadline_at = :deadline, updated_at = :now"
+            ),
+            ExpressionAttributeValues=update_values,
+        )
+    elif _dev_mode():
+        from aws.incident_handler.handler import _LOCAL_INCIDENTS
+        inc = _LOCAL_INCIDENTS.get(incident_id)
+        if inc:
+            inc["current_escalation_stage"] = stage.stage_index
+            inc["current_radius_meters"] = radius_meters
+            inc["dispatched_responder_ids"] = new_dispatched_list
+            inc["escalation_deadline_at"] = invitation_expiry
+            inc["updated_at"] = now.isoformat()
+
+    if created_missions and ctx.get("state") in {
+        IncidentState.CLOUD_ACCEPTED.value,
+        IncidentState.CONTACTS_NOTIFIED.value,
+    }:
+        try:
+            update_incident_status(
+                incident_id,
+                IncidentState.COMMUNITY_OFFERED.value,
+                actor="SYSTEM",
+                note=f"Responder escalation stage {stage.stage_index} opened.",
+            )
+        except ValueError:
+            pass
+
+    append_incident_event(
+        incident_id,
+        "escalation_dispatched",
+        "SYSTEM",
+        f"Stage {stage.stage_index} ({int(radius_meters/1000)} km): "
+        f"{len(created_missions)} missions created; "
+        f"{provider_accepted_count} push requests accepted by provider.",
+    )
+
+    invitation_payload = {
+        "incident_id": incident_id,
+        "event_type": ctx.get("event_type"),
+        "approximate_location": {
+            "latitude": round(float(location.get("latitude", 0.0)), precision),
+            "longitude": round(float(location.get("longitude", 0.0)), precision),
+        },
+        "eligible_count": len(all_candidates),
+        "invite_count": len(created_missions),
+        "required_quorum": required_quorum,
+        "policy_version": ctx.get("responder_policy_version"),
+        "stage": stage.stage_index,
+        "radius_meters": radius_meters,
+    }
+
+    # In local test mode the transport is deliberately not sent, but creation of
+    # real mission records is still the behavior under test. In production, a
+    # stage with zero provider-accepted pushes widens immediately.
+    local_simulation = _dev_mode() and not os.environ.get("AWS_EXECUTION_ENV")
+    waiting_for_response = provider_accepted_count > 0 or (
+        local_simulation and bool(created_missions)
+    )
+    if waiting_for_response:
+        schedule = _schedule_agent_timeout(
+            incident_id,
+            "ESCALATION_CHECK",
+            stage.invitation_timeout_seconds,
+            idempotency_key=f"stage-{stage.stage_index}",
+        )
+        return {
+            "incident_id": incident_id,
+            "stage": stage.stage_index,
+            "radius_meters": radius_meters,
+            "new_invitations": len(created_missions),
+            "invite_count": len(created_missions),
+            "dispatched_count": provider_accepted_count,
+            "provider_accepted_count": provider_accepted_count,
+            "failed_count": failed_count,
+            "status": "INVITATIONS_CREATED",
+            "invitation_expires_at": invitation_expiry,
+            "invitation_payload": invitation_payload,
+            "backend_timer_scheduled": bool(schedule.get("scheduled")),
+        }
+
+    return {
+        "incident_id": incident_id,
+        "stage": stage.stage_index,
+        "radius_meters": radius_meters,
+        "new_invitations": len(created_missions),
+        "invite_count": len(created_missions),
+        "dispatched_count": 0,
+        "provider_accepted_count": 0,
+        "failed_count": failed_count,
+        "status": "NO_REACHABLE_RESPONDERS",
+        "invitation_expires_at": invitation_expiry,
+        "invitation_payload": invitation_payload,
+        "backend_timer_scheduled": False,
+    }
+
+
+def advance_incident_escalation(
+    incident_id: str,
+    target_stage: Optional[int] = None,
+    *,
+    policy_constraints: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Progressively widen responder search through the configured stages."""
+    from aws.agent.escalation_policy import get_stage_count
+
+    ctx = get_incident_context(incident_id)
+    state = str(ctx.get("state", ""))
+    if state in {
+        IncidentState.RESOLVED.value,
+        IncidentState.CANCELLED.value,
+        IncidentState.EXPIRED.value,
+    }:
+        return {"incident_id": incident_id, "status": "INCIDENT_CLOSED"}
+
+    accepted = [
+        mission
+        for mission in _incident_missions(incident_id)
+        if mission.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}
+    ]
+    if accepted:
+        return {
+            "incident_id": incident_id,
+            "status": "ESCALATION_PAUSED_ACCEPTED",
+            "accepted_count": len(accepted),
+            "current_stage": int(ctx.get("current_escalation_stage") or 0),
+        }
+
+    current_stage = int(ctx.get("current_escalation_stage") or 0)
+    stage_index = target_stage if target_stage is not None else current_stage + 1
+    stage_count = get_stage_count()
+
+    while stage_index <= stage_count:
+        result = _dispatch_escalation_stage(
+            incident_id,
+            stage_index,
+            policy_constraints=policy_constraints,
+        )
+        if result["status"] == "INVITATIONS_CREATED":
+            return result
+        # Zero candidates, insufficient quorum, or total transport failure: widen
+        # immediately rather than waiting on a timer that cannot produce acceptance.
+        stage_index += 1
+        policy_constraints = None
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+            Key={"incident_id": incident_id},
+            UpdateExpression=(
+                "SET current_escalation_stage = :stage, "
+                "current_radius_meters = :radius, updated_at = :now"
             ),
             ExpressionAttributeValues={
-                ":stage": stage_config.stage_index,
-                ":radius": radius_meters,
-                ":dispatched": new_dispatched_list,
-                ":deadline": deadline_epoch,
-                ":now": now.isoformat(),
+                ":stage": stage_count,
+                ":radius": 10000.0,
+                ":now": now_iso,
             },
         )
     elif _dev_mode():
         from aws.incident_handler.handler import _LOCAL_INCIDENTS
         inc = _LOCAL_INCIDENTS.get(incident_id)
         if inc:
-            inc["current_escalation_stage"] = stage_config.stage_index
-            inc["current_radius_meters"] = radius_meters
-            inc["dispatched_responder_ids"] = new_dispatched_list
-            inc["escalation_deadline_at"] = deadline_epoch
-            inc["updated_at"] = now.isoformat()
-
+            inc["current_escalation_stage"] = stage_count
+            inc["current_radius_meters"] = 10000.0
+            inc["updated_at"] = now_iso
     append_incident_event(
         incident_id,
-        "escalation_dispatched",
+        "max_radius_reached",
         "SYSTEM",
-        f"Stage {stage_config.stage_index} ({int(radius_meters/1000)} km) activated: "
-        f"{len(created_missions)} new responders invited (timeout {stage_config.invitation_timeout_seconds}s).",
+        "Maximum community responder radius (10 km) reached with no active acceptance.",
     )
-
-    if state == IncidentState.CLOUD_ACCEPTED.value and created_missions:
-        try:
-            update_incident_status(
-                incident_id,
-                IncidentState.COMMUNITY_OFFERED.value,
-                actor="SYSTEM",
-                note=f"Escalation stage {stage_config.stage_index} dispatched.",
-            )
-        except Exception:
-            pass
-
     return {
         "incident_id": incident_id,
-        "stage": stage_config.stage_index,
-        "radius_meters": radius_meters,
-        "new_invitations": len(created_missions),
-        "total_dispatched": len(new_dispatched_list),
-        "status": "STAGE_DISPATCHED",
-        "invitation_expires_at": invitation_expiry,
+        "status": "MAX_RADIUS_REACHED",
+        "current_stage": stage_count,
+        "dispatched_count": len(ctx.get("dispatched_responder_ids") or []),
     }
 
 
 def process_incident_redispatch_eval(incident_id: str) -> Dict[str, Any]:
-    """
-    Evaluate incident dispatch state:
-    If zero responders accepted and invitations expired or declined, advance escalation stage.
-    If an accepted responder withdraws and 0 remain, triggers redispatch.
-    """
+    """Advance when no accepted responder and no reachable live invitation remains."""
     ctx = get_incident_context(incident_id)
     state = str(ctx.get("state", ""))
-
     if state in {
         IncidentState.RESOLVED.value,
         IncidentState.CANCELLED.value,
@@ -1529,8 +1711,12 @@ def process_incident_redispatch_eval(incident_id: str) -> Dict[str, Any]:
         return {"incident_id": incident_id, "status": "INCIDENT_CLOSED"}
 
     missions = _incident_missions(incident_id)
-    accepted = [m for m in missions if m.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}]
-    if len(accepted) >= 1:
+    accepted = [
+        mission
+        for mission in missions
+        if mission.get("status") in {"ACCEPTED", "EN_ROUTE", "ARRIVED"}
+    ]
+    if accepted:
         return {
             "incident_id": incident_id,
             "status": "ACCEPTED_ACTIVE",
@@ -1539,17 +1725,18 @@ def process_incident_redispatch_eval(incident_id: str) -> Dict[str, Any]:
 
     now = int(datetime.now(timezone.utc).timestamp())
     pending_live = [
-        m for m in missions
-        if m.get("status") == "INVITED" and int(m.get("invitation_expires_at", 0)) > now
+        mission
+        for mission in missions
+        if mission.get("status") == "INVITED"
+        and int(mission.get("invitation_expires_at", 0)) > now
+        and mission.get("invitation_delivery_status") == "PROVIDER_ACCEPTED"
     ]
+    if pending_live:
+        return {
+            "incident_id": incident_id,
+            "status": "WAITING_RESPONSE",
+            "pending_count": len(pending_live),
+        }
 
-    if not pending_live:
-        # All invitations have expired or been withdrawn/declined with 0 acceptances
-        return advance_incident_escalation(incident_id)
-
-    return {
-        "incident_id": incident_id,
-        "status": "WAITING_RESPONSE",
-        "pending_count": len(pending_live),
-    }
+    return advance_incident_escalation(incident_id)
 

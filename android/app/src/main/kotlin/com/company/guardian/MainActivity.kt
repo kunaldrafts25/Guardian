@@ -78,7 +78,8 @@ class MainActivity : FlutterActivity() {
                 val isHighPriority = source in setOf(
                     "ANDROID_POWER_GESTURE", "hardware_power_panic",
                     "ANDROID_FALL", "fall_detected",
-                    "ROUTE_DEVIATION", "CHECK_IN_EXPIRED"
+                    "ROUTE_DEVIATION", "ROUTE_DEVIATION_TIMEOUT",
+                    "ROUTE_DEVIATION_USER_SOS", "CHECK_IN_EXPIRED"
                 )
                 val methodName = if (isHighPriority) "onHardwarePanic" else "onServiceSosTrigger"
                 MethodChannel(flutterEngine.dartExecutor.binaryMessenger, EMERGENCY_CHANNEL)
@@ -251,19 +252,37 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                     "updateEmergencyAuth" -> {
-                        val idToken = call.argument<String>("id_token")
+                        val userId = call.argument<String>("user_id")
+                        val accessToken = call.argument<String>("access_token")
+                        val refreshToken = call.argument<String>("refresh_token")
+                        val sessionId = call.argument<String>("session_id")
                         val apiEndpoint = call.argument<String>("api_endpoint")
-                        val currentSnapshot = NativeEmergencyStore.snapshot(this) ?: org.json.JSONObject()
-                        currentSnapshot.put("id_token", idToken)
-                        currentSnapshot.put("api_endpoint", apiEndpoint)
-                        if (currentSnapshot.optInt("version", 0) == 0) {
-                            currentSnapshot.put("version", 1)
+                        if (userId.isNullOrBlank() || accessToken.isNullOrBlank() || sessionId.isNullOrBlank() || apiEndpoint.isNullOrBlank()) {
+                            result.error(
+                                "INVALID_CLOUD_AUTH",
+                                "user_id, access_token, session_id and api_endpoint are required",
+                                null,
+                            )
+                        } else {
+                            NativeEmergencyStore.saveCloudAuth(
+                                this,
+                                JSONObject().apply {
+                                    put("user_id", userId)
+                                    put("access_token", accessToken)
+                                    if (!refreshToken.isNullOrBlank()) {
+                                        put("refresh_token", refreshToken)
+                                    }
+                                    put("session_id", sessionId)
+                                    put("api_endpoint", apiEndpoint)
+                                    put("updated_at_ms", System.currentTimeMillis())
+                                },
+                            )
+                            result.success(true)
                         }
-                        NativeEmergencyStore.saveSnapshot(this, currentSnapshot)
-                        result.success(true)
                     }
                     "clearEmergencySnapshot" -> {
                         NativeEmergencyStore.clearSnapshot(this)
+                        NativeEmergencyStore.clearCloudAuth(this)
                         result.success(true)
                     }
                     "getPendingNativeEmergencyEvents" -> {
@@ -277,6 +296,30 @@ class MainActivity : FlutterActivity() {
                         result.success(
                             eventId != null && NativeEmergencyStore.acknowledge(this, eventId)
                         )
+                    }
+                    "triggerCheckInEmergency" -> {
+                        val operationId = call.argument<String>("operationId")
+                        if (operationId.isNullOrBlank()) {
+                            result.error(
+                                "INVALID_CHECK_IN",
+                                "operationId is required",
+                                null,
+                            )
+                        } else {
+                            // AlarmManager and Flutter intentionally converge on
+                            // the same native operation claim. Whichever arrives
+                            // first creates the event; the other receives that
+                            // same canonical event instead of creating a second SOS.
+                            val created = NativeEmergencyDispatcher.trigger(
+                                this,
+                                "CHECK_IN_EXPIRED",
+                                operationId,
+                            )
+                            val canonical = created
+                                ?: NativeEmergencyStore.eventByOperationId(this, operationId)
+                            CheckInScheduler.cancel(this)
+                            result.success(canonical?.let(::jsonObjectToMap))
+                        }
                     }
                     "scheduleCheckIn" -> {
                         try {

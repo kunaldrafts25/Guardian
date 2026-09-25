@@ -11,12 +11,13 @@ import org.json.JSONObject
 object NativeEmergencyStore {
     private const val FILE_NAME = "guardian_native_emergency_v1"
     private const val SNAPSHOT_KEY = "snapshot"
+    private const val CLOUD_AUTH_KEY = "cloud_auth"
     private const val EVENTS_KEY = "events"
     private const val LAST_TRIGGER_AT_KEY = "last_trigger_at"
     private const val LAST_TRIGGER_PRIORITY_KEY = "last_trigger_priority"
     private const val CHECK_IN_SCHEDULE_KEY = "check_in_schedule"
     private const val CHECK_IN_ACTIONS_KEY = "check_in_actions"
-    private const val MAX_EVENTS = 32
+    private const val MAX_EVENTS = 64
 
     private fun preferences(context: Context): SharedPreferences {
         val masterKey = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
@@ -47,6 +48,26 @@ object NativeEmergencyStore {
     }
 
     @Synchronized
+    fun saveCloudAuth(context: Context, auth: JSONObject) {
+        require(auth.optString("user_id").isNotBlank()) { "User ID is required" }
+        require(auth.optString("access_token").isNotBlank()) { "Access token is required" }
+        require(auth.optString("session_id").isNotBlank()) { "Guardian session ID is required" }
+        require(auth.optString("api_endpoint").isNotBlank()) { "API endpoint is required" }
+        preferences(context).edit().putString(CLOUD_AUTH_KEY, auth.toString()).commit()
+    }
+
+    @Synchronized
+    fun cloudAuth(context: Context): JSONObject? {
+        val raw = preferences(context).getString(CLOUD_AUTH_KEY, null) ?: return null
+        return runCatching { JSONObject(raw) }.getOrNull()
+    }
+
+    @Synchronized
+    fun clearCloudAuth(context: Context) {
+        preferences(context).edit().remove(CLOUD_AUTH_KEY).commit()
+    }
+
+    @Synchronized
     fun claimTrigger(context: Context, now: Long, refractoryMs: Long, priority: Int = 0, operationId: String? = null): Boolean {
         val prefs = preferences(context)
         
@@ -74,10 +95,24 @@ object NativeEmergencyStore {
     fun appendEvent(context: Context, event: JSONObject) {
         val events = allEvents(context)
         events.put(event)
-        val trimmed = JSONArray()
-        val start = maxOf(0, events.length() - MAX_EVENTS)
-        for (index in start until events.length()) trimmed.put(events.getJSONObject(index))
-        preferences(context).edit().putString(EVENTS_KEY, trimmed.toString()).commit()
+
+        // Never discard emergency evidence that still needs Flutter import or
+        // native cloud synchronisation. Only fully-reconciled oldest records
+        // are eligible for trimming. If more than MAX_EVENTS are unresolved,
+        // retain them all rather than losing safety evidence.
+        var removable = maxOf(0, events.length() - MAX_EVENTS)
+        val retained = JSONArray()
+        for (index in 0 until events.length()) {
+            val item = events.getJSONObject(index)
+            val fullyReconciled =
+                item.optBoolean("consumed", false) && item.optBoolean("cloud_synced", false)
+            if (removable > 0 && fullyReconciled) {
+                removable--
+                continue
+            }
+            retained.put(item)
+        }
+        preferences(context).edit().putString(EVENTS_KEY, retained.toString()).commit()
     }
 
     @Synchronized
@@ -89,6 +124,48 @@ object NativeEmergencyStore {
             if (!event.optBoolean("consumed", false)) pending.put(event)
         }
         return pending
+    }
+
+    @Synchronized
+    fun eventById(context: Context, eventId: String): JSONObject? {
+        val all = allEvents(context)
+        for (index in 0 until all.length()) {
+            val event = all.getJSONObject(index)
+            if (event.optString("event_id") == eventId) {
+                return JSONObject(event.toString())
+            }
+        }
+        return null
+    }
+
+    @Synchronized
+    fun eventByOperationId(context: Context, operationId: String): JSONObject? {
+        if (operationId.isBlank()) return null
+        val all = allEvents(context)
+        for (index in all.length() - 1 downTo 0) {
+            val event = all.getJSONObject(index)
+            if (event.optString("operation_id") == operationId) {
+                return JSONObject(event.toString())
+            }
+        }
+        return null
+    }
+
+    @Synchronized
+    fun markCloudSynced(context: Context, eventId: String, incidentId: String?): Boolean {
+        val all = allEvents(context)
+        var found = false
+        for (index in 0 until all.length()) {
+            val event = all.getJSONObject(index)
+            if (event.optString("event_id") == eventId) {
+                event.put("cloud_synced", true)
+                event.put("cloud_synced_at_ms", System.currentTimeMillis())
+                if (!incidentId.isNullOrBlank()) event.put("cloud_incident_id", incidentId)
+                found = true
+            }
+        }
+        if (found) preferences(context).edit().putString(EVENTS_KEY, all.toString()).commit()
+        return found
     }
 
     @Synchronized

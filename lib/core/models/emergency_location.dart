@@ -42,7 +42,8 @@ class EmergencyLocation {
   bool get isFresh => freshness == LocationFreshness.fresh;
   bool get isStale => freshness == LocationFreshness.stale;
   bool get isUsableForEmergency =>
-      freshness == LocationFreshness.fresh || freshness == LocationFreshness.stale;
+      freshness == LocationFreshness.fresh ||
+      freshness == LocationFreshness.stale;
 
   static LocationFreshness calculateFreshness({
     required DateTime? capturedAt,
@@ -106,10 +107,12 @@ class EmergencyLocation {
 
   factory EmergencyLocation.fromJson(Map<String, dynamic> json) {
     final cap = json['captured_at'] != null
-        ? DateTime.tryParse(json['captured_at'] as String) ?? DateTime.now().toUtc()
+        ? DateTime.tryParse(json['captured_at'] as String) ??
+            DateTime.now().toUtc()
         : DateTime.now().toUtc();
     final rx = json['received_at'] != null
-        ? DateTime.tryParse(json['received_at'] as String) ?? DateTime.now().toUtc()
+        ? DateTime.tryParse(json['received_at'] as String) ??
+            DateTime.now().toUtc()
         : DateTime.now().toUtc();
     final freshnessStr = (json['freshness'] as String?)?.toLowerCase();
     final freshness = LocationFreshness.values.firstWhere(

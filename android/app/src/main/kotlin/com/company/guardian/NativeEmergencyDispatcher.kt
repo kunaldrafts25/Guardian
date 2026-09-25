@@ -14,6 +14,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.Constraints
 import androidx.work.NetworkType
 import androidx.work.WorkManager
+import androidx.work.ExistingWorkPolicy
 import androidx.work.Data
 import androidx.work.BackoffPolicy
 import java.util.concurrent.TimeUnit
@@ -40,6 +41,9 @@ object NativeEmergencyDispatcher {
 
         val eventId = UUID.randomUUID().toString()
         val snapshot = NativeEmergencyStore.snapshot(context)
+        val cloudAuth = NativeEmergencyStore.cloudAuth(context)
+        val ownerUserId = snapshot?.optString("user_id")?.takeIf { it.isNotBlank() }
+            ?: cloudAuth?.optString("user_id")?.takeIf { it.isNotBlank() }
         val contacts = snapshot?.optJSONArray("contacts") ?: JSONArray()
         val location = SafetyForegroundService.lastKnownLocation
         val userName = snapshot?.optString("user_name")?.takeIf { it.isNotBlank() }
@@ -54,26 +58,42 @@ object NativeEmergencyDispatcher {
         }
 
         val phones = mutableListOf<String>()
+        val contactIdByPhone = mutableMapOf<String, String>()
         for (index in 0 until contacts.length()) {
-            contacts.optJSONObject(index)?.optString("phone")
-                ?.takeIf { it.isNotBlank() }
-                ?.let(phones::add)
+            val contact = contacts.optJSONObject(index) ?: continue
+            val phone = contact.optString("phone").takeIf { it.isNotBlank() } ?: continue
+            phones.add(phone)
+            contact.optString("id").takeIf { it.isNotBlank() }?.let { contactId ->
+                contactIdByPhone[phone] = contactId
+            }
         }
         val dispatchResults = SmsHelper.sendEmergencySms(context, phones.distinct(), message)
         val acceptedPhones = JSONArray()
         val failedPhones = JSONArray()
+        val acceptedContactIds = JSONArray()
+        val failedContactIds = JSONArray()
         dispatchResults.forEach { (phone, accepted) ->
-            if (accepted) acceptedPhones.put(phone) else failedPhones.put(phone)
+            if (accepted) {
+                acceptedPhones.put(phone)
+                contactIdByPhone[phone]?.let(acceptedContactIds::put)
+            } else {
+                failedPhones.put(phone)
+                contactIdByPhone[phone]?.let(failedContactIds::put)
+            }
         }
 
         val event = JSONObject().apply {
             put("schema_version", 1)
             put("event_id", eventId)
+            put("owner_user_id", ownerUserId ?: JSONObject.NULL)
             put("source", source)
+            if (!operationId.isNullOrBlank()) put("operation_id", operationId)
             put("occurred_at_ms", now)
             put("snapshot_version", snapshot?.optInt("version", 0) ?: 0)
             put("accepted_phones", acceptedPhones)
             put("failed_phones", failedPhones)
+            put("accepted_contact_ids", acceptedContactIds)
+            put("failed_contact_ids", failedContactIds)
             put("latitude", location?.latitude ?: JSONObject.NULL)
             put("longitude", location?.longitude ?: JSONObject.NULL)
             put("accuracy", location?.accuracy ?: JSONObject.NULL)
@@ -81,6 +101,7 @@ object NativeEmergencyDispatcher {
             put("location_provider", location?.provider ?: JSONObject.NULL)
             put("sensor_evidence", sensorEvidence ?: JSONObject.NULL)
             put("consumed", false)
+            put("cloud_synced", false)
         }
         NativeEmergencyStore.appendEvent(context, event)
         acknowledgeOnDevice(context, dispatchResults.values.count { it }, phones.size)
@@ -93,7 +114,11 @@ object NativeEmergencyDispatcher {
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
             .build()
-        WorkManager.getInstance(context).enqueue(workRequest)
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            "guardian-emergency-$eventId",
+            ExistingWorkPolicy.KEEP,
+            workRequest,
+        )
 
         return event
     }

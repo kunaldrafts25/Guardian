@@ -16,7 +16,9 @@ import 'package:guardian/core/services/sos_service.dart';
 
 void main() {
   group('P1: NearbyResponderSummary Least-Privilege Contract', () {
-    test('parses privacy-preserving payload without individual responder identities', () {
+    test(
+        'parses privacy-preserving payload without individual responder identities',
+        () {
       final json = {
         'incident_id': 'inc-999',
         'eligible_responder_count': 5,
@@ -74,9 +76,12 @@ void main() {
     });
 
     test('respects configured timeouts and intervals', () {
-      expect(MapRoutingConfig.defaultSearchTimeout.inSeconds, greaterThanOrEqualTo(5));
-      expect(MapRoutingConfig.defaultRoutingTimeout.inSeconds, greaterThanOrEqualTo(8));
-      expect(MapRoutingConfig.nominatimMinInterval.inMilliseconds, greaterThanOrEqualTo(1000));
+      expect(MapRoutingConfig.defaultSearchTimeout.inSeconds,
+          greaterThanOrEqualTo(5));
+      expect(MapRoutingConfig.defaultRoutingTimeout.inSeconds,
+          greaterThanOrEqualTo(8));
+      expect(MapRoutingConfig.nominatimMinInterval.inMilliseconds,
+          greaterThanOrEqualTo(1000));
     });
   });
 
@@ -88,7 +93,8 @@ void main() {
       expect(settings.countdownSeconds, 3);
     });
 
-    test('SosSettings copyWith updates shake and fall settings independently', () {
+    test('SosSettings copyWith updates shake and fall settings independently',
+        () {
       const settings = SosSettings();
       final disabledShake = settings.copyWith(shakeToSosEnabled: false);
       expect(disabledShake.shakeToSosEnabled, isFalse);
@@ -101,7 +107,9 @@ void main() {
   });
 
   group('P1: Event Provenance & Trigger Sources', () {
-    test('SosTriggerSource enum contains all required native and platform triggers', () {
+    test(
+        'SosTriggerSource enum contains all required native and platform triggers',
+        () {
       const values = SosTriggerSource.values;
       expect(values.contains(SosTriggerSource.button), isTrue);
       expect(values.contains(SosTriggerSource.hardwarePower), isTrue);

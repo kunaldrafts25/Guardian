@@ -100,7 +100,8 @@ class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
         '?overview=full&geometries=geojson&steps=false',
       );
 
-      Logger.info('🗺️ Fetching route from OSRM (${MapRoutingConfig.osrmBaseUrl})');
+      Logger.info(
+          '🗺️ Fetching route from OSRM (${MapRoutingConfig.osrmBaseUrl})');
       final response = await MapRoutingConfig.executeWithRetry(
         () => http.get(url).timeout(MapRoutingConfig.defaultRoutingTimeout),
         serviceName: 'OSRM',
@@ -154,11 +155,13 @@ class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
 
       throw Exception('No route found (OSRM returned ${response.statusCode})');
     } catch (e) {
-      Logger.warning('OSRM routing failed: $e. Activating resilient geodesic direct route fallback.');
-      
+      Logger.warning(
+          'OSRM routing failed: $e. Activating resilient geodesic direct route fallback.');
+
       // Resilient fallback: Straight-line route so safety navigation & deviation tracking do not collapse
       final polylinePoints = [origin, destination];
-      final distanceM = const Distance().as(LengthUnit.Meter, origin, destination);
+      final distanceM =
+          const Distance().as(LengthUnit.Meter, origin, destination);
       final distanceText = distanceM < 1000
           ? '${distanceM.round()} m (direct)'
           : '${(distanceM / 1000).toStringAsFixed(1)} km (direct)';
@@ -176,7 +179,8 @@ class SafeRouteNotifier extends StateNotifier<SafeRouteState> {
       state = state.copyWith(
         isLoading: false,
         currentRoute: fallbackRoute,
-        errorMessage: 'Detailed turn-by-turn unavailable; direct emergency line active.',
+        errorMessage:
+            'Detailed turn-by-turn unavailable; direct emergency line active.',
       );
 
       // P0-07: Do NOT send geodesic fallbacks to the native deviation engine.

@@ -405,7 +405,53 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
 
   Future<void> _performEscalation() async {
     final id = state.localId;
+    final operationId = state.operationId;
     if (id == null || state.status == CheckInStatus.escalated) return;
+
+    // Android has an independent AlarmManager path. When it is scheduled,
+    // converge both timers on NativeEmergencyDispatcher using the same
+    // operation ID instead of creating a second Flutter SOS.
+    if (!kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.android &&
+        state.nativeScheduled &&
+        operationId != null &&
+        operationId.isNotEmpty) {
+      final nativeEvent =
+          await SafetyServiceBridge.triggerCheckInEmergency(operationId);
+      if (nativeEvent != null) {
+        final imported = await _ref
+            .read(emergencyProvider.notifier)
+            .ingestNativeEmergencyEvent(nativeEvent);
+        if (imported) {
+          final eventId = nativeEvent['event_id']?.toString();
+          if (eventId != null && eventId.isNotEmpty) {
+            await SafetyServiceBridge.acknowledgeNativeEmergencyEventById(
+              eventId,
+            );
+          }
+          final emergency = _ref.read(emergencyProvider);
+          final changed = await _database.transitionCheckIn(
+            id: id,
+            fromStatuses: const ['active', 'awaiting_confirmation'],
+            status: 'escalated',
+            escalationAlertId: emergency.sosAlert?.id,
+          );
+          if (changed && mounted) {
+            _cancelTimers();
+            await _notifications.cancel(_reminderNotificationId);
+            state = state.copyWith(
+                status: CheckInStatus.escalated, clearError: true);
+          }
+          return;
+        }
+      }
+
+      Logger.warning(
+        'Canonical native check-in emergency was unavailable; '
+        'falling back to the Flutter SOS path.',
+      );
+    }
+
     await _ref
         .read(emergencyProvider.notifier)
         .triggerEmergency(source: SosTriggerSource.scheduled);

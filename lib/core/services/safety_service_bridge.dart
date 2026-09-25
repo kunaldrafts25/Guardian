@@ -226,6 +226,7 @@ class SafetyServiceBridge {
 
   static Future<bool> updateEmergencySnapshot({
     required int version,
+    required String userId,
     required String userName,
     required List<Map<String, String>> contacts,
     String? message,
@@ -235,6 +236,7 @@ class SafetyServiceBridge {
             'updateEmergencySnapshot',
             {
               'version': version,
+              'user_id': userId,
               'user_name': userName,
               'contacts': contacts,
               if (message != null && message.isNotEmpty) 'message': message,
@@ -250,14 +252,24 @@ class SafetyServiceBridge {
   }
 
   static Future<bool> updateEmergencyAuth({
-    String? idToken,
-    String? apiEndpoint,
+    required String userId,
+    required String accessToken,
+    String? refreshToken,
+    required String sessionId,
+    required String apiEndpoint,
   }) async {
+    if (accessToken.isEmpty || sessionId.isEmpty || apiEndpoint.isEmpty) {
+      return false;
+    }
     try {
       return await _serviceChannel.invokeMethod<bool>(
             'updateEmergencyAuth',
             {
-              'id_token': idToken,
+              'user_id': userId,
+              'access_token': accessToken,
+              if (refreshToken != null && refreshToken.isNotEmpty)
+                'refresh_token': refreshToken,
+              'session_id': sessionId,
               'api_endpoint': apiEndpoint,
             },
           ) ??
@@ -272,7 +284,9 @@ class SafetyServiceBridge {
 
   static Future<bool> clearEmergencySnapshot() async {
     try {
-      return await _serviceChannel.invokeMethod<bool>('clearEmergencySnapshot') ?? false;
+      return await _serviceChannel
+              .invokeMethod<bool>('clearEmergencySnapshot') ??
+          false;
     } on MissingPluginException {
       return false;
     } catch (error) {
@@ -338,6 +352,26 @@ class SafetyServiceBridge {
     }
   }
 
+  /// Atomically converge Flutter and AlarmManager check-in expiry onto the
+  /// same Android native operation/event. Returns the canonical native event.
+  static Future<Map<String, dynamic>?> triggerCheckInEmergency(
+    String operationId,
+  ) async {
+    try {
+      final event = await _serviceChannel.invokeMapMethod<String, dynamic>(
+        'triggerCheckInEmergency',
+        {'operationId': operationId},
+      );
+      return event == null ? null : Map<String, dynamic>.from(event);
+    } on MissingPluginException {
+      return null;
+    } catch (error) {
+      Logger.error(
+          'Failed to trigger canonical native check-in emergency', error);
+      return null;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getPendingNativeEmergencyEvents() async {
     try {
       final events = await _serviceChannel
@@ -353,6 +387,11 @@ class SafetyServiceBridge {
   }
 
   Future<bool> acknowledgeNativeEmergencyEvent(String eventId) async {
+    return acknowledgeNativeEmergencyEventById(eventId);
+  }
+
+  static Future<bool> acknowledgeNativeEmergencyEventById(
+      String eventId) async {
     try {
       return await _serviceChannel.invokeMethod<bool>(
             'acknowledgeNativeEmergencyEvent',

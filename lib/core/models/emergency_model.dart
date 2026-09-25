@@ -64,7 +64,8 @@ class Emergency {
       endedAt: json['endedAt'] is String
           ? DateTime.tryParse(json['endedAt'] as String)
           : null,
-      dispatchedContacts: List<String>.from(json['dispatchedContacts'] ?? json['notifiedContacts'] ?? []),
+      dispatchedContacts: List<String>.from(
+          json['dispatchedContacts'] ?? json['notifiedContacts'] ?? []),
       responders: List<String>.from(json['responders'] ?? []),
       audioRecordingUrl: json['audioRecordingUrl'] as String?,
       notes: json['notes'] as String?,

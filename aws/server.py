@@ -66,7 +66,9 @@ from aws.incident_handler.handler import (
     update_incident_location,
     get_incident,
     get_incident_timeline,
+    get_dynamo_resource,
     IncidentState,
+    DYNAMODB_INCIDENTS_TABLE,
 )
 from aws.agent.guardian_agent import (
     execute_agent_reasoning,
@@ -807,15 +809,8 @@ def api_report_incident(incident_id: str, req: AbuseReportRequest, request: Requ
                     ":reason": req.reason
                 }
             )
-            
-            # Freeze the responder pending review
-            dynamo.Table(DYNAMODB_RESPONDERS_TABLE).update_item(
-                Key={"responder_id": user_id},
-                UpdateExpression="SET verification_status = :frozen",
-                ExpressionAttributeValues={
-                    ":frozen": "FROZEN_PENDING_REVIEW"
-                }
-            )
+            # Do not mutate the reporter's responder status. A moderator must
+            # identify and review the actual subject before any trust action.
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     elif not _dev_mode():
@@ -885,9 +880,13 @@ def api_responder_enroll(req: ResponderEnrollmentRequest, request: Request):
     record = {
         "responder_id": user_id,
         "name": req.real_name,
-        "verification_status": "PENDING_MANUAL_REVIEW", # Explicit block for dispatch
+        "verification_status": "PENDING_MANUAL_REVIEW",
         "trust_score": 0,
-        "enrolled_at": datetime.now(timezone.utc).isoformat()
+        # These are references/evidence digests only; raw identity documents are
+        # intentionally not accepted by this API.
+        "id_document_hash": req.id_document_hash,
+        "selfie_hash": req.selfie_hash,
+        "enrolled_at": datetime.now(timezone.utc).isoformat(),
     }
     
     dynamo = get_dynamo_resource()
@@ -1055,19 +1054,19 @@ def api_trigger_agent_step(incident_id: str, request: Request):
 
 @app.post("/incidents/{incident_id}/escalate")
 def api_escalate_incident(incident_id: str, request: Request):
-    """Owner-requested escalation through idempotent policy tools."""
-    _owned_incident(incident_id, request)
+    """Owner-requested escalation through independent idempotent policy tools."""
+    incident = _owned_incident(incident_id, request)
     from aws.agent.tools import dispatch_community_alert, notify_trusted_contact
 
+    correlation_id = request.state.correlation_id
+    policy = evaluate_safety_policy(
+        event_type=str(incident.get("event_type", "")),
+        risk_level=str((incident.get("risk_assessment") or {}).get("level", "MEDIUM")),
+        incident_state=str(incident.get("state", "")),
+        is_isolated=bool((incident.get("location") or {}).get("is_isolated", False)),
+        owner_requested=True,
+    )
     try:
-        correlation_id = request.state.correlation_id
-        policy = evaluate_safety_policy(
-            event_type=str(incident.get("event_type", "")),
-            risk_level=str((incident.get("risk_assessment") or {}).get("level", "MEDIUM")),
-            incident_state=str(incident.get("state", "")),
-            is_isolated=bool((incident.get("location") or {}).get("is_isolated", False)),
-            owner_requested=True,
-        )
         tokens = issue_policy_authorizations(
             incident_id=incident_id,
             actions=policy.authorized_actions,
@@ -1079,6 +1078,43 @@ def api_escalate_incident(incident_id: str, request: Request):
                 for action in policy.authorized_actions
             },
         )
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error))
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+    # A deliberate "Need help" response resolves any pending verification so
+    # the backend timeout cannot perform the same escalation a second time.
+    if incident.get("verification_status") == "PENDING":
+        now_iso = datetime.now(timezone.utc).isoformat()
+        dynamo = get_dynamo_resource()
+        if dynamo:
+            try:
+                dynamo.Table(DYNAMODB_INCIDENTS_TABLE).update_item(
+                    Key={"incident_id": incident_id},
+                    UpdateExpression=(
+                        "SET verification_status = :status, "
+                        "verification_completed_at = :now"
+                    ),
+                    ConditionExpression="verification_status = :pending",
+                    ExpressionAttributeValues={
+                        ":status": "RESPONDED_HELP",
+                        ":pending": "PENDING",
+                        ":now": now_iso,
+                    },
+                )
+            except Exception as error:
+                code = getattr(error, "response", {}).get("Error", {}).get("Code")
+                if code != "ConditionalCheckFailedException":
+                    raise
+        else:
+            incident["verification_status"] = "RESPONDED_HELP"
+            incident["verification_completed_at"] = now_iso
+
+    contact_result: Dict[str, Any] = {"status": "NOT_ATTEMPTED"}
+    community_result: Dict[str, Any] = {"status": "NOT_ATTEMPTED"}
+
+    try:
         contact_result = execute_authorized_tool(
             incident_id=incident_id,
             correlation_id=correlation_id,
@@ -1086,6 +1122,13 @@ def api_escalate_incident(incident_id: str, request: Request):
             token=tokens["notify_trusted_contact"],
             tool=notify_trusted_contact,
         )
+    except Exception as error:
+        contact_result = {
+            "status": "FAILED",
+            "error_type": type(error).__name__,
+        }
+
+    try:
         community_result = execute_authorized_tool(
             incident_id=incident_id,
             correlation_id=correlation_id,
@@ -1093,15 +1136,17 @@ def api_escalate_incident(incident_id: str, request: Request):
             token=tokens["dispatch_community_alert"],
             tool=dispatch_community_alert,
         )
-        return {
-            "incident_id": incident_id,
-            "contact_alert": contact_result,
-            "community_dispatch": community_result,
+    except Exception as error:
+        community_result = {
+            "status": "FAILED",
+            "error_type": type(error).__name__,
         }
-    except PermissionError as error:
-        raise HTTPException(status_code=403, detail=str(error))
-    except ValueError as error:
-        raise HTTPException(status_code=409, detail=str(error))
+
+    return {
+        "incident_id": incident_id,
+        "contact_alert": contact_result,
+        "community_dispatch": community_result,
+    }
 
 
 if __name__ == "__main__":

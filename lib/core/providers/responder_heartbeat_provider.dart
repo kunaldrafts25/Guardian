@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:guardian/core/services/responder_service.dart';
-import 'package:guardian/core/services/safety_service_bridge.dart';
 import 'package:guardian/core/utils/logger.dart';
 
 class ResponderAvailabilityState {
@@ -81,17 +80,22 @@ class ResponderHeartbeatNotifier
       accuracy: LocationAccuracy.medium,
       distanceFilter: 500,
     );
-    
-    _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) {
-      _service.sendHeartbeat(
+
+    _positionStream =
+        Geolocator.getPositionStream(locationSettings: locationSettings)
+            .listen((Position position) {
+      _service
+          .sendHeartbeat(
         latitude: position.latitude,
         longitude: position.longitude,
         isActive: true,
-      ).then((_) {
+      )
+          .then((_) {
         if (mounted) {
           state = state.copyWith(
             lastHeartbeatSentAt: DateTime.now(),
-            availabilityExpiresAt: DateTime.now().add(const Duration(minutes: 30)),
+            availabilityExpiresAt:
+                DateTime.now().add(const Duration(minutes: 30)),
           );
         }
       });
@@ -120,7 +124,7 @@ class ResponderHeartbeatNotifier
         );
       }
     } catch (e) {
-      Logger.e('Failed to send deactivation heartbeat: $e');
+      Logger.error('Failed to send deactivation heartbeat', e);
     }
   }
 
@@ -168,7 +172,10 @@ class ResponderHeartbeatNotifier
       if (permission == LocationPermission.deniedForever) return null;
 
       return await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.medium);
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+        ),
+      );
     } catch (_) {
       return null;
     }

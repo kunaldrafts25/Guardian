@@ -14,29 +14,33 @@ void main() {
 
   group('P2: Emergency Lifecycle State Semantics', () {
     test('EmergencyLifecycleStage enum defines distinct states', () {
-      expect(EmergencyLifecycleStage.values, containsAll([
-        EmergencyLifecycleStage.idle,
-        EmergencyLifecycleStage.localEmergencyActive,
-        EmergencyLifecycleStage.cloudQueued,
-        EmergencyLifecycleStage.cloudDelivering,
-        EmergencyLifecycleStage.cloudAcknowledged,
-        EmergencyLifecycleStage.contactDeliveryPending,
-        EmergencyLifecycleStage.responderSearching,
-        EmergencyLifecycleStage.responderInvited,
-        EmergencyLifecycleStage.responderAccepted,
-        EmergencyLifecycleStage.responderEnRoute,
-        EmergencyLifecycleStage.responderArrived,
-        EmergencyLifecycleStage.resolved,
-        EmergencyLifecycleStage.failedOrPartial,
-      ]));
+      expect(
+          EmergencyLifecycleStage.values,
+          containsAll([
+            EmergencyLifecycleStage.idle,
+            EmergencyLifecycleStage.localEmergencyActive,
+            EmergencyLifecycleStage.cloudQueued,
+            EmergencyLifecycleStage.cloudDelivering,
+            EmergencyLifecycleStage.cloudAcknowledged,
+            EmergencyLifecycleStage.contactDeliveryPending,
+            EmergencyLifecycleStage.responderSearching,
+            EmergencyLifecycleStage.responderInvited,
+            EmergencyLifecycleStage.responderAccepted,
+            EmergencyLifecycleStage.responderEnRoute,
+            EmergencyLifecycleStage.responderArrived,
+            EmergencyLifecycleStage.resolved,
+            EmergencyLifecycleStage.failedOrPartial,
+          ]));
     });
 
-    test('EmergencyState distinguishes local active from cloud delivery stages', () {
+    test('EmergencyState distinguishes local active from cloud delivery stages',
+        () {
       const state1 = EmergencyState(
         state: SosState.active,
         lifecycleStage: EmergencyLifecycleStage.localEmergencyActive,
       );
-      expect(state1.lifecycleStage, EmergencyLifecycleStage.localEmergencyActive);
+      expect(
+          state1.lifecycleStage, EmergencyLifecycleStage.localEmergencyActive);
 
       final state2 = state1.copyWith(
         lifecycleStage: EmergencyLifecycleStage.cloudQueued,
@@ -53,13 +57,15 @@ void main() {
 
   group('P2: Authentication Lifecycle & UI Consistency', () {
     test('AuthStatus lifecycle enums are complete', () {
-      expect(AuthStatus.values, containsAll([
-        AuthStatus.signedOut,
-        AuthStatus.authenticating,
-        AuthStatus.authenticated,
-        AuthStatus.refreshing,
-        AuthStatus.reauthenticationRequired,
-      ]));
+      expect(
+          AuthStatus.values,
+          containsAll([
+            AuthStatus.signedOut,
+            AuthStatus.authenticating,
+            AuthStatus.authenticated,
+            AuthStatus.refreshing,
+            AuthStatus.reauthenticationRequired,
+          ]));
     });
 
     test('reauthenticationRequired does not falsely claim isSignedIn', () {
@@ -73,7 +79,9 @@ void main() {
   });
 
   group('P2: SMS Model Truth-in-Advertising Cleanup', () {
-    test('ContactAlertStatus exposes device acceptance and backward-compatible aliases', () {
+    test(
+        'ContactAlertStatus exposes device acceptance and backward-compatible aliases',
+        () {
       const contact = EmergencyContact(
         id: 'c1',
         name: 'Jane Doe',
@@ -101,8 +109,10 @@ void main() {
     });
 
     test('SosAlert contactsDispatchedCount computes correctly', () {
-      const contact1 = EmergencyContact(id: 'c1', name: 'A', phone: '111', relation: 'Sister');
-      const contact2 = EmergencyContact(id: 'c2', name: 'B', phone: '222', relation: 'Friend');
+      const contact1 = EmergencyContact(
+          id: 'c1', name: 'A', phone: '111', relation: 'Sister');
+      const contact2 = EmergencyContact(
+          id: 'c2', name: 'B', phone: '222', relation: 'Friend');
 
       final alert = SosAlert(
         id: 'alert_1',
@@ -127,7 +137,9 @@ void main() {
       expect(alert.notifiedCount, 1);
     });
 
-    test('Emergency model provides dispatchedContacts and backward-compatible alias', () {
+    test(
+        'Emergency model provides dispatchedContacts and backward-compatible alias',
+        () {
       final emergency = Emergency(
         id: 'em_1',
         userId: 'u_1',
@@ -143,18 +155,22 @@ void main() {
   });
 
   group('P2: Responder Location Freshness Metadata', () {
-    test('AuthorizedMissionLocation parses full metadata and determines freshness quality', () {
+    test(
+        'AuthorizedMissionLocation parses full metadata and determines freshness quality',
+        () {
       final now = DateTime.now().toUtc();
       final freshResponse = {
         'latitude': 19.0760,
         'longitude': 72.8777,
         'accuracy': 5.0,
-        'captured_at': now.subtract(const Duration(seconds: 10)).toIso8601String(),
+        'captured_at':
+            now.subtract(const Duration(seconds: 10)).toIso8601String(),
         'received_at': now.toIso8601String(),
         'age_seconds': 10.0,
         'source': 'DEVICE_GPS',
         'freshness': 'FRESH',
-        'grant_expires_at': now.add(const Duration(minutes: 15)).millisecondsSinceEpoch ~/ 1000,
+        'grant_expires_at':
+            now.add(const Duration(minutes: 15)).millisecondsSinceEpoch ~/ 1000,
       };
 
       final loc = AuthorizedMissionLocation.fromJson(freshResponse);
@@ -172,12 +188,14 @@ void main() {
         'latitude': 19.0760,
         'longitude': 72.8777,
         'accuracy': 15.0,
-        'captured_at': now.subtract(const Duration(seconds: 180)).toIso8601String(),
+        'captured_at':
+            now.subtract(const Duration(seconds: 180)).toIso8601String(),
         'received_at': now.toIso8601String(),
         'age_seconds': 180.0,
         'source': 'DEVICE_GPS',
         'freshness': 'STALE',
-        'grant_expires_at': now.add(const Duration(minutes: 15)).millisecondsSinceEpoch ~/ 1000,
+        'grant_expires_at':
+            now.add(const Duration(minutes: 15)).millisecondsSinceEpoch ~/ 1000,
       };
 
       final staleLoc = AuthorizedMissionLocation.fromJson(staleResponse);
@@ -189,26 +207,29 @@ void main() {
 
   group('P2: Error Taxonomy & Observability Telemetry', () {
     test('GuardianErrorCode covers all required safety failure categories', () {
-      expect(GuardianErrorCode.values, containsAll([
-        GuardianErrorCode.locationPermissionDenied,
-        GuardianErrorCode.gpsDisabled,
-        GuardianErrorCode.locationStale,
-        GuardianErrorCode.smsPermissionDenied,
-        GuardianErrorCode.smsSubmissionFailed,
-        GuardianErrorCode.networkUnavailable,
-        GuardianErrorCode.cloudQueued,
-        GuardianErrorCode.authExpired,
-        GuardianErrorCode.sessionRevoked,
-        GuardianErrorCode.responderUnavailable,
-        GuardianErrorCode.navigationProviderFailed,
-      ]));
+      expect(
+          GuardianErrorCode.values,
+          containsAll([
+            GuardianErrorCode.locationPermissionDenied,
+            GuardianErrorCode.gpsDisabled,
+            GuardianErrorCode.locationStale,
+            GuardianErrorCode.smsPermissionDenied,
+            GuardianErrorCode.smsSubmissionFailed,
+            GuardianErrorCode.networkUnavailable,
+            GuardianErrorCode.cloudQueued,
+            GuardianErrorCode.authExpired,
+            GuardianErrorCode.sessionRevoked,
+            GuardianErrorCode.responderUnavailable,
+            GuardianErrorCode.navigationProviderFailed,
+          ]));
     });
 
     test('GuardianException holds error taxonomy and safe message', () {
       final exc = GuardianException(
         code: GuardianErrorCode.locationPermissionDenied,
         userMessage: 'Location access is disabled.',
-        internalDetails: 'android.permission.ACCESS_FINE_LOCATION denied by user',
+        internalDetails:
+            'android.permission.ACCESS_FINE_LOCATION denied by user',
         retryable: false,
       );
 
@@ -219,7 +240,8 @@ void main() {
     });
 
     test('GuardianSafeTelemetry sanitizes sensitive phone numbers', () {
-      expect(GuardianSafeTelemetry.sanitizePhone('+919876543210'), '+91*****3210');
+      expect(
+          GuardianSafeTelemetry.sanitizePhone('+919876543210'), '+91*****3210');
       expect(GuardianSafeTelemetry.sanitizePhone('123'), '****');
     });
   });
