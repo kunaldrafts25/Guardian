@@ -80,8 +80,6 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
     _public_paths = {
         "/",
         "/health",
-        "/auth/send-otp",
-        "/auth/verify-otp",
         "/auth/google",
         "/auth/refresh",
         "/docs",
