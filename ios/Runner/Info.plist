@@ -29,6 +29,8 @@
 	<true/>
 	<key>MinimumOSVersion</key>
 	<string>16.0</string>
+	<key>GOOGLE_MAPS_IOS_API_KEY</key>
+	<string>$(GOOGLE_MAPS_IOS_API_KEY)</string>
 
 	<!-- Cognito managed-login callback for Google federation. -->
 	<key>CFBundleURLTypes</key>
