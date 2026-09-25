@@ -270,6 +270,7 @@ def notify_trusted_contact(
         expected_action="notify_trusted_contact",
     )
     ctx = get_incident_context(incident_id)
+    ctx = _ensure_accepted_responder_count(incident_id, ctx)
     if ctx.get("state") in {
         IncidentState.CONTACTS_NOTIFIED.value,
         IncidentState.COMMUNITY_OFFERED.value,
@@ -932,6 +933,55 @@ def list_responder_invitations(responder_id: str) -> List[Dict[str, Any]]:
 def list_responder_missions(responder_id: str) -> List[Dict[str, Any]]:
     """Return the responder's missions without grant material or exact location."""
     return [_public_mission(mission) for mission in _responder_missions(responder_id)]
+
+
+def _ensure_accepted_responder_count(
+    incident_id: str,
+    incident: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Backfill the Phase-5 capacity counter for incidents created pre-migration."""
+    if "accepted_responder_count" in incident:
+        return incident
+
+    active_statuses = {"ACCEPTED", "EN_ROUTE", "ARRIVED"}
+    active_count = sum(
+        1
+        for mission in _incident_missions(incident_id)
+        if mission.get("status") in active_statuses
+    )
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        table = dynamo.Table(DYNAMODB_INCIDENTS_TABLE)
+        try:
+            table.update_item(
+                Key={"incident_id": incident_id},
+                UpdateExpression=(
+                    "SET accepted_responder_count = :count, updated_at = :updated"
+                ),
+                ConditionExpression=(
+                    "attribute_exists(incident_id) AND "
+                    "attribute_not_exists(accepted_responder_count)"
+                ),
+                ExpressionAttributeValues={
+                    ":count": active_count,
+                    ":updated": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+        except Exception as error:
+            code = getattr(error, "response", {}).get("Error", {}).get("Code")
+            if code != "ConditionalCheckFailedException":
+                raise
+        latest = get_incident_context(incident_id)
+        return latest if latest else incident
+
+    if _dev_mode():
+        from aws.incident_handler.handler import _LOCAL_INCIDENTS
+
+        stored = _LOCAL_INCIDENTS.get(incident_id)
+        if stored is not None:
+            stored.setdefault("accepted_responder_count", active_count)
+            return stored
+    return incident
 
 
 def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]:
