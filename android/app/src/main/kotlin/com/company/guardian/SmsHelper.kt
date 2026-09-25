@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.telephony.SmsManager
 import android.os.Build
 import android.util.Log
@@ -115,13 +116,22 @@ object SmsHelper {
         val recipientToken = recipientToken(eventId, phone)
         val intent = Intent(context, SmsSentReceiver::class.java).apply {
             action = SmsSentReceiver.ACTION_SMS_SENT
+            // PendingIntent identity ignores extras. Give every event/recipient/
+            // part callback a unique data URI so requestCode hash collisions
+            // cannot cause one recipient's evidence to overwrite another's.
+            data = Uri.Builder()
+                .scheme("guardian-internal")
+                .authority("sms-sent")
+                .appendPath(eventId)
+                .appendPath(recipientToken)
+                .appendPath(partIndex.toString())
+                .build()
             putExtra(SmsSentReceiver.EXTRA_EVENT_ID, eventId)
             putExtra(SmsSentReceiver.EXTRA_RECIPIENT_TOKEN, recipientToken)
             putExtra(SmsSentReceiver.EXTRA_PART_INDEX, partIndex)
             putExtra(SmsSentReceiver.EXTRA_TOTAL_PARTS, totalParts)
         }
-        val requestCode =
-            31 * eventId.hashCode() + 17 * recipientToken.hashCode() + partIndex
+        val requestCode = partIndex
         return PendingIntent.getBroadcast(
             context,
             requestCode,
