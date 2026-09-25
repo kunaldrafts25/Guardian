@@ -366,7 +366,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        'Pedestrian walking route • OpenStreetMap',
+                        'Pedestrian walking route • Google Routes',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -1219,124 +1219,114 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  /// Build circles for safe zones visualization
-  List<CircleMarker> _buildSafeZoneCircles(SafeZoneState safeZoneState) {
-    final circles = <CircleMarker>[];
-
+  Set<gmaps.Circle> _buildSafeZoneCircles(SafeZoneState safeZoneState) {
+    final circles = <gmaps.Circle>{};
     for (final zone in safeZoneState.zones) {
       if (!zone.isActive) continue;
-
       final isCurrentZone = safeZoneState.currentZone?.id == zone.id;
-
       circles.add(
-        CircleMarker(
-          point: LatLng(zone.latitude, zone.longitude),
+        gmaps.Circle(
+          circleId: gmaps.CircleId('safe-zone-${zone.id}'),
+          center: gmaps.LatLng(zone.latitude, zone.longitude),
           radius: zone.radius,
-          useRadiusInMeter: true,
-          color: isCurrentZone
+          fillColor: isCurrentZone
               ? const Color(0xFF39705A).withValues(alpha: 0.18)
               : const Color(0xFF244D3C).withValues(alpha: 0.08),
-          borderColor: isCurrentZone
+          strokeColor: isCurrentZone
               ? const Color(0xFF39705A)
               : const Color(0xFF244D3C).withValues(alpha: 0.6),
-          borderStrokeWidth: isCurrentZone ? 2.5 : 1.5,
+          strokeWidth: isCurrentZone ? 3 : 2,
         ),
       );
     }
-
     return circles;
   }
 
-  /// Build markers including user location beacon and safe zone centers (Zero Blue)
-  List<Marker> _buildMarkers(
+  Set<gmaps.Marker> _buildMarkers(
     LocationState locationState,
     SafeZoneState safeZoneState,
     bool isDark,
   ) {
-    final markers = <Marker>[];
+    final markers = <gmaps.Marker>{};
 
-    // Add user location pulsing beacon (Zero Blue!)
-    if (locationState.hasLocation) {
+    for (final zone in safeZoneState.zones) {
+      if (!zone.isActive) continue;
+      final isCurrent = safeZoneState.currentZone?.id == zone.id;
       markers.add(
-        Marker(
-          point: LatLng(locationState.position!.latitude,
-              locationState.position!.longitude),
-          width: 48,
-          height: 48,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              // Outer radar aura
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: (isDark ? AppColors.brandDark : AppColors.brand)
-                      .withValues(alpha: 0.22),
-                ),
-              ),
-              // Inner solid badge
-              Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.brandDark : AppColors.brand,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 3),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.25),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+        gmaps.Marker(
+          markerId: gmaps.MarkerId('safe-zone-center-${zone.id}'),
+          position: gmaps.LatLng(zone.latitude, zone.longitude),
+          infoWindow: gmaps.InfoWindow(
+            title: zone.name,
+            snippet: isCurrent ? 'Current safe zone' : 'Saved safe zone',
+          ),
+          icon: gmaps.BitmapDescriptor.defaultMarkerWithHue(
+            isCurrent
+                ? gmaps.BitmapDescriptor.hueGreen
+                : gmaps.BitmapDescriptor.hueAzure,
           ),
         ),
       );
     }
 
-    // Add safe zone markers
-    for (final zone in safeZoneState.zones) {
-      if (!zone.isActive) continue;
-
-      final isCurrent = safeZoneState.currentZone?.id == zone.id;
-      final zoneColor = isCurrent
-          ? const Color(0xFF39705A)
-          : (isDark ? AppColors.brandDark : AppColors.brand);
-
-      markers.add(
-        Marker(
-          point: LatLng(zone.latitude, zone.longitude),
-          width: 36,
-          height: 36,
-          child: Container(
-            decoration: BoxDecoration(
-              color: zoneColor,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2.5),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.2),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Icon(
-              _getZoneTypeIcon(zone.type),
-              color: Colors.white,
-              size: 18,
+    final route = ref.read(safeRouteProvider).currentRoute;
+    if (route != null && route.polylinePoints.isNotEmpty) {
+      final first = route.polylinePoints.first;
+      final last = route.polylinePoints.last;
+      markers
+        ..add(
+          gmaps.Marker(
+            markerId: const gmaps.MarkerId('route-origin'),
+            position: gmaps.LatLng(first.latitude, first.longitude),
+            infoWindow: const gmaps.InfoWindow(title: 'Route start'),
+            icon: gmaps.BitmapDescriptor.defaultMarkerWithHue(
+              gmaps.BitmapDescriptor.hueGreen,
             ),
           ),
-        ),
-      );
+        )
+        ..add(
+          gmaps.Marker(
+            markerId: const gmaps.MarkerId('route-destination'),
+            position: gmaps.LatLng(last.latitude, last.longitude),
+            infoWindow: gmaps.InfoWindow(
+              title: route.endAddress,
+            ),
+            icon: gmaps.BitmapDescriptor.defaultMarkerWithHue(
+              gmaps.BitmapDescriptor.hueRose,
+            ),
+          ),
+        );
     }
 
     return markers;
+  }
+
+  Set<gmaps.Polyline> _buildRoutePolylines(SafeRouteState routeState) {
+    final route = routeState.currentRoute;
+    if (route == null || route.polylinePoints.length < 2) {
+      return const <gmaps.Polyline>{};
+    }
+    final points = route.polylinePoints
+        .map((point) => gmaps.LatLng(point.latitude, point.longitude))
+        .toList(growable: false);
+    return {
+      gmaps.Polyline(
+        polylineId: const gmaps.PolylineId('guardian-walking-route-shadow'),
+        points: points,
+        color: const Color(0xFF173A2C).withValues(alpha: 0.35),
+        width: 9,
+        zIndex: 1,
+      ),
+      gmaps.Polyline(
+        polylineId: const gmaps.PolylineId('guardian-walking-route'),
+        points: points,
+        color: route.authoritativeGeometry
+            ? const Color(0xFF244D3C)
+            : const Color(0xFF9A6B22),
+        width: 5,
+        zIndex: 2,
+      ),
+    };
   }
 
   /// Show safe route destination picker dialog
@@ -1368,14 +1358,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Get Safe Walking Route',
+                  'Get Walking Route',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Calculates pedestrian walking routes using OpenStreetMap data.',
+                  'Google supplies ordinary walking directions. Guardian does not label provider routes as verified safe.',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark
