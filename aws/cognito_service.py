@@ -79,6 +79,54 @@ def refresh_tokens(refresh_token: str, user_id: Optional[str] = None) -> Dict[st
         raise ValueError(f"Token refresh failed: {ce.response['Error']['Message']}")
 
 
+def validate_refresh_token_owner(
+    refresh_token: str,
+    expected_user_id: str,
+) -> None:
+    """Prove the refresh token belongs to the same Cognito subject as access_token.
+
+    Guardian sessions bind both token families. Without this check a caller
+    could accidentally pair an access token from one account with a refresh
+    token from another, creating a session that fails unpredictably at refresh.
+    """
+    if not refresh_token or not expected_user_id:
+        raise ValueError("Refresh token and expected user are required")
+
+    is_dev = os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    if is_dev:
+        if refresh_token.startswith("google_refresh_token_"):
+            return
+        raise ValueError("Invalid development refresh token")
+
+    client = _cognito_client()
+    if not client or not COGNITO_CLIENT_ID:
+        raise RuntimeError("AWS Cognito is temporarily unavailable")
+
+    try:
+        refreshed = client.initiate_auth(
+            AuthFlow="REFRESH_TOKEN_AUTH",
+            AuthParameters={"REFRESH_TOKEN": refresh_token},
+            ClientId=COGNITO_CLIENT_ID,
+        )
+        refreshed_access = (
+            refreshed.get("AuthenticationResult", {}).get("AccessToken", "")
+        )
+        if not refreshed_access:
+            raise ValueError("Cognito refresh token could not be validated")
+        result = client.get_user(AccessToken=refreshed_access)
+    except ClientError as error:
+        raise ValueError("Cognito refresh token is invalid or expired") from error
+
+    attributes = {
+        str(item.get("Name")): str(item.get("Value") or "")
+        for item in result.get("UserAttributes", [])
+        if item.get("Name")
+    }
+    refresh_user_id = attributes.get("sub", "").strip()
+    if not refresh_user_id or refresh_user_id != expected_user_id:
+        raise ValueError("Refresh token does not belong to the authenticated user")
+
+
 def _verify_google_payload(id_token_str: str) -> Dict[str, Any]:
     """Verify a Google ID token cryptographically and for Guardian's audience."""
     if not GOOGLE_CLIENT_ID:
