@@ -30,11 +30,7 @@
 	<key>MinimumOSVersion</key>
 	<string>16.0</string>
 
-	<!-- ═══════════════════════════════════════════════════
-	     Google Sign-In — OAuth redirect URL scheme
-	     Replace REVERSED_CLIENT_ID with the value from
-	     GoogleService-Info.plist after Firebase iOS setup
-	     ═══════════════════════════════════════════════════ -->
+	<!-- Cognito managed-login callback for Google federation. -->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -42,7 +38,7 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.530178096868-90d5lls6prav97gaueu9814dgprlmlm7</string>
+				<string>guardian</string>
 			</array>
 		</dict>
 	</array>
