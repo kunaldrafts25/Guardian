@@ -1,3 +1,5 @@
+import 'dart:async';
+
 /*
  * Guardian 2.0 - Women's Safety App
  * © 2025 All Rights Reserved - Kunal Singh
@@ -19,6 +21,7 @@ import 'package:guardian/core/providers/contacts_provider.dart';
 import 'package:guardian/core/providers/sos_settings_provider.dart';
 import 'package:guardian/core/services/aws_auth_service.dart';
 import 'package:guardian/core/services/aws_incident_service.dart';
+import 'package:guardian/core/services/cloud_incident_binding_service.dart';
 import 'package:guardian/core/services/sos_service.dart';
 import 'package:guardian/core/utils/location_utils.dart';
 import 'package:guardian/core/utils/logger.dart';
@@ -113,12 +116,17 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
   final SosService _sosService = SosService.instance;
   String? _backendIncidentId;
   Future<void>? _activationInFlight;
+  StreamSubscription<CloudIncidentBinding>? _cloudBindingSubscription;
   late final Future<void> ready;
 
   EmergencyNotifier(this._ref) : super(const EmergencyState()) {
     // Listen to SOS service updates
     _sosService.addAlertListener(_onAlertUpdate);
     _sosService.addLocationListener(_onLocationUpdate);
+    _cloudBindingSubscription =
+        CloudIncidentBindingService.instance.stream.listen(
+      (binding) => unawaited(_onCloudIncidentBound(binding)),
+    );
     ready = _restoreActiveIncident();
   }
 
@@ -180,7 +188,10 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     } else if (cloudId != null && cloudId.isNotEmpty) {
       restoredStage = EmergencyLifecycleStage.cloudAcknowledged;
     } else {
-      final outboxOps = await database.getDueOutboxOperations(limit: 50);
+      final outboxOps = await database.getDueOutboxOperations(
+        ownerUserId: userId,
+        limit: 50,
+      );
       final hasPending = outboxOps.any((op) => op.aggregateId == alert.alertId);
       if (hasPending) {
         restoredStage = EmergencyLifecycleStage.cloudQueued;
@@ -236,7 +247,39 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
   void dispose() {
     _sosService.removeAlertListener(_onAlertUpdate);
     _sosService.removeLocationListener(_onLocationUpdate);
+    _cloudBindingSubscription?.cancel();
     super.dispose();
+  }
+
+  Future<void> _onCloudIncidentBound(CloudIncidentBinding binding) async {
+    final currentUserId = AwsAuthService.instance.currentUserId;
+    final activeAlert = state.sosAlert;
+    if (!mounted ||
+        currentUserId == null ||
+        currentUserId != binding.ownerUserId ||
+        activeAlert == null ||
+        activeAlert.id != binding.localAlertId ||
+        !state.isActive) {
+      return;
+    }
+
+    _backendIncidentId = binding.cloudIncidentId;
+    state = state.copyWith(
+      lifecycleStage: EmergencyLifecycleStage.cloudAcknowledged,
+    );
+    _ref
+        .read(awsIncidentProvider.notifier)
+        .startPolling(binding.cloudIncidentId);
+    unawaited(
+      _ref
+          .read(awsIncidentProvider.notifier)
+          .pollStatus(binding.cloudIncidentId),
+    );
+
+    final latest = state.currentLocation ?? activeAlert.currentLocation;
+    if (latest != null) {
+      await _pushLocationToCloud(latest, force: true);
+    }
   }
 
   /// Handle SOS alert updates
@@ -253,33 +296,42 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
 
   DateTime? _lastLocationPushAt;
 
-  /// Handle location updates (P0-04: live monotonic upstream location propagation)
+  /// Handle location updates (live monotonic upstream location propagation).
   void _onLocationUpdate(Position position) {
     state = state.copyWith(currentLocation: position);
+    unawaited(_pushLocationToCloud(position));
+  }
+
+  Future<void> _pushLocationToCloud(
+    Position position, {
+    bool force = false,
+  }) async {
     final cloudId = _backendIncidentId;
-    if (cloudId != null && state.isActive) {
-      final now = DateTime.now();
-      if (_lastLocationPushAt == null ||
-          now.difference(_lastLocationPushAt!).inSeconds >= 5) {
-        _lastLocationPushAt = now;
-        final emergencyLocation = EmergencyLocation.fromFix(
-          latitude: position.latitude,
-          longitude: position.longitude,
-          accuracy: position.accuracy,
-          capturedAt: position.timestamp,
-          receivedAt: now.toUtc(),
-          source: 'gps_stream',
-        );
-        AwsIncidentService.instance
-            .updateIncidentLocation(
-          incidentId: cloudId,
-          location: emergencyLocation.toJson(),
-        )
-            .catchError((e) {
-          Logger.warning('Failed to push live emergency location: $e');
-          return <String, dynamic>{};
-        });
-      }
+    if (cloudId == null || !state.isActive) return;
+
+    final now = DateTime.now();
+    if (!force &&
+        _lastLocationPushAt != null &&
+        now.difference(_lastLocationPushAt!).inSeconds < 5) {
+      return;
+    }
+    _lastLocationPushAt = now;
+
+    final emergencyLocation = EmergencyLocation.fromFix(
+      latitude: position.latitude,
+      longitude: position.longitude,
+      accuracy: position.accuracy,
+      capturedAt: position.timestamp,
+      receivedAt: now.toUtc(),
+      source: 'gps_stream',
+    );
+    try {
+      await AwsIncidentService.instance.updateIncidentLocation(
+        incidentId: cloudId,
+        location: emergencyLocation.toJson(),
+      );
+    } catch (error) {
+      Logger.warning('Failed to push live emergency location: $error');
     }
   }
 
@@ -328,6 +380,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     state = state.copyWith(lifecycleStage: EmergencyLifecycleStage.cloudQueued);
     try {
       final queued = await database.queueAlertForCloud(
+        ownerUserId: userId,
         alertId: alert.id,
         eventType: eventType,
         occurredAt: alert.startedAt,
