@@ -58,9 +58,17 @@ def _cognito_identity(access_token: str) -> Optional[Tuple[str, FrozenSet[str]]]
             region_name=os.environ.get("AWS_DEFAULT_REGION", "ap-south-1"),
         )
         result = client.get_user(AccessToken=access_token)
-        user_id = result.get("Username")
+        username = str(result.get("Username") or "")
+        attributes = {
+            str(item.get("Name")): str(item.get("Value") or "")
+            for item in result.get("UserAttributes", [])
+            if item.get("Name")
+        }
+        # API Gateway's verified claims use Cognito sub as the immutable user
+        # identity. The direct/local fallback must return the same identifier.
+        user_id = attributes.get("sub") or None
         group_result = client.admin_list_groups_for_user(
-            Username=user_id,
+            Username=username,
             UserPoolId=pool_id,
             Limit=20,
         )
@@ -81,6 +89,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         "/",
         "/health",
         "/auth/google",
+        "/auth/session",
         "/auth/refresh",
         "/docs",
         "/docs/oauth2-redirect",
