@@ -17,6 +17,7 @@ object NativeEmergencyStore {
     private const val LAST_TRIGGER_PRIORITY_KEY = "last_trigger_priority"
     private const val CHECK_IN_SCHEDULE_KEY = "check_in_schedule"
     private const val CHECK_IN_ACTIONS_KEY = "check_in_actions"
+    private const val SMS_RESULTS_KEY = "sms_sent_results"
     private const val MAX_EVENTS = 64
 
     private fun preferences(context: Context): SharedPreferences {
@@ -187,66 +188,88 @@ object NativeEmergencyStore {
         success: Boolean,
         errorCode: Int?,
     ): Boolean {
-        val all = allEvents(context)
-        var found = false
-        for (index in 0 until all.length()) {
-            val event = all.getJSONObject(index)
-            if (event.optString("event_id") != eventId) continue
+        val prefs = preferences(context)
+        val allResults = runCatching {
+            JSONObject(prefs.getString(SMS_RESULTS_KEY, null) ?: "{}")
+        }.getOrDefault(JSONObject())
+        val eventResults = allResults.optJSONObject(eventId) ?: JSONObject()
+        val key = phoneHash.toString()
+        val aggregate = eventResults.optJSONObject(key) ?: JSONObject()
+            .put("phone_hash", phoneHash)
+            .put("status", "PENDING")
+            .put("parts_total", totalParts)
+            .put("parts_reported", 0)
+            .put("parts_succeeded", 0)
 
-            val results = event.optJSONArray("sms_sent_results") ?: JSONArray()
-            var aggregate: JSONObject? = null
-            for (resultIndex in 0 until results.length()) {
-                val candidate = results.optJSONObject(resultIndex) ?: continue
-                if (candidate.optInt("phone_hash") == phoneHash) {
-                    aggregate = candidate
-                    break
-                }
-            }
-            if (aggregate == null) {
-                aggregate = JSONObject()
-                    .put("phone_hash", phoneHash)
-                    .put("status", "PENDING")
-                    .put("parts_total", totalParts)
-                    .put("parts_reported", 0)
-                    .put("parts_succeeded", 0)
-                results.put(aggregate)
-            }
-
-            val partResults = aggregate.optJSONObject("part_results") ?: JSONObject()
-            val partKey = partIndex.toString()
-            if (!partResults.has(partKey)) {
-                partResults.put(
-                    partKey,
-                    JSONObject()
-                        .put("success", success)
-                        .put("error_code", errorCode ?: JSONObject.NULL)
-                        .put("reported_at_ms", System.currentTimeMillis()),
-                )
-                aggregate.put("parts_reported", aggregate.optInt("parts_reported", 0) + 1)
-                if (success) {
-                    aggregate.put("parts_succeeded", aggregate.optInt("parts_succeeded", 0) + 1)
-                }
-            }
-
-            aggregate.put("part_results", partResults)
-            aggregate.put("parts_total", totalParts)
-            aggregate.put("updated_at_ms", System.currentTimeMillis())
-            val reported = aggregate.optInt("parts_reported", 0)
-            val succeeded = aggregate.optInt("parts_succeeded", 0)
-            aggregate.put(
-                "status",
-                when {
-                    reported < totalParts -> "PENDING"
-                    succeeded == totalParts -> "RADIO_SENT"
-                    else -> "FAILED"
-                },
+        val partResults = aggregate.optJSONObject("part_results") ?: JSONObject()
+        val partKey = partIndex.toString()
+        if (!partResults.has(partKey)) {
+            partResults.put(
+                partKey,
+                JSONObject()
+                    .put("success", success)
+                    .put("error_code", errorCode ?: JSONObject.NULL)
+                    .put("reported_at_ms", System.currentTimeMillis()),
             )
-            event.put("sms_sent_results", results)
-            found = true
+            aggregate.put("parts_reported", aggregate.optInt("parts_reported", 0) + 1)
+            if (success) {
+                aggregate.put("parts_succeeded", aggregate.optInt("parts_succeeded", 0) + 1)
+            }
+        }
+
+        aggregate.put("part_results", partResults)
+        aggregate.put("parts_total", totalParts)
+        aggregate.put("updated_at_ms", System.currentTimeMillis())
+        val reported = aggregate.optInt("parts_reported", 0)
+        val succeeded = aggregate.optInt("parts_succeeded", 0)
+        aggregate.put(
+            "status",
+            when {
+                reported < totalParts -> "PENDING"
+                succeeded == totalParts -> "SENT"
+                else -> "FAILED"
+            },
+        )
+        eventResults.put(key, aggregate)
+        allResults.put(eventId, eventResults)
+        prefs.edit().putString(SMS_RESULTS_KEY, allResults.toString()).commit()
+
+        // Mirror the result into a native emergency event when one exists so
+        // the no-Flutter cloud worker can include stronger transport evidence.
+        val events = allEvents(context)
+        var eventFound = false
+        for (index in 0 until events.length()) {
+            val event = events.getJSONObject(index)
+            if (event.optString("event_id") != eventId) continue
+            val mirrored = event.optJSONObject("sms_sent_results") ?: JSONObject()
+            mirrored.put(key, JSONObject(aggregate.toString()))
+            event.put("sms_sent_results", mirrored)
+            eventFound = true
             break
         }
-        if (found) preferences(context).edit().putString(EVENTS_KEY, all.toString()).commit()
-        return found
+        if (eventFound) {
+            prefs.edit().putString(EVENTS_KEY, events.toString()).commit()
+        }
+        return true
+    }
+
+    @Synchronized
+    fun smsSentResult(context: Context, eventId: String, phoneHash: Int): JSONObject? {
+        val raw = preferences(context).getString(SMS_RESULTS_KEY, null) ?: return null
+        val allResults = runCatching { JSONObject(raw) }.getOrNull() ?: return null
+        val result = allResults.optJSONObject(eventId)
+            ?.optJSONObject(phoneHash.toString())
+            ?: return null
+        return JSONObject(result.toString())
+    }
+
+    @Synchronized
+    fun clearSmsResults(context: Context, eventId: String) {
+        val prefs = preferences(context)
+        val raw = prefs.getString(SMS_RESULTS_KEY, null) ?: return
+        val allResults = runCatching { JSONObject(raw) }.getOrNull() ?: return
+        allResults.remove(eventId)
+        prefs.edit().putString(SMS_RESULTS_KEY, allResults.toString()).commit()
     }
 
     @Synchronized
