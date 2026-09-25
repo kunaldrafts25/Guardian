@@ -319,6 +319,7 @@ class SosService {
 
     for (final contactStatus in _activeAlert!.contactStatuses) {
       final result = await _sendAlertToContact(
+        eventId: alertId,
         contact: contactStatus.contact,
         position: position,
         userName: userName ?? 'Guardian',
@@ -362,6 +363,7 @@ class SosService {
 
   /// Send alert to a single contact
   Future<ContactAlertStatus> _sendAlertToContact({
+    required String eventId,
     required EmergencyContact contact,
     required Position? position,
     required String userName,
@@ -382,6 +384,7 @@ class SosService {
 
       // Send SMS automatically via native SmsManager — no user tap required
       dispatchResult = await _sendSmsNative(
+        eventId: eventId,
         phone: contact.phone,
         message: message,
       );
@@ -443,6 +446,7 @@ class SosService {
   /// No user interaction required — SMS is dispatched silently.
   /// On iOS: falls back to url_launcher (iOS limitation, no SmsManager equivalent).
   Future<SmsDispatchResult> _sendSmsNative({
+    String? eventId,
     required String phone,
     required String message,
   }) async {
@@ -460,14 +464,19 @@ class SosService {
         'sendEmergencySms',
         {
           'phones': [phone],
-          'message': message
+          'message': message,
+          if (eventId != null && eventId.isNotEmpty) 'event_id': eventId,
         },
       );
 
       if (result != null && result['allSuccess'] == true) {
-        Logger.info('📱 Emergency SMS dispatched via SmsManager');
-        return const SmsDispatchResult(
-          state: SmsDeliveryState.osAccepted,
+        final deliveryState =
+            SmsDeliveryState.fromString(result['deliveryState']?.toString());
+        Logger.info('📱 Emergency SMS submission accepted by Android');
+        return SmsDispatchResult(
+          state: deliveryState == SmsDeliveryState.unknown
+              ? SmsDeliveryState.osAccepted
+              : deliveryState,
         );
       } else {
         // Fallback to url_launcher (iOS or SmsManager error)
@@ -619,7 +628,11 @@ class SosService {
         '- Guardian Safety App';
 
     try {
-      await _sendSmsNative(phone: contact.phone, message: message);
+      await _sendSmsNative(
+        eventId: 'safe_${DateTime.now().microsecondsSinceEpoch}',
+        phone: contact.phone,
+        message: message,
+      );
       Logger.info('✅ Safety confirmation SMS dispatched');
     } catch (e) {
       Logger.error('Failed to send safety SMS', e);
