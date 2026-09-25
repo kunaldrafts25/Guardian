@@ -142,7 +142,7 @@ def register_device_endpoint(
 
     token_hash = _token_hash(device_token)
     endpoint_arn = ""
-    custom_user_data = f"{user_id}:{session_id}:{device_id}"[:2048]
+    custom_user_data = f"{user_id}:{device_id}"[:2048]
     try:
         response = sns.create_platform_endpoint(
             PlatformApplicationArn=platform_arn,
@@ -415,8 +415,13 @@ def send_sms_alert(
             "delivery_state": "PROVIDER_ACCEPTED",
         }
     except ClientError as ce:
-        logger.error("SNS SMS request failed: %s", ce.response.get("Error", {}).get("Code", "SNS_ERROR"))
-        return {"success": False, "error": str(ce)}
+        error_code = ce.response.get("Error", {}).get("Code", "SNS_ERROR")
+        logger.error("SNS SMS request failed: %s", error_code)
+        return {
+            "success": False,
+            "error": "SMS provider request failed",
+            "error_code": error_code,
+        }
 
 
 
