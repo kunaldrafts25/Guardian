@@ -712,12 +712,14 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     }
     await _ref.read(contactsProvider.notifier).ready;
     final contacts = _ref.read(contactsProvider).contacts;
-    final accepted = (event['accepted_phones'] as List? ?? const [])
-        .map((value) => _normalizedPhone(value.toString()))
-        .toSet();
-    final failed = (event['failed_phones'] as List? ?? const [])
-        .map((value) => _normalizedPhone(value.toString()))
-        .toSet();
+    final acceptedContactIds =
+        (event['accepted_contact_ids'] as List? ?? const [])
+            .map((value) => value.toString())
+            .toSet();
+    final failedContactIds =
+        (event['failed_contact_ids'] as List? ?? const [])
+            .map((value) => value.toString())
+            .toSet();
     final occurredAt = DateTime.fromMillisecondsSinceEpoch(
       (event['occurred_at_ms'] as num?)?.toInt() ??
           DateTime.now().millisecondsSinceEpoch,
@@ -779,9 +781,8 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       initialLocation: position,
       currentLocation: position,
       contactStatuses: contacts.map((contact) {
-        final phone = _normalizedPhone(contact.phone);
-        final wasAccepted = accepted.contains(phone);
-        final wasFailed = failed.contains(phone);
+        final wasAccepted = acceptedContactIds.contains(contact.id);
+        final wasFailed = failedContactIds.contains(contact.id);
 
         // P2-01: Accurately reconstruct SmsDeliveryState
         return ContactAlertStatus(
@@ -826,8 +827,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
         longitude: longitude,
         startedAt: occurredAt,
         notifiedContacts: contacts
-            .where(
-                (contact) => accepted.contains(_normalizedPhone(contact.phone)))
+            .where((contact) => acceptedContactIds.contains(contact.id))
             .map((contact) => contact.phone)
             .toList(),
       ),
