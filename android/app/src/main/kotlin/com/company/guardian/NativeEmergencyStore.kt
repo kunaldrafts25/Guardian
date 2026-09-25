@@ -156,8 +156,6 @@ object NativeEmergencyStore {
     fun updateSmsSubmissionResults(
         context: Context,
         eventId: String,
-        acceptedPhones: JSONArray,
-        failedPhones: JSONArray,
         acceptedContactIds: JSONArray,
         failedContactIds: JSONArray,
     ): Boolean {
@@ -166,8 +164,6 @@ object NativeEmergencyStore {
         for (index in 0 until all.length()) {
             val event = all.getJSONObject(index)
             if (event.optString("event_id") == eventId) {
-                event.put("accepted_phones", acceptedPhones)
-                event.put("failed_phones", failedPhones)
                 event.put("accepted_contact_ids", acceptedContactIds)
                 event.put("failed_contact_ids", failedContactIds)
                 found = true
