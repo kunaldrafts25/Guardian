@@ -46,6 +46,11 @@ def releaseSigningConfigured = [
     releaseKeyAlias,
     releaseKeyPassword,
 ].every { value -> value != null && !value.trim().isEmpty() }
+
+def googleMapsAndroidApiKey =
+    System.getenv("GUARDIAN_GOOGLE_MAPS_ANDROID_API_KEY") ?:
+    localProperties.getProperty("guardian.googleMapsAndroidApiKey") ?:
+    "NOT_CONFIGURED"
 def releaseTaskRequested = gradle.startParameter.taskNames.any {
     taskName -> taskName.toLowerCase().contains("release")
 }
@@ -80,6 +85,7 @@ android {
         targetSdk = 35 // Updated from flutter.targetSdkVersion to fix plugin compatibility issues
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName
+        manifestPlaceholders = [GOOGLE_MAPS_API_KEY: googleMapsAndroidApiKey]
         
         // Enable multidex for large app
         multiDexEnabled true
