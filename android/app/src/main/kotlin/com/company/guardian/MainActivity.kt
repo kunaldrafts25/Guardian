@@ -199,7 +199,7 @@ class MainActivity : FlutterActivity() {
                                     val receipt = NativeEmergencyStore.smsSentResult(
                                         this,
                                         eventId,
-                                        phone.trim().hashCode(),
+                                        SmsHelper.recipientToken(eventId, phone),
                                     )
                                     when (receipt?.optString("status")) {
                                         "SENT" -> sentCount++
