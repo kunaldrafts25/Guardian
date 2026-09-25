@@ -127,7 +127,11 @@ def test_google_auth_refresh_and_authenticated_call():
         },
     )
     assert sessions_resp.status_code == 200
-    assert sessions_resp.json()["sessions"][0]["current"] is True
+    sessions = sessions_resp.json()["sessions"]
+    assert any(
+        item["session_id"] == session_id and item["current"] is True
+        for item in sessions
+    )
 
 
 
