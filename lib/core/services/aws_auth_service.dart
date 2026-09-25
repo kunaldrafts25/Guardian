@@ -286,6 +286,17 @@ class AwsAuthService {
     }
   }
 
+  static String _googleServerClientId() {
+    const configured = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
+    if (configured.isNotEmpty) return configured;
+    if (kReleaseMode) {
+      throw StateError(
+        'GOOGLE_SERVER_CLIENT_ID is required for Google sign-in in release builds.',
+      );
+    }
+    return '530178096868-v6q66826igipjpc2jlq7q95ipfu2bnev.apps.googleusercontent.com';
+  }
+
   // ─── Google Sign-In Flow ──────────────────────────────────────────────────
 
   /// Sign in with Google (Gmail) credentials.
@@ -301,11 +312,7 @@ class AwsAuthService {
       final googleSignIn = customGoogleSignIn ??
           GoogleSignIn(
             scopes: ['email', 'profile'],
-            serverClientId: const String.fromEnvironment(
-              'GOOGLE_SERVER_CLIENT_ID',
-              defaultValue:
-                  '530178096868-v6q66826igipjpc2jlq7q95ipfu2bnev.apps.googleusercontent.com',
-            ),
+            serverClientId: _googleServerClientId(),
           );
 
       final account = await googleSignIn.signIn();
