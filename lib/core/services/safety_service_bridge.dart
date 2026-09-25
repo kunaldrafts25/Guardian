@@ -386,6 +386,10 @@ class SafetyServiceBridge {
   }
 
   Future<bool> acknowledgeNativeEmergencyEvent(String eventId) async {
+    return acknowledgeNativeEmergencyEventById(eventId);
+  }
+
+  static Future<bool> acknowledgeNativeEmergencyEventById(String eventId) async {
     try {
       return await _serviceChannel.invokeMethod<bool>(
             'acknowledgeNativeEmergencyEvent',
