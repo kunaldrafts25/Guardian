@@ -117,7 +117,7 @@ Resources:
       SupportedIdentityProviders: [Google]
       AllowedOAuthFlowsUserPoolClient: true
       AllowedOAuthFlows: [code]
-      AllowedOAuthScopes: [openid, email, profile]
+      AllowedOAuthScopes: [openid, email, profile, aws.cognito.signin.user.admin]
       CallbackURLs: [!Ref GuardianAuthCallbackUrl]
       LogoutURLs: [!Ref GuardianAuthLogoutUrl]
       ExplicitAuthFlows: [ALLOW_REFRESH_TOKEN_AUTH]
