@@ -40,6 +40,8 @@ from aws.agent.tools import (
     notify_trusted_contact,
     dispatch_community_alert,
     process_incident_redispatch_eval,
+    claim_escalation_evaluation,
+    complete_escalation_evaluation,
 )
 from aws.incident_handler.handler import (
     get_incident,
@@ -850,7 +852,24 @@ def _process_workflow_event(
         if timeout_type == "USER_VERIFICATION":
             result = _handle_verification_timeout(incident_id, correlation_id)
         elif timeout_type == "ESCALATION_CHECK":
-            result = process_incident_redispatch_eval(incident_id)
+            idempotency_key = str(
+                detail.get("idempotency_key")
+                or f"deadline:{detail.get('deadline_at') or 'legacy'}"
+            )
+            claim = claim_escalation_evaluation(
+                incident_id,
+                idempotency_key,
+            )
+            if claim == "COMPLETED":
+                result = {
+                    "incident_id": incident_id,
+                    "status": "ESCALATION_CHECK_ALREADY_COMPLETED",
+                }
+            elif claim == "BUSY":
+                raise RuntimeError("Responder escalation evaluation is already running")
+            else:
+                result = process_incident_redispatch_eval(incident_id)
+                complete_escalation_evaluation(incident_id, idempotency_key)
         elif timeout_type:
             return {
                 "statusCode": 400,
