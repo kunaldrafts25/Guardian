@@ -257,6 +257,17 @@ class GuardianDatabase extends _$GuardianDatabase {
               localOutboxOperations,
               localOutboxOperations.ownerUserId,
             );
+            // Existing pending incident operations predate owner scoping.
+            // Bind only rows that can be proven from their matching local alert;
+            // unknown rows remain unowned and therefore cannot replay.
+            await customStatement(
+              'UPDATE local_outbox_operations '
+              'SET owner_user_id = COALESCE(('
+              'SELECT user_id FROM local_alerts '
+              'WHERE local_alerts.alert_id = local_outbox_operations.aggregate_id'
+              '), \'\') '
+              'WHERE owner_user_id = \'\'',
+            );
           }
         },
       );
