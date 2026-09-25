@@ -47,9 +47,11 @@ def test_google_auth_dev_token_success():
     assert is_valid is True
 
 
-def test_google_auth_mocked_verified_token_success():
+def test_google_auth_mocked_verified_token_success(monkeypatch):
+    monkeypatch.setattr("aws.cognito_service.GOOGLE_CLIENT_ID", "guardian-google-client")
     mock_payload = {
         "iss": "https://accounts.google.com",
+        "aud": "guardian-google-client",
         "sub": "109876543210987654321",
         "email": "kunal.guardian@gmail.com",
         "email_verified": True,
@@ -126,3 +128,47 @@ def test_google_auth_refresh_and_authenticated_call():
     )
     assert user_resp.status_code == 200
 
+
+
+def test_google_auth_wrong_audience_rejected(monkeypatch):
+    monkeypatch.setattr("aws.cognito_service.GOOGLE_CLIENT_ID", "guardian-google-client")
+    payload = {
+        "iss": "https://accounts.google.com",
+        "aud": "different-client",
+        "sub": "subject",
+        "email": "user@example.com",
+        "email_verified": True,
+    }
+    with patch("aws.cognito_service._verify_google_payload", return_value=payload):
+        response = client.post(
+            "/auth/google",
+            json={
+                "id_token": "signed-but-wrong-audience",
+                "device_label": "Test Device",
+                "platform": "android",
+            },
+        )
+    assert response.status_code == 401
+    assert "audience" in response.text.lower()
+
+
+def test_google_auth_unverified_email_rejected(monkeypatch):
+    monkeypatch.setattr("aws.cognito_service.GOOGLE_CLIENT_ID", "guardian-google-client")
+    payload = {
+        "iss": "https://accounts.google.com",
+        "aud": "guardian-google-client",
+        "sub": "subject",
+        "email": "user@example.com",
+        "email_verified": False,
+    }
+    with patch("aws.cognito_service._verify_google_payload", return_value=payload):
+        response = client.post(
+            "/auth/google",
+            json={
+                "id_token": "signed-unverified-email",
+                "device_label": "Test Device",
+                "platform": "android",
+            },
+        )
+    assert response.status_code == 401
+    assert "verified" in response.text.lower()
