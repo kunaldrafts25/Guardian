@@ -139,6 +139,19 @@ object NativeEmergencyStore {
     }
 
     @Synchronized
+    fun eventByOperationId(context: Context, operationId: String): JSONObject? {
+        if (operationId.isBlank()) return null
+        val all = allEvents(context)
+        for (index in all.length() - 1 downTo 0) {
+            val event = all.getJSONObject(index)
+            if (event.optString("operation_id") == operationId) {
+                return JSONObject(event.toString())
+            }
+        }
+        return null
+    }
+
+    @Synchronized
     fun markCloudSynced(context: Context, eventId: String, incidentId: String?): Boolean {
         val all = allEvents(context)
         var found = false
