@@ -75,11 +75,12 @@ class OfflineSyncService {
           case 'createIncident':
             final localAlert = await _db.getAlert(operation.aggregateId);
             if (localAlert == null ||
+                localAlert.userId != userId ||
                 const {'resolved', 'cancelled', 'expired'}
                     .contains(localAlert.status)) {
               await _db.markOutboxSuperseded(
                 operation.operationId,
-                'Create skipped because the local incident is absent or terminal',
+                'Create skipped because the local incident is absent, belongs to another account, or is terminal',
               );
               continue;
             }
