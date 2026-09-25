@@ -30,6 +30,9 @@ from aws.agent.risk_engine import assess_incident_risk
 # Environment configuration
 DYNAMODB_INCIDENTS_TABLE = os.environ.get("DYNAMODB_INCIDENTS_TABLE", "guardian-incidents")
 DYNAMODB_EVENTS_TABLE = os.environ.get("DYNAMODB_EVENTS_TABLE", "guardian-incident-events")
+DYNAMODB_ABUSE_COUNTERS_TABLE = os.environ.get(
+    "DYNAMODB_ABUSE_COUNTERS_TABLE", "guardian-abuse-counters"
+)
 EVENTBUS_NAME = os.environ.get("EVENTBUS_NAME", "default")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 
@@ -140,6 +143,98 @@ def _captured_at_epoch_ms(location: Any) -> Optional[int]:
         return None
 
 
+def _incident_frequency_advisory(user_id: str, now: datetime) -> Dict[str, Any]:
+    """Return a non-blocking high-frequency advisory for responder safety.
+
+    This signal must never suppress or reject an SOS. Production uses a small
+    TTL-backed DynamoDB counter so behavior matches local tests.
+    """
+    count = 1
+    dynamo = get_dynamo_resource()
+    if dynamo:
+        bucket = int(now.timestamp()) // 600
+        counter_key = f"{user_id}:{bucket}"
+        try:
+            response = dynamo.Table(DYNAMODB_ABUSE_COUNTERS_TABLE).update_item(
+                Key={"counter_key": counter_key},
+                UpdateExpression="ADD incident_count :one SET expires_at = :ttl, updated_at = :now",
+                ExpressionAttributeValues={
+                    ":one": 1,
+                    ":ttl": int(now.timestamp()) + 3600,
+                    ":now": now.isoformat(),
+                },
+                ReturnValues="UPDATED_NEW",
+            )
+            count = int(response.get("Attributes", {}).get("incident_count", 1))
+        except Exception as error:
+            logger.warning(
+                "Incident-frequency advisory unavailable: %s",
+                type(error).__name__,
+            )
+            return {}
+    elif _local_store_enabled():
+        count = 1
+        now_ts = now.timestamp()
+        for existing in _LOCAL_INCIDENTS.values():
+            if existing.get("user_id") != user_id:
+                continue
+            try:
+                created = datetime.fromisoformat(str(existing.get("created_at", "")))
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=timezone.utc)
+                if (now_ts - created.timestamp()) <= 600.0:
+                    count += 1
+            except Exception:
+                continue
+    else:
+        return {}
+
+    if count < 4:
+        return {}
+    return {
+        "high_frequency_creation": True,
+        "recent_incident_count_10m": count,
+        "advisory_only": True,
+    }
+
+
+def _trigger_provenance(event_type: str, motion_data: Dict[str, Any]) -> Dict[str, str]:
+    """Classify reported trigger provenance without pretending device attestation."""
+    normalized = str(event_type or "").strip().upper()
+    if normalized == "MANUAL_SOS":
+        return {
+            "origin": "USER_DECLARED",
+            "trust_level": "DECLARED_DISTRESS",
+            "attestation": "NOT_REQUIRED_FOR_HELP_REQUEST",
+        }
+    if bool((motion_data or {}).get("native_dispatch")):
+        return {
+            "origin": "DEVICE_NATIVE_REPORTED",
+            "trust_level": "UNATTESTED_DEVICE",
+            "attestation": "NOT_PRESENT",
+        }
+    if normalized in {
+        "ANDROID_POWER_GESTURE",
+        "ANDROID_SHAKE",
+        "ANDROID_FALL",
+        "ROUTE_DEVIATION",
+        "ROUTE_DEVIATION_TIMEOUT",
+        "CHECK_IN_EXPIRED",
+        "VOICE_SOS",
+        "MULTI_TAP",
+    }:
+        return {
+            "origin": "DEVICE_REPORTED",
+            "trust_level": "UNATTESTED_CLIENT",
+            "attestation": "NOT_PRESENT",
+        }
+    return {
+        "origin": "CLIENT_REPORTED",
+        "trust_level": "UNATTESTED_CLIENT",
+        "attestation": "NOT_PRESENT",
+    }
+
+
 def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Ingest a new incident with idempotency guarantee."""
     event_id = payload.get("event_id") or str(uuid.uuid4())
@@ -173,25 +268,16 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         location=location,
         motion_data=motion_data,
     )
-    abuse_signals = {}
-    now_ts = datetime.now(timezone.utc).timestamp()
-    recent_count = 0
-    if not dynamo and _local_store_enabled():
-        for inc in _LOCAL_INCIDENTS.values():
-            if inc.get("user_id") == user_id:
-                try:
-                    c_dt = datetime.fromisoformat(inc.get("created_at", ""))
-                    if (now_ts - c_dt.timestamp()) <= 600.0:
-                        recent_count += 1
-                except Exception:
-                    pass
-    if recent_count >= 3:
-        abuse_signals["high_frequency_creation"] = True
-        abuse_signals["recent_incident_count_10m"] = recent_count
+    abuse_signals = _incident_frequency_advisory(
+        user_id,
+        datetime.now(timezone.utc),
+    )
+    if abuse_signals:
         risk["abuse_signals"] = abuse_signals
         risk["responder_advisory"] = (
-            "Caution: Multiple recent alerts recorded from this account. "
-            "Anti-solo buddy quorum enforced. Maintain situational caution."
+            "Caution: Multiple recent alerts were recorded from this account. "
+            "This advisory never suppresses the SOS; responders should preserve "
+            "buddy-safety procedures."
         )
 
     initial_state = IncidentState.CLOUD_ACCEPTED.value
@@ -220,6 +306,7 @@ def create_incident(payload: Dict[str, Any]) -> Dict[str, Any]:
         "current_location_captured_at_ms": initial_location_epoch_ms,
         "motion_data": motion_data,
         "trigger_source": (motion_data or {}).get("trigger_source") or event_type,
+        "trigger_provenance": _trigger_provenance(event_type, motion_data or {}),
         "risk_assessment": risk,
         "created_at": now_iso,
         "updated_at": now_iso,
