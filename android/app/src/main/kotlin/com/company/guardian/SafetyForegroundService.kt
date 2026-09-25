@@ -20,6 +20,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import kotlin.math.*
+import org.json.JSONObject
 
 /**
  * Guardian — SafetyForegroundService
