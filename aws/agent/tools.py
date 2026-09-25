@@ -996,7 +996,10 @@ def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]
 
     from aws.agent.escalation_policy import MAX_ACCEPTED_RESPONDERS
 
-    ctx = get_incident_context(incident_id)
+    ctx = _ensure_accepted_responder_count(
+        incident_id,
+        get_incident_context(incident_id),
+    )
     if ctx.get("state") in {
         IncidentState.RESOLVED.value,
         IncidentState.CANCELLED.value,
