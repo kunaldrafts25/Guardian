@@ -79,6 +79,7 @@ from aws.agent.safety_policy import evaluate_safety_policy
 # AWS Services
 from aws.cognito_service import (
     authenticate_with_google,
+    bootstrap_cognito_identity,
     refresh_tokens,
     sign_out,
     update_user_profile,
@@ -245,14 +246,30 @@ def health_check():
 
 
 class GoogleAuthRequest(BaseModel):
+    """Development-only direct Google bootstrap request."""
+
     id_token: str = Field(min_length=1)
+    device_label: str = Field(default="Guardian mobile device", max_length=80)
+    platform: str = Field(default="unknown", max_length=20)
+
+
+class SessionBootstrapRequest(BaseModel):
+    """Create a Guardian device session from Cognito federated tokens."""
+
+    access_token: str = Field(min_length=16)
+    refresh_token: str = Field(min_length=16)
     device_label: str = Field(default="Guardian mobile device", max_length=80)
     platform: str = Field(default="unknown", max_length=20)
 
 
 @app.post("/auth/google")
 def api_google_auth(req: GoogleAuthRequest):
-    """Authenticate via Google ID token, link profile in DynamoDB, and issue session."""
+    """Development-only direct bootstrap; production uses Cognito Google federation."""
+    if not is_dev_mode():
+        raise HTTPException(
+            status_code=410,
+            detail="Direct Google bootstrap is retired; use Cognito managed login.",
+        )
     try:
         result = authenticate_with_google(req.id_token)
         guardian_session = create_session(
@@ -263,10 +280,31 @@ def api_google_auth(req: GoogleAuthRequest):
         )
         result.update(guardian_session)
         return result
-    except ValueError as ve:
-        raise HTTPException(status_code=401, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Google authentication failed: {str(e)}")
+    except ValueError as error:
+        raise HTTPException(status_code=401, detail=str(error))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Google development bootstrap failed")
+
+
+@app.post("/auth/session")
+def api_bootstrap_session(req: SessionBootstrapRequest):
+    """Bind verified Cognito federation to one revocable Guardian device session."""
+    try:
+        identity = bootstrap_cognito_identity(req.access_token)
+        guardian_session = create_session(
+            identity["user_id"],
+            req.refresh_token,
+            req.device_label,
+            req.platform,
+        )
+        return {**identity, **guardian_session}
+    except ValueError as error:
+        raise HTTPException(status_code=401, detail=str(error))
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Guardian session bootstrap is temporarily unavailable",
+        )
 
 
 
