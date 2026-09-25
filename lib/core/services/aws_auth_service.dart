@@ -299,8 +299,11 @@ class AwsAuthService {
       final googleSignIn = customGoogleSignIn ??
           GoogleSignIn(
             scopes: ['email', 'profile'],
-            serverClientId:
-                '530178096868-v6q66826igipjpc2jlq7q95ipfu2bnev.apps.googleusercontent.com',
+            serverClientId: const String.fromEnvironment(
+              'GOOGLE_SERVER_CLIENT_ID',
+              defaultValue:
+                  '530178096868-v6q66826igipjpc2jlq7q95ipfu2bnev.apps.googleusercontent.com',
+            ),
           );
 
       final account = await googleSignIn.signIn();
@@ -619,10 +622,7 @@ class AwsAuthService {
   }
 
   bool _isPublicAuthPath(String path) =>
-      path == '/auth/send-otp' ||
-      path == '/auth/verify-otp' ||
-      path == '/auth/google' ||
-      path == '/auth/refresh';
+      path == '/auth/google' || path == '/auth/refresh';
 
   Future<void> _persistSession(Map<String, dynamic> resp) async {
     _userId = resp['user_id'] as String;
