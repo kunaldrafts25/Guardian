@@ -43,9 +43,6 @@ class PermissionUtils {
       requestAllPermissions() async {
     return await requestMultiplePermissions([
       Permission.location,
-      Permission.locationAlways,
-      Permission.camera,
-      Permission.microphone,
       Permission.notification,
       Permission.sms,
     ]);
