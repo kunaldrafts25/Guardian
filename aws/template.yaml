@@ -202,6 +202,16 @@ Resources:
             - {AttributeName: token_hash, KeyType: HASH}
           Projection: {ProjectionType: ALL}
 
+  AbuseReportsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub guardian-${EnvironmentName}-abuse-reports
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification: {SSEEnabled: true}
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
+      AttributeDefinitions: [{AttributeName: report_id, AttributeType: S}]
+      KeySchema: [{AttributeName: report_id, KeyType: HASH}]
+
   AbuseCountersTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -299,6 +309,7 @@ Resources:
           DYNAMODB_USERS_TABLE: !Ref UsersTable
           DYNAMODB_DEVICE_ENDPOINTS_TABLE: !Ref DeviceEndpointsTable
           DYNAMODB_ABUSE_COUNTERS_TABLE: !Ref AbuseCountersTable
+          DYNAMODB_ABUSE_REPORTS_TABLE: !Ref AbuseReportsTable
           DYNAMODB_SESSIONS_TABLE: !Ref SessionsTable
           DYNAMODB_AGENT_LEDGER_TABLE: !Ref AgentLedgerTable
           DYNAMODB_AGENT_AUTHORIZATIONS_TABLE: !Ref AgentAuthorizationsTable
@@ -316,6 +327,7 @@ Resources:
         - DynamoDBCrudPolicy: {TableName: !Ref UsersTable}
         - DynamoDBCrudPolicy: {TableName: !Ref DeviceEndpointsTable}
         - DynamoDBCrudPolicy: {TableName: !Ref AbuseCountersTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref AbuseReportsTable}
         - DynamoDBCrudPolicy: {TableName: !Ref SessionsTable}
         - Statement:
             - Effect: Allow
@@ -378,6 +390,7 @@ Resources:
           DYNAMODB_USERS_TABLE: !Ref UsersTable
           DYNAMODB_DEVICE_ENDPOINTS_TABLE: !Ref DeviceEndpointsTable
           DYNAMODB_ABUSE_COUNTERS_TABLE: !Ref AbuseCountersTable
+          DYNAMODB_ABUSE_REPORTS_TABLE: !Ref AbuseReportsTable
           DYNAMODB_SESSIONS_TABLE: !Ref SessionsTable
           DYNAMODB_AGENT_LEDGER_TABLE: !Ref AgentLedgerTable
           DYNAMODB_AGENT_AUTHORIZATIONS_TABLE: !Ref AgentAuthorizationsTable
