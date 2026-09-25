@@ -99,7 +99,6 @@ flowchart TB
     SNS --> AwsSms
 
     %% Mapping Wiring
-    UI --> OSM
     UI --> GoogleMaps
     UI --> GuardianMaps
     GuardianMaps --> GoogleWeb
