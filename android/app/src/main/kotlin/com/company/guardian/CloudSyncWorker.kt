@@ -230,16 +230,20 @@ class CloudSyncWorker(
 
         val localDelivery = org.json.JSONArray()
         val acceptedContactIds = event.optJSONArray("accepted_contact_ids")
-        val phoneHashByContact = event.optJSONObject("phone_hash_by_contact")
+        val recipientTokenByContact =
+            event.optJSONObject("sms_recipient_token_by_contact")
+        val legacyPhoneHashByContact = event.optJSONObject("phone_hash_by_contact")
         val sentResults = event.optJSONObject("sms_sent_results")
         if (acceptedContactIds != null) {
             for (index in 0 until acceptedContactIds.length()) {
                 val contactId = acceptedContactIds.optString(index)
-                val phoneHash = phoneHashByContact?.optInt(contactId)
-                val sentState = if (phoneHash != null && phoneHash != 0) {
-                    sentResults?.optJSONObject(phoneHash.toString())?.optString("status")
-                } else {
-                    null
+                val recipientToken =
+                    recipientTokenByContact?.optString(contactId)?.takeIf { it.isNotBlank() }
+                        ?: legacyPhoneHashByContact?.optInt(contactId)
+                            ?.takeIf { it != 0 }
+                            ?.toString()
+                val sentState = recipientToken?.let {
+                    sentResults?.optJSONObject(it)?.optString("status")
                 }
                 localDelivery.put(
                     JSONObject()
