@@ -698,8 +698,9 @@ def update_incident_location(
         if (incoming_cap - now).total_seconds() > 300:
             raise ValueError("Captured timestamp cannot be in the future")
     else:
-        incoming_cap = now
-        location_payload["captured_at"] = now_iso
+        raise ValueError(
+            "captured_at is required for emergency location updates"
+        )
 
     current_loc = incident.get("current_emergency_location") or incident.get("location") or {}
     existing_cap_str = current_loc.get("captured_at")
