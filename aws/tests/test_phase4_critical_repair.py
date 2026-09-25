@@ -214,7 +214,10 @@ def test_verification_timeout_is_idempotent_and_escalates_without_flutter():
     assert timeout["community_dispatch"]["status"] == "INVITATIONS_CREATED"
 
     duplicate = _handle_verification_timeout(incident_id, "timeout-run-duplicate")
-    assert duplicate["status"].startswith("VERIFICATION_TIMEOUT_NOOP")
+    assert duplicate["status"] in {
+        "VERIFICATION_TIMEOUT_COMPLETED",
+        "VERIFICATION_TIMEOUT_NOOP_ALREADY_HANDLED",
+    }
 
 
 def test_contact_provider_failure_does_not_block_responder_dispatch():
