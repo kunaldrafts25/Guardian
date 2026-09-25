@@ -1091,7 +1091,11 @@ def accept_rescue_mission(incident_id: str, responder_id: str) -> Dict[str, Any]
             raise PermissionError("Mission invitation is unavailable or expired")
 
         with _LOCAL_RESPONDER_LOCK:
-            latest = get_incident_context(incident_id)
+            from aws.incident_handler.handler import _LOCAL_INCIDENTS
+
+            latest = _LOCAL_INCIDENTS.get(incident_id)
+            if not latest:
+                raise PermissionError("Incident is unavailable")
             if latest.get("state") in {
                 IncidentState.RESOLVED.value,
                 IncidentState.CANCELLED.value,
@@ -1352,11 +1356,14 @@ def transition_rescue_mission(
                 updated.pop("navigation_grant_expires_at", None)
             _LOCAL_MISSIONS[mission_id] = updated
             if releases_capacity:
-                incident = get_incident_context(incident_id)
-                incident["accepted_responder_count"] = max(
-                    0,
-                    int(incident.get("accepted_responder_count") or 0) - 1,
-                )
+                from aws.incident_handler.handler import _LOCAL_INCIDENTS
+
+                incident = _LOCAL_INCIDENTS.get(incident_id)
+                if incident is not None:
+                    incident["accepted_responder_count"] = max(
+                        0,
+                        int(incident.get("accepted_responder_count") or 0) - 1,
+                    )
 
     if target == "EN_ROUTE":
         update_incident_status(
@@ -1467,8 +1474,10 @@ def cancel_incident_missions(incident_id: str, reason: str) -> int:
                 incident_id,
             )
     elif _dev_mode():
-        incident = get_incident_context(incident_id)
-        if incident:
+        from aws.incident_handler.handler import _LOCAL_INCIDENTS
+
+        incident = _LOCAL_INCIDENTS.get(incident_id)
+        if incident is not None:
             incident["accepted_responder_count"] = 0
     return cancelled
 
