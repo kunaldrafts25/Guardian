@@ -753,9 +753,11 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       _ => nativeSource,
     };
     final locationTimeMs = (event['location_time_ms'] as num?)?.toInt();
+    // Never rejuvenate a cached coordinate by substituting the SOS
+    // occurrence time when Android did not preserve the GPS capture time.
     final capturedAt = locationTimeMs != null && locationTimeMs > 0
         ? DateTime.fromMillisecondsSinceEpoch(locationTimeMs)
-        : occurredAt;
+        : DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
 
     final position = latitude != null && longitude != null
         ? Position(
