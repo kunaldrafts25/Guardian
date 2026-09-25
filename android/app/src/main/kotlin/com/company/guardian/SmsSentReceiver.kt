@@ -12,7 +12,11 @@ class SmsSentReceiver : BroadcastReceiver() {
         if (intent.action != ACTION_SMS_SENT) return
 
         val eventId = intent.getStringExtra(EXTRA_EVENT_ID) ?: return
-        val phoneHash = intent.getIntExtra(EXTRA_PHONE_HASH, 0)
+        val recipientToken = intent.getStringExtra(EXTRA_RECIPIENT_TOKEN)
+            ?: intent.getIntExtra(EXTRA_PHONE_HASH, 0)
+                .takeIf { it != 0 }
+                ?.toString()
+            ?: return
         val partIndex = intent.getIntExtra(EXTRA_PART_INDEX, 0)
         val totalParts = intent.getIntExtra(EXTRA_TOTAL_PARTS, 1).coerceAtLeast(1)
         val success = resultCode == Activity.RESULT_OK
@@ -21,7 +25,7 @@ class SmsSentReceiver : BroadcastReceiver() {
         NativeEmergencyStore.recordSmsPartResult(
             context = context.applicationContext,
             eventId = eventId,
-            phoneHash = phoneHash,
+            recipientToken = recipientToken,
             partIndex = partIndex,
             totalParts = totalParts,
             success = success,
@@ -43,6 +47,8 @@ class SmsSentReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_SMS_SENT = "com.company.guardian.GUARDIAN_SMS_SENT"
         const val EXTRA_EVENT_ID = "event_id"
+        const val EXTRA_RECIPIENT_TOKEN = "recipient_token"
+        // Backward compatibility for PendingIntents created by the previous build.
         const val EXTRA_PHONE_HASH = "phone_hash"
         const val EXTRA_PART_INDEX = "part_index"
         const val EXTRA_TOTAL_PARTS = "total_parts"
