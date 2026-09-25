@@ -66,9 +66,24 @@ def test_inferred_sensor_events_require_verification_but_explicit_panic_is_immed
             risk_level="HIGH",
             incident_state="CLOUD_ACCEPTED",
             is_isolated=False,
+            trigger_origin="DEVICE_REPORTED",
+            trigger_trust_level="UNATTESTED_CLIENT",
         )
         assert policy.decision == "REQUEST_USER_VERIFICATION"
         assert not policy.authorized_actions
+
+        # A client-authored CRITICAL label must not upgrade an un-attested
+        # automatic sensor report directly to community responder dispatch.
+        critical = evaluate_safety_policy(
+            event_type=event_type,
+            risk_level="CRITICAL",
+            incident_state="CLOUD_ACCEPTED",
+            is_isolated=False,
+            trigger_origin="DEVICE_REPORTED",
+            trigger_trust_level="UNATTESTED_CLIENT",
+        )
+        assert critical.decision == "REQUEST_USER_VERIFICATION"
+        assert not critical.authorized_actions
 
     panic = evaluate_safety_policy(
         event_type="ANDROID_POWER_GESTURE",
