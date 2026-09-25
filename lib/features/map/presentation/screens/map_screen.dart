@@ -9,7 +9,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_map/flutter_map.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
 import 'package:latlong2/latlong.dart';
 import 'package:guardian/app/theme/app_theme.dart';
 import 'package:guardian/core/models/safe_zone_model.dart';
@@ -20,7 +20,6 @@ import 'package:guardian/core/services/places_search_service.dart';
 import 'package:guardian/core/providers/settings_provider.dart' as settings;
 import 'package:guardian/app/routes.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:guardian/core/config/map_routing_config.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
@@ -30,12 +29,12 @@ class MapScreen extends ConsumerStatefulWidget {
 }
 
 class _MapScreenState extends ConsumerState<MapScreen> {
-  final MapController _mapController = MapController();
+  gmaps.GoogleMapController? _mapController;
   bool _audioNavEnabled = true;
   bool _showDeviationBanner = false;
 
-  static const LatLng _defaultPosition =
-      LatLng(18.5204, 73.8567); // Default fallback coordinates
+  static const gmaps.LatLng _defaultPosition =
+      gmaps.LatLng(18.5204, 73.8567); // Degraded initial camera only
 
   @override
   Widget build(BuildContext context) {
@@ -44,8 +43,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final modeInfo = getLocationModeInfo(locationMode);
     final safeZoneState = ref.watch(safeZoneProvider);
     final routeState = ref.watch(safeRouteProvider);
-    final routePolylines = ref.watch(routePolylinesProvider);
-    final routeMarkers = ref.watch(routeMarkersProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -55,14 +52,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           locationState.position!.latitude, locationState.position!.longitude);
     }
 
-    // Build safe zone circles
-    final List<CircleMarker> circles = _buildSafeZoneCircles(safeZoneState);
-
-    // Build markers including safe zone centers and route markers
-    final List<Marker> markers = [
-      ..._buildMarkers(locationState, safeZoneState, isDark),
-      ...routeMarkers,
-    ];
+    final circles = _buildSafeZoneCircles(safeZoneState);
+    final markers = _buildMarkers(locationState, safeZoneState, isDark);
+    final routePolylines = _buildRoutePolylines(routeState);
 
     return Scaffold(
       appBar: AppBar(
@@ -71,7 +63,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Safety Map & Safe Routes',
+              'Safety Map & Walking Routes',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.2,
@@ -80,7 +72,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             Text(
               safeZoneState.isInSafeZone
                   ? 'Safe Zone: ${safeZoneState.currentZone?.name ?? "Protected"}'
-                  : 'OpenStreetMap • Offline Cached',
+                  : 'Google Maps • Guardian safety overlays',
               style: theme.textTheme.bodySmall?.copyWith(
                 fontSize: 11,
                 color: isDark
@@ -108,25 +100,33 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       ),
       body: Stack(
         children: [
-          // OpenStreetMap Full Canvas
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: locationState.hasLocation
-                  ? LatLng(locationState.position!.latitude,
-                      locationState.position!.longitude)
+          gmaps.GoogleMap(
+            initialCameraPosition: gmaps.CameraPosition(
+              target: locationState.hasLocation
+                  ? gmaps.LatLng(
+                      locationState.position!.latitude,
+                      locationState.position!.longitude,
+                    )
                   : _defaultPosition,
-              initialZoom: 15,
+              zoom: 15,
             ),
-            children: [
-              TileLayer(
-                urlTemplate: MapRoutingConfig.tilesUrl,
-                userAgentPackageName: 'com.company.guardian',
-              ),
-              CircleLayer(circles: circles),
-              PolylineLayer(polylines: routePolylines),
-              MarkerLayer(markers: markers),
-            ],
+            onMapCreated: (controller) {
+              _mapController = controller;
+              if (locationState.hasLocation) {
+                _updateCameraPosition(
+                  locationState.position!.latitude,
+                  locationState.position!.longitude,
+                );
+              }
+            },
+            myLocationEnabled: locationState.hasLocation,
+            myLocationButtonEnabled: false,
+            compassEnabled: true,
+            mapToolbarEnabled: false,
+            zoomControlsEnabled: false,
+            circles: circles,
+            markers: markers,
+            polylines: routePolylines,
           ),
 
           // Top Header Overlay: Maneuver Card if navigating, or Floating Privacy Pill if idle
@@ -167,10 +167,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     isDark: isDark,
                     onTap: () {
                       if (locationState.hasLocation) {
-                        _mapController.move(
-                          LatLng(locationState.position!.latitude,
-                              locationState.position!.longitude),
-                          16,
+                        _mapController?.animateCamera(
+                          gmaps.CameraUpdate.newLatLngZoom(
+                            gmaps.LatLng(
+                              locationState.position!.latitude,
+                              locationState.position!.longitude,
+                            ),
+                            16,
+                          ),
                         );
                       } else {
                         ref.read(locationProvider.notifier).refreshLocation();
@@ -180,7 +184,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   const SizedBox(height: 10),
                   _buildFloatingMapButton(
                     icon: Icons.directions_walk_rounded,
-                    tooltip: 'Get Safe Walking Route',
+                    tooltip: 'Get Walking Route',
                     isDark: isDark,
                     onTap: () => _showSafeRouteDialog(context),
                   ),
@@ -232,7 +236,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        'Finding safe walking corridor...',
+                        'Finding walking route...',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -668,9 +672,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   void _updateCameraPosition(double lat, double lng) {
-    try {
-      _mapController.move(LatLng(lat, lng), 15);
-    } catch (_) {}
+    _mapController?.animateCamera(
+      gmaps.CameraUpdate.newLatLng(
+        gmaps.LatLng(lat, lng),
+      ),
+    );
   }
 
   void _showModeSelector(BuildContext context, WidgetRef ref) {
