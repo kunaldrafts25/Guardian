@@ -40,7 +40,7 @@ Guardian intentionally does not claim capabilities the operating systems or curr
 - The responder network is not a public marketplace. Responders must be manually reviewed and approved.
 - Bedrock is advisory. It cannot suppress or downgrade deterministic handling of an explicit panic event.
 - A push or SMS submission is not represented as delivered unless real delivery evidence exists. The current Android SMS path proves API/OS submission acceptance, not handset delivery.
-- Voice SOS and screen multi-tap helpers exist in code but are not product-wired/background-qualified features and must not be relied on as active emergency triggers.
+- Voice SOS and UI multi-tap are not active product triggers. The implemented covert Android hardware path is the native screen/power panic gesture.
 - BLE mesh relaying, wearable integration, and fall-detection ML are outside the current product scope.
 
 ## Architecture
@@ -200,8 +200,7 @@ sam build --template-file aws/template.yaml
 
 Current verified baseline:
 
-- 145 Flutter tests passing.
-- 71 backend tests passing (pytest).
+- The complete Flutter and backend automated suites pass in CI.
 - Android signed release APK builds in CI.
 - iOS simulator build passes in CI.
 - SAM template validation and packaging pass in CI.
