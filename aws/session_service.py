@@ -138,12 +138,20 @@ def list_sessions(user_id: str) -> List[Dict[str, Any]]:
         table = _table()
         if table is None:
             raise RuntimeError("Session storage is unavailable")
-        items = table.query(
-            IndexName="UserSessionsIndex",
-            KeyConditionExpression="user_id = :user",
-            ExpressionAttributeValues={":user": user_id},
-            ScanIndexForward=False,
-        ).get("Items", [])
+        items = []
+        request = {
+            "IndexName": "UserSessionsIndex",
+            "KeyConditionExpression": "user_id = :user",
+            "ExpressionAttributeValues": {":user": user_id},
+            "ScanIndexForward": False,
+        }
+        while True:
+            response = table.query(**request)
+            items.extend(response.get("Items", []))
+            last_key = response.get("LastEvaluatedKey")
+            if not last_key:
+                break
+            request["ExclusiveStartKey"] = last_key
     return [
         {
             "session_id": item["session_id"],
