@@ -33,6 +33,7 @@ class OfflineSyncService {
         _connectivity = connectivity;
 
   void startWatching() {
+    unawaited(_db.pruneLocalSafetyData());
     _connectivitySubscription =
         _connectivity.connectivityStream.listen((layer) {
       if (layer.canReachCloud) unawaited(_syncAll());
