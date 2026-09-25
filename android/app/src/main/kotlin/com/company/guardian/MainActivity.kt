@@ -172,17 +172,61 @@ class MainActivity : FlutterActivity() {
                             return@setMethodCallHandler
                         }
 
-                        // Run on background thread — SMS sending can block briefly
+                        val eventId = call.argument<String>("event_id")
+                            ?.takeIf { it.isNotBlank() }
+                            ?: java.util.UUID.randomUUID().toString()
+
+                        // Run on background thread — SmsManager callbacks are asynchronous.
                         Thread {
-                            val results = SmsHelper.sendEmergencySms(this, phones, message)
+                            val results = SmsHelper.sendEmergencySms(
+                                context = this,
+                                eventId = eventId,
+                                phoneNumbers = phones,
+                                message = message,
+                            )
                             val successCount = results.values.count { it }
+
+                            // Give Android's sent PendingIntent a short opportunity to
+                            // report radio/modem acceptance. If it has not arrived yet,
+                            // keep the weaker OS_ACCEPTED state so cloud fallback remains eligible.
+                            val deadline = System.currentTimeMillis() + 1500L
+                            var sentCount = 0
+                            var failedReceiptCount = 0
+                            do {
+                                sentCount = 0
+                                failedReceiptCount = 0
+                                for (phone in phones) {
+                                    val receipt = NativeEmergencyStore.smsSentResult(
+                                        this,
+                                        eventId,
+                                        phone.trim().hashCode(),
+                                    )
+                                    when (receipt?.optString("status")) {
+                                        "SENT" -> sentCount++
+                                        "FAILED" -> failedReceiptCount++
+                                    }
+                                }
+                                if (sentCount + failedReceiptCount >= phones.size) break
+                                Thread.sleep(100)
+                            } while (System.currentTimeMillis() < deadline)
+
+                            val deliveryState = when {
+                                phones.isNotEmpty() && sentCount == phones.size -> "SENT"
+                                successCount == 0 -> "FAILED"
+                                else -> "OS_ACCEPTED"
+                            }
+
                             Handler(Looper.getMainLooper()).post {
-                                result.success(mapOf(
-                                    "sent" to successCount,
-                                    "total" to phones.size,
-                                    "allSuccess" to (successCount == phones.size),
-                                    "deliveryState" to "OS_ACCEPTED"
-                                ))
+                                result.success(
+                                    mapOf(
+                                        "sent" to successCount,
+                                        "radioSent" to sentCount,
+                                        "total" to phones.size,
+                                        "allSuccess" to (successCount == phones.size),
+                                        "deliveryState" to deliveryState,
+                                        "eventId" to eventId,
+                                    ),
+                                )
                             }
                         }.start()
                     }
