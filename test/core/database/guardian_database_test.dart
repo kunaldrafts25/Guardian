@@ -130,6 +130,7 @@ void main() {
     );
     expect(
       await database.getDueOutboxOperations(
+        ownerUserId: 'user-1',
         now: now.add(const Duration(seconds: 5)),
       ),
       hasLength(1),
