@@ -79,8 +79,6 @@ object NativeEmergencyDispatcher {
             if (!operationId.isNullOrBlank()) put("operation_id", operationId)
             put("occurred_at_ms", now)
             put("snapshot_version", snapshot?.optInt("version", 0) ?: 0)
-            put("accepted_phones", JSONArray())
-            put("failed_phones", JSONArray())
             put("accepted_contact_ids", JSONArray())
             put("failed_contact_ids", JSONArray())
             put("phone_hash_by_contact", phoneHashByContact)
@@ -120,13 +118,9 @@ object NativeEmergencyDispatcher {
         NativeEmergencyStore.updateSmsSubmissionResults(
             context,
             eventId,
-            acceptedPhones,
-            failedPhones,
             acceptedContactIds,
             failedContactIds,
         )
-        event.put("accepted_phones", acceptedPhones)
-        event.put("failed_phones", failedPhones)
         event.put("accepted_contact_ids", acceptedContactIds)
         event.put("failed_contact_ids", failedContactIds)
         acknowledgeOnDevice(context, dispatchResults.values.count { it }, phones.size)
