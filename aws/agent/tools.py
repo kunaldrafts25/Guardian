@@ -306,14 +306,30 @@ def notify_trusted_contact(
         else "Current location was unavailable.\n\n"
     )
     
+    verification_status = str(ctx.get("verification_status") or "").upper()
+    event_type = str(ctx.get("event_type") or "UNKNOWN").upper()
+    if verification_status == "TIMED_OUT":
+        reason_line = (
+            "Guardian requested a safety confirmation and did not receive "
+            "a safe response before the deadline."
+        )
+    elif event_type == "MANUAL_SOS":
+        reason_line = "The user deliberately activated Guardian SOS."
+    elif event_type in {"ANDROID_POWER_GESTURE", "MULTI_TAP", "VOICE_SOS"}:
+        reason_line = "Guardian recorded a deliberate device emergency trigger."
+    else:
+        reason_line = (
+            "Guardian recorded a potential emergency condition and escalated "
+            "under the configured safety policy."
+        )
+
     alert_message = (
-        f"🚨 GUARDIAN EMERGENCY ALERT 🚨\n\n"
-        f"User: {ctx.get('user_id')}\n"
+        f"GUARDIAN SAFETY ALERT\n\n"
         f"Incident ID: {incident_id}\n"
-        f"Event: {ctx.get('event_type')}\n"
+        f"Event: {event_type}\n"
         f"Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
         f"{maps_line}"
-        f"The user did not respond to safety verification. Immediate assistance requested."
+        f"{reason_line}"
     )
 
     notified = []
