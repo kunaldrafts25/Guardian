@@ -22,11 +22,11 @@ Guardian is **AWS-first**. Amazon SNS is the server-side push gateway: Android d
 ```text
 Flutter mobile app
   |
-  | HTTPS API calls + Cognito OTP
+  | HTTPS API calls + Cognito access token + Guardian session
   v
 Amazon API Gateway -> AWS Lambda
                          |
-                         +-> Cognito: phone authentication
+                         +-> Cognito: Google federation / token refresh
                          +-> DynamoDB: profiles, incidents, missions, audit data
                          +-> EventBridge: incident events
                          +-> Bedrock: advisory reasoning
@@ -233,9 +233,9 @@ Do this only when building iOS:
 
 Never commit the Apple `.p8` key, certificate, or private signing material.
 
-## 7. Configure AWS SMS and Cognito OTP
+## 7. Configure Cognito Google federation and emergency SMS
 
-Guardian's Cognito custom challenge functions send OTP messages through SNS.
+Guardian production authentication does not use SMS OTP. Cognito federates Google identity using authorization-code + PKCE. AWS SMS remains an independent emergency-contact delivery channel.
 
 In AWS Console:
 
@@ -247,7 +247,7 @@ In AWS Console:
 6. Set an SMS spending limit.
 7. Enable delivery and failure logging.
 
-While in the sandbox, OTP and trusted-contact messages may work only for verified numbers. Request production SMS access before inviting arbitrary users.
+While AWS messaging remains sandboxed/restricted, cloud trusted-contact SMS may work only for approved or verified destinations. This does not block Google/Cognito login. Request production messaging access only for the emergency-contact SMS channel.
 
 For Indian recipients, complete the required DLT entity/template registration and use approved transactional templates. An unregistered sender or template may be rejected by carriers.
 
@@ -515,7 +515,7 @@ Use the Play upload key for Google Play distribution. The temporary CI key is on
 4. Create an **Internal testing** release and upload `build/app/outputs/bundle/release/app-release.aab`.
 5. Add only controlled testers. Install from Play, then repeat the complete staging checklist on a physical Android device, including locked-screen, force-stop/reopen, background location, notification permission, SMS, and token refresh.
 6. Promote the same accepted artifact through any required closed test, then to production. Start with the smallest practical staged rollout rather than 100%.
-7. Watch crash/ANR reports, CloudWatch alarms, failed SNS endpoints, OTP failures, incident creation, and contact-delivery evidence during rollout. Halt the rollout if the safety journey regresses.
+7. Watch crash/ANR reports, CloudWatch alarms, failed SNS endpoints, Cognito/session failures, incident creation, and contact-delivery evidence during rollout. Halt the rollout if the safety journey regresses.
 
 Never upload the CI artifact: its certificate is deliberately ephemeral and is not a distribution identity.
 
@@ -577,7 +577,7 @@ Before App Store submission:
 - Complete App Privacy answers using the actual data collected by this release.
 - Provide location, notification, microphone, speech, and emergency-contact purpose descriptions that match real behavior.
 - Explain background location and emergency use without promising unsupported side-button interception on iOS.
-- Provide a review account or documented OTP review path.
+- Provide a review account or documented federated-login review path. For iOS distribution, confirm the final App Store login configuration satisfies Apple's login-services requirements.
 - Include responder safety, reporting, and contact details in review notes.
 - Publish privacy policy, terms, data-retention policy, and account-deletion instructions at stable HTTPS URLs.
 
@@ -589,7 +589,7 @@ Use two physical Android devices and only controlled test phone numbers.
 
 1. Install the staging APK.
 2. Enter a verified test phone number.
-3. Confirm that Cognito OTP SMS arrives.
+3. Confirm that Google -> Cognito managed login completes and a Guardian device session is issued.
 4. Complete login.
 5. Close and reopen the app.
 6. Confirm that the secure session is restored.
@@ -789,7 +789,7 @@ $env:AWS_PROFILE = "guardian"
 aws sts get-caller-identity
 ```
 
-### SMS OTP does not arrive
+### Google/Cognito sign-in does not complete
 
 Check that:
 
@@ -895,7 +895,7 @@ After deployment:
 - [ ] API endpoint copied
 - [ ] Android App Bundle includes production AWS/Firebase Dart defines and release signing
 - [ ] iOS archive includes production AWS/Firebase Dart defines and App Store signing
-- [ ] Cognito OTP tested
+- [ ] Google/Cognito federated login tested
 - [ ] SNS push tested on physical Android and iOS devices in every app state
 - [ ] Controlled SOS tested
 - [ ] DynamoDB incident persistence verified
