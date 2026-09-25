@@ -81,6 +81,7 @@ from aws.agent.safety_policy import evaluate_safety_policy
 from aws.cognito_service import (
     authenticate_with_google,
     bootstrap_cognito_identity,
+    validate_refresh_token_owner,
     refresh_tokens,
     sign_out,
     update_user_profile,
@@ -299,6 +300,10 @@ def api_bootstrap_session(req: SessionBootstrapRequest):
     """Bind verified Cognito federation to one revocable Guardian device session."""
     try:
         identity = bootstrap_cognito_identity(req.access_token)
+        validate_refresh_token_owner(
+            req.refresh_token,
+            identity["user_id"],
+        )
         guardian_session = create_session(
             identity["user_id"],
             req.refresh_token,
@@ -308,6 +313,11 @@ def api_bootstrap_session(req: SessionBootstrapRequest):
         return {**identity, **guardian_session}
     except ValueError as error:
         raise HTTPException(status_code=401, detail=str(error))
+    except RuntimeError:
+        raise HTTPException(
+            status_code=503,
+            detail="Guardian session bootstrap is temporarily unavailable",
+        )
     except Exception:
         raise HTTPException(
             status_code=503,
