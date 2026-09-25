@@ -2,7 +2,7 @@
  * Guardian 2.0 - Women's Safety App
  * © 2025 All Rights Reserved - Kunal Singh
  * 
- * Map Screen - Location display with privacy modes & Stitch safe navigation HUD
+ * Map Screen - Location display with privacy modes & Stitch route navigation HUD
  */
 
 import 'dart:async';
@@ -470,7 +470,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Off Designated Safe Corridor',
+                  'Off Planned Route',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -478,7 +478,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 ),
                 Text(
-                  'Auto-check in 28s • Deviation logged',
+                  'Guardian detected sustained route deviation',
                   style: TextStyle(
                     fontSize: 11,
                     color: isDark
@@ -1154,7 +1154,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
             const SizedBox(height: 14),
 
-            // Quick destination safe route triggers
+            // Quick destination walking route triggers
             Row(
               children: [
                 Expanded(
@@ -1172,7 +1172,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     icon: Icon(Icons.directions_walk_rounded,
                         size: 18, color: brand),
                     label: Text(
-                      'Safe Route',
+                      'Walking Route',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
@@ -1329,7 +1329,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     };
   }
 
-  /// Show safe route destination picker dialog
+  /// Show walking route destination picker dialog
   void _showSafeRouteDialog(BuildContext context) {
     showModalBottomSheet(
       context: context,
