@@ -1724,19 +1724,12 @@ def process_incident_redispatch_eval(incident_id: str) -> Dict[str, Any]:
         }
 
     now = int(datetime.now(timezone.utc).timestamp())
-    local_simulation = _dev_mode() and not os.environ.get("AWS_EXECUTION_ENV")
     pending_live = [
         mission
         for mission in missions
         if mission.get("status") == "INVITED"
         and int(mission.get("invitation_expires_at", 0)) > now
-        and (
-            mission.get("invitation_delivery_status") == "PROVIDER_ACCEPTED"
-            or (
-                local_simulation
-                and mission.get("invitation_delivery_status") == "DEV_MODE_NOT_SENT"
-            )
-        )
+        and mission.get("invitation_delivery_status") == "PROVIDER_ACCEPTED"
     ]
     if pending_live:
         return {
