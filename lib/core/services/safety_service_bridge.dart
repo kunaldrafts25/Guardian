@@ -352,6 +352,25 @@ class SafetyServiceBridge {
     }
   }
 
+  /// Atomically converge Flutter and AlarmManager check-in expiry onto the
+  /// same Android native operation/event. Returns the canonical native event.
+  static Future<Map<String, dynamic>?> triggerCheckInEmergency(
+    String operationId,
+  ) async {
+    try {
+      final event = await _serviceChannel.invokeMapMethod<String, dynamic>(
+        'triggerCheckInEmergency',
+        {'operationId': operationId},
+      );
+      return event == null ? null : Map<String, dynamic>.from(event);
+    } on MissingPluginException {
+      return null;
+    } catch (error) {
+      Logger.error('Failed to trigger canonical native check-in emergency', error);
+      return null;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getPendingNativeEmergencyEvents() async {
     try {
       final events = await _serviceChannel
