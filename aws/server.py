@@ -106,6 +106,11 @@ from aws.auth_middleware import (
     authenticated_user_id,
     is_dev_mode,
 )
+from aws.google_maps_service import (
+    autocomplete_places,
+    place_details,
+    compute_walking_route,
+)
 
 app = FastAPI(
     title="Guardian AWS Agentic Backend",
@@ -320,6 +325,38 @@ class AssistantRequest(BaseModel):
     incident_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
 
 
+class PlacesAutocompleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=2, max_length=200)
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    radius_meters: float = Field(default=30000, ge=100, le=50000)
+    region_code: str = Field(default="IN", min_length=2, max_length=2)
+    session_token: Optional[str] = Field(default=None, min_length=8, max_length=128)
+
+
+class PlaceDetailsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    place_id: str = Field(min_length=1, max_length=256)
+    session_token: Optional[str] = Field(default=None, min_length=8, max_length=128)
+
+
+class RoutePoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
+class WalkingRouteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    origin: RoutePoint
+    destination: RoutePoint
+
+
 
 @app.post("/auth/refresh")
 def api_refresh_token(req: RefreshTokenRequest):
@@ -364,6 +401,64 @@ def api_revoke_session(session_id: str, request: Request):
         return {"success": True}
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error))
+
+
+@app.post("/maps/places/autocomplete")
+def api_places_autocomplete(req: PlacesAutocompleteRequest, request: Request):
+    """Authenticated Guardian proxy for Google Places Autocomplete (New)."""
+    authenticated_user_id(request)
+    try:
+        if (req.latitude is None) != (req.longitude is None):
+            raise HTTPException(
+                status_code=422,
+                detail="latitude and longitude must be supplied together",
+            )
+        return autocomplete_places(
+            req.query,
+            latitude=req.latitude,
+            longitude=req.longitude,
+            radius_meters=req.radius_meters,
+            region_code=req.region_code,
+            session_token=req.session_token,
+        )
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error))
+
+
+@app.post("/maps/places/details")
+def api_place_details(req: PlaceDetailsRequest, request: Request):
+    """Authenticated Guardian proxy for minimum Google Place Details fields."""
+    authenticated_user_id(request)
+    try:
+        return place_details(
+            req.place_id,
+            session_token=req.session_token,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error))
+
+
+@app.post("/maps/routes/walking")
+def api_walking_route(req: WalkingRouteRequest, request: Request):
+    """Return Google walking geometry only; Guardian does not call it a safe route."""
+    authenticated_user_id(request)
+    try:
+        return compute_walking_route(
+            origin_latitude=req.origin.latitude,
+            origin_longitude=req.origin.longitude,
+            destination_latitude=req.destination.latitude,
+            destination_longitude=req.destination.longitude,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error))
 
 
 @app.post("/assistant/chat")
