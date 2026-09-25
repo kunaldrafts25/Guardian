@@ -27,7 +27,8 @@ class MapRoutingConfig {
 
   static const String defaultUserAgent = String.fromEnvironment(
     'GUARDIAN_MAP_USER_AGENT',
-    defaultValue: 'GuardianSafetyApp/2.0 (safety-support@guardian-safety.app; production-emergency)',
+    defaultValue:
+        'GuardianSafetyApp/2.0 (safety-support@guardian-safety.app; production-emergency)',
   );
 
   // Runtime overrides (e.g. for self-hosted instances in enterprise / testing)
@@ -41,7 +42,8 @@ class MapRoutingConfig {
   static const int maxRetries = 2;
 
   // Rate-limiting compliance: Minimum interval between Nominatim requests (OSM policy: <= 1 req/sec)
-  static DateTime _lastNominatimRequestTime = DateTime.fromMillisecondsSinceEpoch(0);
+  static DateTime _lastNominatimRequestTime =
+      DateTime.fromMillisecondsSinceEpoch(0);
   static const Duration nominatimMinInterval = Duration(milliseconds: 1050);
 
   /// Standard compliant HTTP headers for OpenStreetMap / Nominatim
@@ -84,10 +86,12 @@ class MapRoutingConfig {
       try {
         final response = await action();
         final duration = DateTime.now().difference(start).inMilliseconds;
-        Logger.info('🗺️ [$serviceName] HTTP ${response.statusCode} (${duration}ms)');
+        Logger.info(
+            '🗺️ [$serviceName] HTTP ${response.statusCode} (${duration}ms)');
 
         if (response.statusCode >= 500 && attempts <= retries) {
-          Logger.warning('🗺️ [$serviceName] Server error ${response.statusCode}, retrying attempt $attempts/$retries after ${backoff.inMilliseconds}ms');
+          Logger.warning(
+              '🗺️ [$serviceName] Server error ${response.statusCode}, retrying attempt $attempts/$retries after ${backoff.inMilliseconds}ms');
           await Future.delayed(backoff);
           backoff *= 2;
           continue;
@@ -96,11 +100,14 @@ class MapRoutingConfig {
       } catch (e) {
         final duration = DateTime.now().difference(start).inMilliseconds;
         if (attempts <= retries) {
-          Logger.warning('🗺️ [$serviceName] Request failed (${duration}ms): $e. Retrying attempt $attempts/$retries after ${backoff.inMilliseconds}ms');
+          Logger.warning(
+              '🗺️ [$serviceName] Request failed (${duration}ms): $e. Retrying attempt $attempts/$retries after ${backoff.inMilliseconds}ms');
           await Future.delayed(backoff);
           backoff *= 2;
         } else {
-          Logger.error('🗺️ [$serviceName] All $attempts attempts failed (${duration}ms)', e);
+          Logger.error(
+              '🗺️ [$serviceName] All $attempts attempts failed (${duration}ms)',
+              e);
           rethrow;
         }
       }

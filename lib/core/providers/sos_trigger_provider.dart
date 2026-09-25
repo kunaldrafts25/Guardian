@@ -120,7 +120,7 @@ class SosTriggerNotifier extends StateNotifier<SosTriggerState> {
     };
     _bridge!.onAnomalyDetected = (type, data) {
       Logger.warning('🚨 Anomaly detected: $type, data: $data');
-      
+
       // P0-01: Native now emits trigger_authority=false for onAnomalyDetected to prevent double triggers.
       // Canonical trigger is handled by onSosTrigger.
       final bool hasAuthority = data['trigger_authority'] as bool? ?? true;

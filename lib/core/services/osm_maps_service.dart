@@ -86,8 +86,6 @@ class OsmMapsService {
   static String get _osrmBase => MapRoutingConfig.osrmBaseUrl;
   static const String _overpassBase = 'https://overpass-api.de/api/interpreter';
 
-
-
   // Simple cache to reduce repeated API hits
   static final Map<String, _CacheEntry> _cache = {};
   static const _cacheDuration = Duration(minutes: 20);
@@ -222,13 +220,15 @@ class OsmMapsService {
         }
       }
     } catch (e) {
-      Logger.warning('OSRM routing error: $e. Returning direct geodesic fallback.');
+      Logger.warning(
+          'OSRM routing error: $e. Returning direct geodesic fallback.');
       final distM = distanceBetween(origin, destination);
       return RouteResult(
         points: [origin, destination],
         distanceMeters: distM,
         durationSeconds: ((distM / 80) * 60).round(),
-        summary: '${(distM / 1000).toStringAsFixed(1)} km (direct) — ${((distM / 80)).ceil()} min walk',
+        summary:
+            '${(distM / 1000).toStringAsFixed(1)} km (direct) — ${((distM / 80)).ceil()} min walk',
       );
     }
     return null;

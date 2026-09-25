@@ -223,7 +223,8 @@ class AwsAuthService {
         apiEndpoint: baseUrl,
       );
     } catch (error) {
-      Logger.warning('AwsAuthService: native emergency auth sync failed: $error');
+      Logger.warning(
+          'AwsAuthService: native emergency auth sync failed: $error');
     }
   }
 
@@ -277,7 +278,8 @@ class AwsAuthService {
         await _syncNativeEmergencyAuth();
       }
       _authStateController.add(_currentUser);
-      Logger.info('AwsAuthService: restored user=$_userId (authStatus=$_authStatus)');
+      Logger.info(
+          'AwsAuthService: restored user=$_userId (authStatus=$_authStatus)');
     } catch (e) {
       Logger.warning('AwsAuthService: could not restore session: $e');
     }
@@ -438,7 +440,6 @@ class AwsAuthService {
     await _clearLocalSession();
     _authStateController.add(null);
     Logger.info('AwsAuthService: signed out');
-
   }
 
   Future<List<AuthenticatedSession>> listSessions() async {

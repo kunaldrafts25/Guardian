@@ -23,7 +23,9 @@ void main() {
       expect(location.receivedAt, now);
     });
 
-    test('cached GPS fix older than 30s is STALE and preserves true capture time', () {
+    test(
+        'cached GPS fix older than 30s is STALE and preserves true capture time',
+        () {
       final now = DateTime.now().toUtc();
       // 5 minutes old cached fix
       final capturedAt = now.subtract(const Duration(minutes: 5));
@@ -60,7 +62,8 @@ void main() {
       expect(location.freshness, LocationFreshness.stale);
     });
 
-    test('json serialization preserves captured_at, received_at, and freshness', () {
+    test('json serialization preserves captured_at, received_at, and freshness',
+        () {
       final now = DateTime.now().toUtc();
       final capturedAt = now.subtract(const Duration(seconds: 10));
 
@@ -84,7 +87,8 @@ void main() {
 
       final restored = EmergencyLocation.fromJson(json);
       expect(restored.latitude, 19.0760);
-      expect(restored.capturedAt.toIso8601String(), capturedAt.toIso8601String());
+      expect(
+          restored.capturedAt.toIso8601String(), capturedAt.toIso8601String());
       expect(restored.freshness, LocationFreshness.fresh);
     });
   });

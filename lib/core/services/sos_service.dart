@@ -155,8 +155,12 @@ class SosAlert {
   }
 
   /// Count of contacts with device-accepted dispatches
-  int get contactsDispatchedCount =>
-      contactStatuses.where((c) => c.deliveryState.isLocalOsAccepted || c.smsAcceptedByDevice || c.pushDispatched).length;
+  int get contactsDispatchedCount => contactStatuses
+      .where((c) =>
+          c.deliveryState.isLocalOsAccepted ||
+          c.smsAcceptedByDevice ||
+          c.pushDispatched)
+      .length;
 
   /// Count of successfully notified contacts (deprecated alias)
   @Deprecated('Use contactsDispatchedCount instead')
@@ -398,7 +402,8 @@ class SosService {
       smsAcceptedByDevice: dispatchResult.state.isAcceptedForDispatch,
       deliveryState: dispatchResult.state,
       pushDispatched: false, // FCM requires backend
-      dispatchedAt: dispatchResult.state.isAcceptedForDispatch ? DateTime.now() : null,
+      dispatchedAt:
+          dispatchResult.state.isAcceptedForDispatch ? DateTime.now() : null,
       error: error,
     );
   }

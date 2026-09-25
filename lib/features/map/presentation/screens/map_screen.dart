@@ -343,7 +343,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  routeState.destinationName ?? routeState.currentRoute?.endAddress ?? 'Pedestrian destination',
+                  routeState.destinationName ??
+                      routeState.currentRoute?.endAddress ??
+                      'Pedestrian destination',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(

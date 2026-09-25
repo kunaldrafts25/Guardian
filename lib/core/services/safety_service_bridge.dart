@@ -284,7 +284,9 @@ class SafetyServiceBridge {
 
   static Future<bool> clearEmergencySnapshot() async {
     try {
-      return await _serviceChannel.invokeMethod<bool>('clearEmergencySnapshot') ?? false;
+      return await _serviceChannel
+              .invokeMethod<bool>('clearEmergencySnapshot') ??
+          false;
     } on MissingPluginException {
       return false;
     } catch (error) {

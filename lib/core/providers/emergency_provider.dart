@@ -94,7 +94,8 @@ class EmergencyState {
       activeEmergency: activeEmergency ?? this.activeEmergency,
       countdownSeconds: countdownSeconds ?? this.countdownSeconds,
       errorMessage: errorMessage,
-      dispatchedContacts: dispatchedContacts ?? notifiedContacts ?? this.dispatchedContacts,
+      dispatchedContacts:
+          dispatchedContacts ?? notifiedContacts ?? this.dispatchedContacts,
       currentLocation: currentLocation ?? this.currentLocation,
       sosAlert: sosAlert ?? this.sosAlert,
     );
@@ -215,15 +216,18 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
   }
 
   SosTriggerSource _sourceFromStoredValue(String value) => switch (value) {
-        'ANDROID_POWER_GESTURE' || 'hardware_power_panic' => SosTriggerSource.hardwarePower,
+        'ANDROID_POWER_GESTURE' ||
+        'hardware_power_panic' =>
+          SosTriggerSource.hardwarePower,
         'ANDROID_SHAKE' || 'shake_sos' => SosTriggerSource.shake,
         'ANDROID_FALL' || 'fall_detected' => SosTriggerSource.fall,
         'VOICE_SOS' || 'voice_sos' => SosTriggerSource.voiceCommand,
         'CHECK_IN_EXPIRED' || 'check_in_expired' => SosTriggerSource.scheduled,
         'ROUTE_DEVIATION' ||
-      'route_deviation' ||
-      'ROUTE_DEVIATION_TIMEOUT' ||
-      'ROUTE_DEVIATION_USER_SOS' => SosTriggerSource.routeDeviation,
+        'route_deviation' ||
+        'ROUTE_DEVIATION_TIMEOUT' ||
+        'ROUTE_DEVIATION_USER_SOS' =>
+          SosTriggerSource.routeDeviation,
         'MULTI_TAP' || 'triple_tap' => SosTriggerSource.multiTap,
         _ => SosTriggerSource.button,
       };
@@ -268,9 +272,9 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
         );
         AwsIncidentService.instance
             .updateIncidentLocation(
-              incidentId: cloudId,
-              location: emergencyLocation.toJson(),
-            )
+          incidentId: cloudId,
+          location: emergencyLocation.toJson(),
+        )
             .catchError((e) {
           Logger.warning('Failed to push live emergency location: $e');
           return <String, dynamic>{};
@@ -313,7 +317,8 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
         : null;
     final cloudLocation = emergencyLocation?.toJson();
     if (cloudLocation != null) {
-      cloudLocation['timezone_offset'] = DateTime.now().timeZoneOffset.inSeconds;
+      cloudLocation['timezone_offset'] =
+          DateTime.now().timeZoneOffset.inSeconds;
     }
     final cloudPayload = <String, dynamic>{
       'event_type': eventType,
@@ -375,7 +380,8 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       rethrow;
     }
 
-    state = state.copyWith(lifecycleStage: EmergencyLifecycleStage.cloudDelivering);
+    state =
+        state.copyWith(lifecycleStage: EmergencyLifecycleStage.cloudDelivering);
     try {
       final incident = await AwsIncidentService.instance.createIncident(
         eventId: alert.id,
@@ -393,7 +399,8 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
         cloudIncidentId: cloudIncidentId,
       );
       await database.markOutboxSucceeded('${alert.id}:createIncident');
-      state = state.copyWith(lifecycleStage: EmergencyLifecycleStage.cloudAcknowledged);
+      state = state.copyWith(
+          lifecycleStage: EmergencyLifecycleStage.cloudAcknowledged);
       _ref.read(awsIncidentProvider.notifier).startPolling(cloudIncidentId);
       await _ref.read(awsIncidentProvider.notifier).pollStatus(cloudIncidentId);
       return cloudIncidentId;
@@ -666,7 +673,9 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
     final longitude = (event['longitude'] as num?)?.toDouble();
     final nativeSource = event['source'] as String? ?? 'ANDROID_POWER_GESTURE';
     final triggerSource = switch (nativeSource) {
-      'ANDROID_POWER_GESTURE' || 'hardware_power_panic' => SosTriggerSource.hardwarePower,
+      'ANDROID_POWER_GESTURE' ||
+      'hardware_power_panic' =>
+        SosTriggerSource.hardwarePower,
       'ANDROID_SHAKE' || 'shake_sos' => SosTriggerSource.shake,
       'ANDROID_FALL' || 'fall_detected' => SosTriggerSource.fall,
       'VOICE_SOS' || 'voice_sos' => SosTriggerSource.voiceCommand,
@@ -676,7 +685,9 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
       _ => SosTriggerSource.hardwarePower,
     };
     final eventType = switch (nativeSource) {
-      'ANDROID_POWER_GESTURE' || 'hardware_power_panic' => 'ANDROID_POWER_GESTURE',
+      'ANDROID_POWER_GESTURE' ||
+      'hardware_power_panic' =>
+        'ANDROID_POWER_GESTURE',
       'ANDROID_SHAKE' || 'shake_sos' => 'ANDROID_SHAKE',
       'ANDROID_FALL' || 'fall_detected' => 'ANDROID_FALL',
       'VOICE_SOS' || 'voice_sos' => 'VOICE_SOS',
@@ -703,7 +714,8 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
             speedAccuracy: 0,
             altitudeAccuracy: 0,
             headingAccuracy: 0,
-            timestamp: capturedAt, // P0-03: Use actual GPS capture time, not SOS trigger time
+            timestamp:
+                capturedAt, // P0-03: Use actual GPS capture time, not SOS trigger time
           )
         : null;
     final alert = SosAlert(
@@ -717,7 +729,7 @@ class EmergencyNotifier extends StateNotifier<EmergencyState> {
         final phone = _normalizedPhone(contact.phone);
         final wasAccepted = accepted.contains(phone);
         final wasFailed = failed.contains(phone);
-        
+
         // P2-01: Accurately reconstruct SmsDeliveryState
         return ContactAlertStatus(
           contact: contact,

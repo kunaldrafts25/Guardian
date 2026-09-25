@@ -3,7 +3,9 @@ import 'package:guardian/core/models/sms_delivery_state.dart';
 
 void main() {
   group('SmsDeliveryState Semantics (P0-06)', () {
-    test('composerOpened is NOT considered local OS accepted and must not suppress cloud fallback', () {
+    test(
+        'composerOpened is NOT considered local OS accepted and must not suppress cloud fallback',
+        () {
       const state = SmsDeliveryState.composerOpened;
 
       // Invariant: Opening the iOS SMS composer is NEVER a confirmed dispatch
@@ -23,7 +25,9 @@ void main() {
       expect(state.serialized, 'OS_ACCEPTED');
     });
 
-    test('providerAccepted represents upstream cloud SNS publish without claiming handset delivery', () {
+    test(
+        'providerAccepted represents upstream cloud SNS publish without claiming handset delivery',
+        () {
       const state = SmsDeliveryState.providerAccepted;
 
       expect(state.isLocalOsAccepted, isFalse);
@@ -41,10 +45,14 @@ void main() {
     });
 
     test('parsing from string handles various cases safely', () {
-      expect(SmsDeliveryState.fromString('OS_ACCEPTED'), SmsDeliveryState.osAccepted);
-      expect(SmsDeliveryState.fromString('COMPOSER_OPENED'), SmsDeliveryState.composerOpened);
-      expect(SmsDeliveryState.fromString('provider-accepted'), SmsDeliveryState.providerAccepted);
-      expect(SmsDeliveryState.fromString('unknown_value'), SmsDeliveryState.unknown);
+      expect(SmsDeliveryState.fromString('OS_ACCEPTED'),
+          SmsDeliveryState.osAccepted);
+      expect(SmsDeliveryState.fromString('COMPOSER_OPENED'),
+          SmsDeliveryState.composerOpened);
+      expect(SmsDeliveryState.fromString('provider-accepted'),
+          SmsDeliveryState.providerAccepted);
+      expect(SmsDeliveryState.fromString('unknown_value'),
+          SmsDeliveryState.unknown);
       expect(SmsDeliveryState.fromString(null), SmsDeliveryState.unknown);
     });
   });

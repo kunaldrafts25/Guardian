@@ -262,9 +262,12 @@ class AwsSnsService {
       'responder_invitation' => missionId == null
           ? '/responder/inbox'
           : '/responder/mission/${Uri.encodeComponent(missionId)}',
-      'rescue_accepted' || 'rescue_en_route' || 'rescue_arrived' => incidentId == null
-          ? '/dashboard'
-          : '/incidents/${Uri.encodeComponent(incidentId)}',
+      'rescue_accepted' ||
+      'rescue_en_route' ||
+      'rescue_arrived' =>
+        incidentId == null
+            ? '/dashboard'
+            : '/incidents/${Uri.encodeComponent(incidentId)}',
       'sos_resolved' => incidentId == null
           ? '/dashboard'
           : '/incidents/${Uri.encodeComponent(incidentId)}',

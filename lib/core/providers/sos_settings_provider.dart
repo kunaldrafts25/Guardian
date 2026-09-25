@@ -134,7 +134,8 @@ class SosSettingsNotifier extends StateNotifier<SosSettings> {
       shakeEnabled: enabled,
       fallEnabled: state.fallDetectionEnabled,
     );
-    Logger.info('⚙️ Shake-to-SOS ${enabled ? "enabled" : "disabled"} (synced to native)');
+    Logger.info(
+        '⚙️ Shake-to-SOS ${enabled ? "enabled" : "disabled"} (synced to native)');
   }
 
   /// Toggle fall detection
@@ -145,7 +146,8 @@ class SosSettingsNotifier extends StateNotifier<SosSettings> {
       shakeEnabled: state.shakeToSosEnabled,
       fallEnabled: enabled,
     );
-    Logger.info('⚙️ Fall detection ${enabled ? "enabled" : "disabled"} (synced to native)');
+    Logger.info(
+        '⚙️ Fall detection ${enabled ? "enabled" : "disabled"} (synced to native)');
   }
 
   /// Set countdown duration

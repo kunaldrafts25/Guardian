@@ -90,7 +90,8 @@ class BackendHealthService {
       if (!kIsWeb) {
         final result = await InternetAddress.lookup('dns.google')
             .timeout(const Duration(seconds: 3));
-        internetConnected = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+        internetConnected =
+            result.isNotEmpty && result[0].rawAddress.isNotEmpty;
       } else {
         internetConnected = true;
       }
@@ -102,13 +103,12 @@ class BackendHealthService {
     final baseUrl = authService.baseUrl;
     try {
       final uri = Uri.parse('$baseUrl/health');
-      final response = await http
-          .get(uri)
-          .timeout(const Duration(seconds: 5));
+      final response = await http.get(uri).timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         apiReachable = true;
-        internetConnected = true; // Confirmed internet reachability via working API
+        internetConnected =
+            true; // Confirmed internet reachability via working API
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         apiHealthStatus = data['status']?.toString() ?? 'healthy';
         if (data['checks'] is Map<String, dynamic>) {

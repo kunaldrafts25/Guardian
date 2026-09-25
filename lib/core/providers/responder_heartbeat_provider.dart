@@ -81,17 +81,22 @@ class ResponderHeartbeatNotifier
       accuracy: LocationAccuracy.medium,
       distanceFilter: 500,
     );
-    
-    _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) {
-      _service.sendHeartbeat(
+
+    _positionStream =
+        Geolocator.getPositionStream(locationSettings: locationSettings)
+            .listen((Position position) {
+      _service
+          .sendHeartbeat(
         latitude: position.latitude,
         longitude: position.longitude,
         isActive: true,
-      ).then((_) {
+      )
+          .then((_) {
         if (mounted) {
           state = state.copyWith(
             lastHeartbeatSentAt: DateTime.now(),
-            availabilityExpiresAt: DateTime.now().add(const Duration(minutes: 30)),
+            availabilityExpiresAt:
+                DateTime.now().add(const Duration(minutes: 30)),
           );
         }
       });

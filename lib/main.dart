@@ -114,7 +114,8 @@ void main() async {
 void _checkBackendConnectivity() async {
   try {
     final state = await BackendHealthService.instance.checkHealth();
-    Logger.info('Backend connectivity: status=${state.status.name} reachability=${state.apiReachable}');
+    Logger.info(
+        'Backend connectivity: status=${state.status.name} reachability=${state.apiReachable}');
   } catch (e) {
     Logger.warning('Backend connectivity check failed: $e');
   }
