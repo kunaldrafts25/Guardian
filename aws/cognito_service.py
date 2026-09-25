@@ -128,17 +128,31 @@ def authenticate_with_google(id_token_str: str) -> Dict[str, Any]:
     if id_token_str.startswith("dev_google_") or id_token_str.startswith("mock_google_"):
         parts = id_token_str.split("_")
         suffix = parts[-1] if len(parts) > 2 else "user1"
-        user_id = f"dev_{suffix}"
+        user_id = f"google_dev_{suffix}"
         email = f"{suffix}@gmail.com"
         name = f"Guardian User ({suffix})"
         picture = ""
     else:
-        id_info = _verify_google_payload(id_token_str)
+        try:
+            id_info = _verify_google_payload(id_token_str)
+        except ValueError as error:
+            raise ValueError("Invalid Google ID token") from error
+
+        if id_info.get("iss") not in {
+            "accounts.google.com",
+            "https://accounts.google.com",
+        }:
+            raise ValueError("Invalid Google token issuer")
+        if id_info.get("aud") != GOOGLE_CLIENT_ID:
+            raise ValueError("Invalid Google token audience")
+        if id_info.get("email_verified") is not True:
+            raise ValueError("Google account email must be verified")
+
         sub = str(id_info.get("sub") or "").strip()
         email = str(id_info.get("email") or "").strip()
         if not sub or not email:
             raise ValueError("Google token is missing required identity claims")
-        user_id = f"dev_google_{sub}"
+        user_id = f"google_{sub}"
         name = str(id_info.get("name") or "")
         picture = str(id_info.get("picture") or "")
 
