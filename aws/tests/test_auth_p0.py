@@ -144,11 +144,11 @@ def test_protected_endpoint_rejects_other_users_session(monkeypatch):
 
 
 def test_public_bootstrap_endpoints_allow_unauthenticated():
-    """Verify that public endpoints do not require session or bearer tokens."""
+    """Google remains public while retired phone-OTP routes are absent."""
     unauthed = TestClient(app)
     assert unauthed.get("/").status_code == 200
-    assert unauthed.post("/auth/send-otp", json={"phone_number": "+919999999999"}).status_code == 404
-    assert unauthed.post(
-        "/auth/verify-otp",
-        json={"phone_number": "+919999999999", "otp_code": "123456", "session": "x"},
-    ).status_code == 404
+    paths = app.openapi()["paths"]
+    assert "/auth/google" in paths
+    assert "/auth/refresh" in paths
+    assert "/auth/send-otp" not in paths
+    assert "/auth/verify-otp" not in paths
