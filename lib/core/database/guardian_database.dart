@@ -838,7 +838,6 @@ class GuardianDatabase extends _$GuardianDatabase {
           .go();
     });
   }
-
 }
 
 // ═══════════════════════════════════════════════════════
