@@ -12,11 +12,12 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from aws.runtime_mode import is_local_dev_mode
 from aws.session_service import validate_access_session
 
 
 def _dev_mode_enabled() -> bool:
-    return os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    return is_local_dev_mode()
 
 
 def is_dev_mode() -> bool:

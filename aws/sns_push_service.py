@@ -21,6 +21,7 @@ import hashlib
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 
+from aws.runtime_mode import is_local_dev_mode
 from aws.session_service import validate_access_session
 
 try:
@@ -43,13 +44,13 @@ DYNAMODB_DEVICE_ENDPOINTS_TABLE = os.environ.get(
 
 
 def _sns_client():
-    if not BOTO3_AVAILABLE:
+    if not BOTO3_AVAILABLE or is_local_dev_mode():
         return None
     return boto3.client("sns", region_name=AWS_REGION)
 
 
 def _dynamo():
-    if not BOTO3_AVAILABLE:
+    if not BOTO3_AVAILABLE or is_local_dev_mode():
         return None
     return boto3.resource("dynamodb", region_name=AWS_REGION)
 

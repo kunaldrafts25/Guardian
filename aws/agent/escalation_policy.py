@@ -7,7 +7,7 @@ candidate caps, quorum requirements, redispatch conditions, and multi-responder 
 """
 
 from dataclasses import dataclass
-from typing import Dict, Any, List, Optional
+from typing import List
 import os
 
 

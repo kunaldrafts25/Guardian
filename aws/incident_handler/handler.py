@@ -24,6 +24,7 @@ try:
 except ImportError:
     BOTO3_AVAILABLE = False
 
+from aws.runtime_mode import is_local_dev_mode
 from aws.incident_handler.state_machine import IncidentState, can_transition
 from aws.agent.risk_engine import assess_incident_risk
 
@@ -49,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 
 def _local_store_enabled() -> bool:
-    return os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    return is_local_dev_mode()
 
 
 def _require_local_store() -> None:

@@ -9,10 +9,18 @@ ever blocking an SOS.
 import json
 import logging
 import os
+import pathlib
+import sys
+import types
 from datetime import datetime, timezone
 from typing import Any, Dict
 
 import boto3
+
+if "aws" not in sys.modules:
+    _pkg = types.ModuleType("aws")
+    _pkg.__path__ = [str(pathlib.Path(__file__).resolve().parent)]
+    sys.modules["aws"] = _pkg
 
 from aws.incident_handler.handler import (
     DYNAMODB_INCIDENTS_TABLE,

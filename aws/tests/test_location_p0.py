@@ -5,7 +5,7 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from fastapi.testclient import TestClient
 from aws.server import app
-from aws.incident_handler.handler import create_incident, update_incident_location, get_incident, update_incident_status
+from aws.incident_handler.handler import create_incident, get_incident, update_incident_status
 from aws.incident_handler.state_machine import IncidentState
 from aws.session_service import create_session
 from aws.agent.tools import accept_rescue_mission

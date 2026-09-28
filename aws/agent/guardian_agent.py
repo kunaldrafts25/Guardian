@@ -33,6 +33,7 @@ if "aws" not in sys.modules:
     _pkg.__path__ = [str(_base_dir)]
     sys.modules["aws"] = _pkg
 
+from aws.runtime_mode import is_local_dev_mode
 from aws.agent.tools import (
     get_incident_context,
     assess_risk,
@@ -49,7 +50,6 @@ from aws.incident_handler.handler import (
     acquire_agent_lease,
     finish_agent_run,
     append_incident_event,
-    update_incident_status,
     IncidentState,
     DYNAMODB_INCIDENTS_TABLE,
     AWS_REGION,
@@ -66,7 +66,7 @@ logger = logging.getLogger("guardian_agent")
 
 try:
     import boto3
-    from botocore.exceptions import BotoCoreError, ClientError
+    from botocore.exceptions import ClientError
     from botocore.config import Config
     BOTO3_AVAILABLE = True
 except ImportError:
@@ -748,7 +748,7 @@ def _claim_verification_timeout(
                 return "BUSY"
             return "NOOP"
 
-    if os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true":
+    if is_local_dev_mode():
         status = str(incident.get("verification_status") or "")
         if status == "PROCESSING":
             if int(incident.get("verification_lease_expires_at") or 0) >= now_epoch:

@@ -50,7 +50,7 @@ try:
 except ImportError:
     pass
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -66,7 +66,6 @@ from aws.incident_handler.handler import (
     get_incident,
     get_incident_timeline,
     get_dynamo_resource,
-    IncidentState,
     DYNAMODB_INCIDENTS_TABLE,
 )
 from aws.agent.guardian_agent import (
@@ -875,7 +874,7 @@ def api_accept_mission(
         # Notify victim that help is coming via push/SMS
         incident = get_incident(incident_id)
         if incident:
-            background_push = send_push_to_user(
+            send_push_to_user(
                 user_id=incident.get("user_id", ""),
                 title="✅ Helper Accepted Alert",
                 body="A verified Guardian helper accepted your request. Awaiting route departure.",
@@ -1219,7 +1218,7 @@ def api_get_escalation_status(incident_id: str, request: Request):
 
 @app.post("/incidents/{incident_id}/agent-step")
 def api_trigger_agent_step(incident_id: str, request: Request):
-    incident = _owned_incident(incident_id, request)
+    _owned_incident(incident_id, request)
     res = execute_agent_reasoning(
         incident_id,
         correlation_id=request.state.correlation_id,

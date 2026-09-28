@@ -80,8 +80,8 @@ class QuickActionsScreen extends ConsumerWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: state.isOverdue
-            ? AppColors.error.withOpacity(0.1)
-            : AppColors.primary.withOpacity(0.1),
+            ? AppColors.error.withValues(alpha: 0.1)
+            : AppColors.primary.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: state.isOverdue ? AppColors.error : AppColors.primary,
@@ -242,7 +242,7 @@ class QuickActionsScreen extends ConsumerWidget {
           onChanged: (value) => ref
               .read(sosSettingsProvider.notifier)
               .setShakeToSosEnabled(value),
-          activeColor: AppColors.primary,
+          activeThumbColor: AppColors.primary,
         ),
       ),
     );

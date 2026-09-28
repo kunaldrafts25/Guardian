@@ -17,11 +17,6 @@ const _locationModeKey = 'location_mode';
 
 // LocationMode is imported from user_model.dart
 
-/// Shared preferences provider
-final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
-  throw UnimplementedError('Initialize in main.dart');
-});
-
 /// Theme mode state
 final themeModeProvider =
     StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {

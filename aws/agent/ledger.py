@@ -5,6 +5,8 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
+from aws.runtime_mode import is_local_dev_mode
+
 try:
     import boto3
 except ImportError:  # pragma: no cover
@@ -20,7 +22,7 @@ _LOCAL_LEDGER: Dict[str, List[Dict[str, Any]]] = {}
 
 
 def _dev_mode() -> bool:
-    return os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    return is_local_dev_mode()
 
 
 def _table():

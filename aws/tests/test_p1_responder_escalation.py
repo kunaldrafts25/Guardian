@@ -20,16 +20,10 @@ import time
 from datetime import datetime, timezone
 
 from aws.agent import tools
-from aws.agent.escalation_policy import (
-    get_escalation_stage,
-    is_max_stage,
-    MAX_ACCEPTED_RESPONDERS,
-)
 from aws.incident_handler.handler import (
     create_incident,
     update_incident_status,
     get_incident,
-    get_incident_timeline,
     IncidentState,
     _LOCAL_INCIDENTS,
 )

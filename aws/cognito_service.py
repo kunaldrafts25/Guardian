@@ -10,9 +10,11 @@ import uuid
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 
+from aws.runtime_mode import is_local_dev_mode
+
 try:
     import boto3
-    from botocore.exceptions import ClientError, BotoCoreError
+    from botocore.exceptions import ClientError
     BOTO3_AVAILABLE = True
 except ImportError:
     BOTO3_AVAILABLE = False
@@ -38,7 +40,7 @@ def _cognito_client():
 
 
 def _dynamo_resource():
-    if not BOTO3_AVAILABLE:
+    if not BOTO3_AVAILABLE or is_local_dev_mode():
         return None
     return boto3.resource("dynamodb", region_name=AWS_REGION)
 
@@ -49,7 +51,7 @@ def _dynamo_resource():
 
 def refresh_tokens(refresh_token: str, user_id: Optional[str] = None) -> Dict[str, Any]:
     """Refresh expired access/id tokens using the refresh token."""
-    is_dev = os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    is_dev = is_local_dev_mode()
     if refresh_token.startswith("google_refresh_token_") or (user_id and user_id.startswith("google_")):
         if not is_dev:
             raise ValueError("Development tokens cannot be refreshed in production.")
@@ -92,7 +94,7 @@ def validate_refresh_token_owner(
     if not refresh_token or not expected_user_id:
         raise ValueError("Refresh token and expected user are required")
 
-    is_dev = os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    is_dev = is_local_dev_mode()
     if is_dev:
         if refresh_token.startswith("google_refresh_token_"):
             return
@@ -164,7 +166,7 @@ def authenticate_with_google(id_token_str: str) -> Dict[str, Any]:
     local tests deterministic without retaining a password-minting production
     backdoor.
     """
-    is_dev = os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    is_dev = is_local_dev_mode()
     if not is_dev:
         raise ValueError(
             "Direct Google token bootstrap is disabled in production; "
@@ -233,7 +235,7 @@ def bootstrap_cognito_identity(access_token: str) -> Dict[str, Any]:
     if not access_token:
         raise ValueError("Cognito access token is required")
 
-    is_dev = os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    is_dev = is_local_dev_mode()
     if is_dev and access_token.startswith("dev_access_token_"):
         user_id = access_token.removeprefix("dev_access_token_")
         if not user_id:

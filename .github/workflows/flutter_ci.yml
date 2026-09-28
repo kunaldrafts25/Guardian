@@ -84,7 +84,10 @@ jobs:
       - name: Run backend tests
         env:
           GUARDIAN_DEV_MODE: 'true'
-        run: python -m pytest aws/tests --quiet
+        run: python -m pytest aws/tests aws/agent/tests --quiet
+
+      - name: Check backend imports and names
+        run: python -m ruff check aws --select F
 
       - name: Setup AWS SAM CLI
         uses: aws-actions/setup-sam@v2
@@ -94,6 +97,13 @@ jobs:
         run: |
           sam validate --lint --template-file template.yaml
           sam build --template-file template.yaml
+
+      - name: Verify packaged Lambda handler imports
+        working-directory: aws
+        run: |
+          python -I -c "import sys; from pathlib import Path; sys.path.insert(0, str(Path('.aws-sam/build/GuardianApiFunction').resolve())); import lambda_handler; assert callable(lambda_handler.handler)"
+          python -I -c "import sys; from pathlib import Path; sys.path.insert(0, str(Path('.aws-sam/build/GuardianAgentFunction').resolve())); from agent.guardian_agent import lambda_handler; assert callable(lambda_handler)"
+          python -I -c "import sys; from pathlib import Path; sys.path.insert(0, str(Path('.aws-sam/build/GuardianWorkflowReconcilerFunction').resolve())); import workflow_reconciler; assert callable(workflow_reconciler.handler)"
 
   build-android:
     runs-on: ubuntu-24.04

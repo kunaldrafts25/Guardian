@@ -165,3 +165,44 @@ Phase 5 code completion does not remove these deployment gates:
 ## Production-readiness interpretation
 
 Phase 5 is a **pre-production code hardening** milestone. A green final CI run means the repository passes its automated code/build gates. Production safety readiness additionally requires the staging and physical-device validation listed above.
+
+## Local final code pass — 2026-09-28
+
+The final code pass was performed on a local branch based on Phase 5 commit
+`02e23a9`. It also carries fixes for local development AWS isolation, stale
+generated plugin registrants, release-signing enforcement, and unused code.
+
+- Backend: 87 tests passed; Ruff `F` checks passed.
+- Mobile: 144 Flutter tests passed; CI Dart formatting gate passed.
+- Drift: code generation completed with no content change to the tracked database output.
+- AWS: SAM template lint and SAM build passed.
+- Android: debug APK built. A 65.8 MB release APK built with a temporary audit
+  certificate and passed APK Signature Scheme v2 verification. The audit APK
+  and certificate were removed after verification. A release task without
+  signing credentials failed as required.
+- Flutter analysis: CI's `--no-fatal-infos` gate passed with one informational
+  deprecation in the optional Drift web adapter.
+
+A distribution-signed release, iOS simulator build, deployed staging workflow,
+and physical-device safety journey were not executed in this local pass. They
+remain the release gates listed above.
+
+## Deep cleanup — 2026-09-29
+
+The final dependency and import audit removed nine unused direct Dart packages,
+their unused transitive packages, and disconnected source files for legacy
+onboarding, localization, notifications, risk display, AI and service wrappers.
+Placeholder image, animation, and model assets and translations that the app
+never loads were also removed from the bundle. Native SQLite libraries and the
+explicit iOS permission-handler version remain because they are platform
+dependencies. The active app import graph now has no unreferenced Dart source
+apart from the native/web database implementations selected by conditional
+imports.
+
+After cleanup, 142 Flutter tests and 88 backend tests pass, Dart formatting
+passes, Flutter analysis passes the CI gate, SAM lint passes, and a fresh
+Android debug APK builds. A regression test verifies development authentication
+cannot activate in an AWS runtime even if its environment flag is set. The
+SAM build now also verifies the reconciler Lambda handler imports from its
+packaged artifact; that import previously failed in the flat Lambda layout.
+The optional Drift web adapter still produces one deprecation info.

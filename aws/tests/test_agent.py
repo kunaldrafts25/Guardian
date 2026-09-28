@@ -4,7 +4,7 @@ Unit tests for Guardian Autonomous Agent and Tools
 
 import pytest
 from unittest.mock import patch
-from aws.incident_handler.handler import create_incident, IncidentState
+from aws.incident_handler.handler import create_incident
 from aws.agent.tools import (
     get_incident_context,
     assess_risk,

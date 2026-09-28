@@ -26,8 +26,10 @@ SESSION_LIFETIME_DAYS = 30
 _LOCAL_SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 
+from aws.runtime_mode import is_local_dev_mode
+
 def _dev_mode() -> bool:
-    return os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    return is_local_dev_mode()
 
 
 def _table():

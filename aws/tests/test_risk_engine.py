@@ -7,7 +7,6 @@ import pytest
 from aws.agent.risk_engine import (
     calculate_time_risk,
     calculate_movement_risk,
-    calculate_location_risk,
     assess_incident_risk,
 )
 

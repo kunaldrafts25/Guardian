@@ -13,11 +13,11 @@ import hashlib
 import hmac
 import logging
 import secrets
-import uuid
 import threading
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone, timedelta
 
+from aws.runtime_mode import is_local_dev_mode
 from aws.incident_handler.handler import (
     append_incident_event,
     get_incident,
@@ -47,7 +47,7 @@ _LOCAL_RESPONDER_LOCK = threading.RLock()
 
 
 def _dev_mode() -> bool:
-    return os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    return is_local_dev_mode()
 
 
 def _query_all(table, **kwargs) -> List[Dict[str, Any]]:
@@ -291,7 +291,7 @@ def notify_trusted_contact(
     
     targets = [c for c in contacts if c.get("id") == contact_id] if contact_id else contacts
     if not targets:
-        raise PermissionError(f"No authorized contacts found for dispatch.")
+        raise PermissionError("No authorized contacts found for dispatch.")
 
     location = ctx.get("location") or {}
     lat = location.get("latitude")
@@ -299,7 +299,7 @@ def notify_trusted_contact(
     captured_at = location.get("captured_at")
     maps_line = (
         (
-            f"Latest recorded location"
+            "Latest recorded location"
             f"{f' at {captured_at}' if captured_at else ''}: "
             f"https://maps.google.com/?q={lat},{lng}\n\n"
         )
@@ -727,8 +727,6 @@ def find_nearby_responders(incident_id: str, radius_meters: float = 1200.0) -> L
         lng2 = resp.get("longitude", 0.0)
 
         # Distance calculation in meters
-        d_lat = (lat1 - lat2) * 111320
-        d_lng = (lng1 - lng2) * 111320 * math.cos(math.radians(lat1))
         distance = _haversine_meters(float(lat1), float(lng1), float(lat2), float(lng2))
 
         if distance <= radius_meters:

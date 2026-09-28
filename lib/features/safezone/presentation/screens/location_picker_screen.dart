@@ -257,14 +257,14 @@ class _LocationPickerScreenState extends ConsumerState<LocationPickerScreen> {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
+                            const Row(
                               children: [
                                 Icon(
                                   Icons.location_on,
                                   color: AppColors.primary,
                                 ),
-                                const SizedBox(width: 8),
-                                const Text(
+                                SizedBox(width: 8),
+                                Text(
                                   'Selected Location',
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,

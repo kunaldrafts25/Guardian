@@ -79,12 +79,10 @@ def _response_json(response: requests.Response, *, service: str) -> Dict[str, An
 
     if response.status_code >= 400:
         status = ""
-        message = ""
         if isinstance(payload, dict):
             error = payload.get("error")
             if isinstance(error, dict):
                 status = str(error.get("status") or "")
-                message = str(error.get("message") or "")
         logger.warning(
             "%s request failed with HTTP %s%s",
             service,

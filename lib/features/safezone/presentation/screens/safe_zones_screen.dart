@@ -39,8 +39,8 @@ class SafeZonesScreen extends ConsumerWidget {
           Container(
             padding: const EdgeInsets.all(16),
             color: isInSafeZone
-                ? AppColors.success.withOpacity(0.1)
-                : AppColors.warning.withOpacity(0.1),
+                ? AppColors.success.withValues(alpha: 0.1)
+                : AppColors.warning.withValues(alpha: 0.1),
             child: Row(
               children: [
                 Icon(
@@ -157,8 +157,8 @@ class SafeZonesScreen extends ConsumerWidget {
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: zone.isActive
-              ? AppColors.success.withOpacity(0.2)
-              : Colors.grey.withOpacity(0.2),
+              ? AppColors.success.withValues(alpha: 0.2)
+              : Colors.grey.withValues(alpha: 0.2),
           child: Icon(
             _getZoneIcon(zone.type),
             color: zone.isActive ? AppColors.success : Colors.grey,
@@ -171,7 +171,7 @@ class SafeZonesScreen extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.grey.withOpacity(0.2),
+                color: Colors.grey.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
@@ -184,7 +184,8 @@ class SafeZonesScreen extends ConsumerWidget {
         subtitle: Row(
           children: [
             if (zone.notifyOnExit) ...[
-              Icon(Icons.notifications_active, size: 12, color: Colors.grey),
+              const Icon(Icons.notifications_active,
+                  size: 12, color: Colors.grey),
               const SizedBox(width: 4),
               const Text('Exit alerts', style: TextStyle(fontSize: 11)),
               const SizedBox(width: 8),
@@ -196,7 +197,7 @@ class SafeZonesScreen extends ConsumerWidget {
           onChanged: (value) {
             ref.read(safeZoneProvider.notifier).toggleZone(zone.id);
           },
-          activeColor: AppColors.success,
+          activeThumbColor: AppColors.success,
         ),
         onTap: () => _showEditZoneDialog(context, ref, zone),
         onLongPress: () => _showDeleteConfirmation(context, ref, zone),
@@ -250,7 +251,7 @@ class SafeZonesScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<SafeZoneType>(
-                  value: type,
+                  initialValue: type,
                   decoration: const InputDecoration(
                     labelText: 'Type',
                     prefixIcon: Icon(Icons.category),
@@ -440,7 +441,7 @@ class SafeZonesScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<SafeZoneType>(
-                  value: type,
+                  initialValue: type,
                   decoration: const InputDecoration(
                     labelText: 'Type',
                     prefixIcon: Icon(Icons.category),

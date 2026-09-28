@@ -3,7 +3,6 @@ Unit & Integration tests for Google Authentication in Guardian Backend
 """
 
 import os
-import pytest
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 

@@ -2,13 +2,28 @@
 Tests for P0-01 (Development Authentication Bypass) and P0-02 (Session Enforcement).
 """
 
-import os
-import pytest
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 from aws.server import app
 from aws.auth_middleware import _gateway_identity
 from aws.session_service import create_session, revoke_session
+from aws.runtime_mode import is_local_dev_mode
+
+
+def test_dev_mode_cannot_activate_in_aws_runtime(monkeypatch):
+    monkeypatch.setenv("GUARDIAN_DEV_MODE", "true")
+    monkeypatch.setenv("AWS_EXECUTION_ENV", "AWS_Lambda_python3.13")
+    monkeypatch.delenv("COGNITO_USER_POOL_ID", raising=False)
+    assert not is_local_dev_mode()
+
+    client = TestClient(
+        app,
+        headers={
+            "Authorization": "Bearer dev_access_token_test_user",
+            "X-Guardian-Session-ID": "dev-session",
+        },
+    )
+    assert client.get("/users/test_user").status_code == 401
 
 
 def test_dev_token_rejected_when_dev_mode_disabled(monkeypatch):
