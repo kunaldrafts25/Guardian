@@ -32,64 +32,60 @@ class SettingsScreen extends ConsumerWidget {
       body: ListView(
         children: [
           // Location Mode Section
-          _SectionHeader(title: 'Privacy & Location'),
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Column(
-              children: [
-                ListTile(
-                  leading: Icon(Icons.location_off,
-                      color: locationMode == LocationMode.ghost
-                          ? AppColors.primary
-                          : Colors.grey),
-                  title: const Text('Ghost Mode'),
-                  subtitle: const Text('Location only during SOS'),
-                  trailing: Radio<LocationMode>(
-                    value: LocationMode.ghost,
-                    groupValue: locationMode,
-                    onChanged: (value) => ref
-                        .read(locationModeProvider.notifier)
-                        .setLocationMode(value!),
+          const _SectionHeader(title: 'Privacy & Location'),
+          RadioGroup<LocationMode>(
+            groupValue: locationMode,
+            onChanged: (value) {
+              if (value != null) {
+                ref.read(locationModeProvider.notifier).setLocationMode(value);
+              }
+            },
+            child: Card(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: Icon(Icons.location_off,
+                        color: locationMode == LocationMode.ghost
+                            ? AppColors.primary
+                            : Colors.grey),
+                    title: const Text('Ghost Mode'),
+                    subtitle: const Text('Location only during SOS'),
+                    trailing: const Radio<LocationMode>(
+                      value: LocationMode.ghost,
+                    ),
                   ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: Icon(Icons.smart_toy,
-                      color: locationMode == LocationMode.smart
-                          ? AppColors.primary
-                          : Colors.grey),
-                  title: const Text('Smart Mode'),
-                  subtitle: const Text('Auto-activate at night'),
-                  trailing: Radio<LocationMode>(
-                    value: LocationMode.smart,
-                    groupValue: locationMode,
-                    onChanged: (value) => ref
-                        .read(locationModeProvider.notifier)
-                        .setLocationMode(value!),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Icon(Icons.smart_toy,
+                        color: locationMode == LocationMode.smart
+                            ? AppColors.primary
+                            : Colors.grey),
+                    title: const Text('Smart Mode'),
+                    subtitle: const Text('Auto-activate at night'),
+                    trailing: const Radio<LocationMode>(
+                      value: LocationMode.smart,
+                    ),
                   ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: Icon(Icons.shield,
-                      color: locationMode == LocationMode.guardian
-                          ? AppColors.primary
-                          : Colors.grey),
-                  title: const Text('Guardian Mode'),
-                  subtitle: const Text('Always on (higher battery use)'),
-                  trailing: Radio<LocationMode>(
-                    value: LocationMode.guardian,
-                    groupValue: locationMode,
-                    onChanged: (value) => ref
-                        .read(locationModeProvider.notifier)
-                        .setLocationMode(value!),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Icon(Icons.shield,
+                        color: locationMode == LocationMode.guardian
+                            ? AppColors.primary
+                            : Colors.grey),
+                    title: const Text('Guardian Mode'),
+                    subtitle: const Text('Always on (higher battery use)'),
+                    trailing: const Radio<LocationMode>(
+                      value: LocationMode.guardian,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
 
           // Appearance Section
-          _SectionHeader(title: 'Appearance'),
+          const _SectionHeader(title: 'Appearance'),
           Card(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Column(
@@ -106,7 +102,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
 
           // Safety Section
-          _SectionHeader(title: 'Safety'),
+          const _SectionHeader(title: 'Safety'),
           Card(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Column(
@@ -150,7 +146,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
 
           // Account Section
-          _SectionHeader(title: 'Account'),
+          const _SectionHeader(title: 'Account'),
           Card(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Column(
@@ -201,8 +197,8 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading: Icon(Icons.logout, color: AppColors.error),
-                  title: Text('Sign Out',
+                  leading: const Icon(Icons.logout, color: AppColors.error),
+                  title: const Text('Sign Out',
                       style: TextStyle(color: AppColors.error)),
                   onTap: () async {
                     final confirmed = await _confirmSignOut(context);
@@ -288,19 +284,23 @@ class SettingsScreen extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Choose Theme'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: ThemeMode.values.map((mode) {
-            return RadioListTile<ThemeMode>(
-              title: Text(_getThemeName(mode)),
-              value: mode,
-              groupValue: currentMode,
-              onChanged: (value) {
-                ref.read(themeModeProvider.notifier).setThemeMode(value!);
-                Navigator.pop(context);
-              },
-            );
-          }).toList(),
+        content: RadioGroup<ThemeMode>(
+          groupValue: currentMode,
+          onChanged: (value) {
+            if (value != null) {
+              ref.read(themeModeProvider.notifier).setThemeMode(value);
+              Navigator.pop(context);
+            }
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: ThemeMode.values.map((mode) {
+              return RadioListTile<ThemeMode>(
+                title: Text(_getThemeName(mode)),
+                value: mode,
+              );
+            }).toList(),
+          ),
         ),
       ),
     );

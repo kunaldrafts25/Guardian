@@ -192,9 +192,9 @@ class SosSettingsScreen extends ConsumerWidget {
             child: Column(
               children: [
                 SwitchListTile(
-                  title: const Text('Auto-call Emergency'),
+                  title: const Text('Open emergency dialer'),
                   subtitle: const Text(
-                      'Automatically call emergency number after SOS'),
+                      'Open the selected emergency number in your phone dialer after SOS'),
                   value: settings.autoCallEmergency,
                   onChanged: (value) {
                     ref

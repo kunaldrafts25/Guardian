@@ -30,6 +30,7 @@ void main() {
     };
 
     await database.queueAlertForCloud(
+      ownerUserId: 'user-1',
       alert: alert,
       alertId: 'alert-1',
       eventType: 'hardware_power_panic',
@@ -48,7 +49,7 @@ void main() {
       ],
     );
 
-    expect(await database.getUnsyncedAlerts(), hasLength(1));
+    expect(await database.getUnsyncedAlerts('user-1'), hasLength(1));
     final events = await database.getIncidentEvents('alert-1');
     expect(events, hasLength(1));
     expect(events.single.incidentState, 'triggered');
@@ -77,6 +78,7 @@ void main() {
 
     for (var attempt = 0; attempt < 2; attempt++) {
       await database.queueAlertForCloud(
+        ownerUserId: 'user-1',
         alert: alert,
         alertId: 'alert-2',
         eventType: 'sos_button',
@@ -85,7 +87,7 @@ void main() {
       );
     }
 
-    expect(await database.getUnsyncedAlerts(), hasLength(1));
+    expect(await database.getUnsyncedAlerts('user-1'), hasLength(1));
     expect(await database.getIncidentEvents('alert-2'), hasLength(1));
     expect(await database.select(database.localOutboxOperations).get(),
         hasLength(1));
@@ -96,6 +98,7 @@ void main() {
     await database.into(database.localOutboxOperations).insert(
           LocalOutboxOperationsCompanion.insert(
             operationId: 'operation-1',
+            ownerUserId: const Value('user-1'),
             aggregateType: 'incident',
             aggregateId: 'alert-1',
             operationType: 'createIncident',
@@ -120,12 +123,14 @@ void main() {
     );
     expect(
       await database.getDueOutboxOperations(
+        ownerUserId: 'user-1',
         now: now.add(const Duration(seconds: 4)),
       ),
       isEmpty,
     );
     expect(
       await database.getDueOutboxOperations(
+        ownerUserId: 'user-1',
         now: now.add(const Duration(seconds: 5)),
       ),
       hasLength(1),
@@ -206,6 +211,7 @@ void main() {
     );
     expect(
       await database.queueAlertForCloud(
+        ownerUserId: 'user-1',
         alert: companion,
         alertId: 'terminal-alert',
         eventType: 'sos_button',
@@ -221,6 +227,7 @@ void main() {
       occurredAt: startedAt.add(const Duration(minutes: 1)),
     );
     final replayed = await database.queueAlertForCloud(
+      ownerUserId: 'user-1',
       alert: companion,
       alertId: 'terminal-alert',
       eventType: 'sos_button',
@@ -242,6 +249,7 @@ void main() {
       () async {
     final startedAt = DateTime.utc(2026, 9, 19, 10);
     await database.queueAlertForCloud(
+      ownerUserId: 'user-1',
       alert: LocalAlertsCompanion.insert(
         alertId: 'late-create',
         userId: 'user-1',

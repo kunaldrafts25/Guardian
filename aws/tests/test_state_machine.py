@@ -6,7 +6,6 @@ import pytest
 from aws.incident_handler.state_machine import (
     IncidentState,
     can_transition,
-    VALID_TRANSITIONS,
 )
 
 

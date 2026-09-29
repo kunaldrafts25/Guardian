@@ -122,7 +122,7 @@ class ContactsScreen extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline, size: 64, color: AppColors.error),
+            const Icon(Icons.error_outline, size: 64, color: AppColors.error),
             const SizedBox(height: 16),
             Text(message, textAlign: TextAlign.center),
           ],
@@ -248,12 +248,12 @@ class ContactsScreen extends ConsumerWidget {
                 ],
               ),
             ),
-            PopupMenuItem(
+            const PopupMenuItem(
               value: 'delete',
               child: Row(
                 children: [
                   Icon(Icons.delete, size: 20, color: AppColors.error),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8),
                   Text('Delete', style: TextStyle(color: AppColors.error)),
                 ],
               ),
@@ -299,7 +299,7 @@ class ContactsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: relation,
+                  initialValue: relation,
                   decoration: const InputDecoration(
                     labelText: 'Relation',
                     prefixIcon: Icon(Icons.people),
@@ -383,7 +383,7 @@ class ContactsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: relation,
+                  initialValue: relation,
                   decoration: const InputDecoration(
                     labelText: 'Relation',
                     prefixIcon: Icon(Icons.people),

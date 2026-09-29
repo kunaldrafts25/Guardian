@@ -5,10 +5,12 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.telephony.SmsManager
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import java.security.MessageDigest
 
 /**
  * Guardian — SmsHelper
@@ -30,6 +32,7 @@ object SmsHelper {
      */
     fun sendEmergencySms(
         context: Context,
+        eventId: String,
         phoneNumbers: List<String>,
         message: String
     ): Map<String, Boolean> {
@@ -61,22 +64,38 @@ object SmsHelper {
 
                 if (parts.size == 1) {
                     // Short message — single SMS
-                    val sentIntent = buildSentIntent(context, phone)
+                    val sentIntent = buildSentIntent(
+                        context = context,
+                        eventId = eventId,
+                        phone = phone,
+                        partIndex = 0,
+                        totalParts = 1,
+                    )
                     smsManager.sendTextMessage(phone, null, message, sentIntent, null)
                 } else {
                     // Long message — multipart SMS
-                    val sentIntents = ArrayList(parts.map { buildSentIntent(context, phone) })
+                    val sentIntents = ArrayList(
+                        parts.indices.map { partIndex ->
+                            buildSentIntent(
+                                context = context,
+                                eventId = eventId,
+                                phone = phone,
+                                partIndex = partIndex,
+                                totalParts = parts.size,
+                            )
+                        },
+                    )
                     smsManager.sendMultipartTextMessage(
                         phone, null, ArrayList(parts), sentIntents, null
                     )
                 }
 
                 Log.i(TAG, "Emergency SMS dispatched to [REDACTED]")
-                results[phone] = true
+                results[rawPhone] = true
 
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send SMS: ${e.javaClass.simpleName}")
-                results[phone] = false
+                results[rawPhone] = false
             }
         }
 
@@ -84,19 +103,52 @@ object SmsHelper {
     }
 
     /**
-     * Build a PendingIntent for SMS delivery confirmation.
-     * Used to track whether SMS was actually sent by the carrier.
+     * Build a PendingIntent for asynchronous device/radio send-result evidence.
+     * This is not handset/carrier delivery confirmation.
      */
-    private fun buildSentIntent(context: Context, phone: String): PendingIntent {
-        val intent = Intent("GUARDIAN_SMS_SENT").apply {
-            putExtra("phone_hash", phone.hashCode())
+    private fun buildSentIntent(
+        context: Context,
+        eventId: String,
+        phone: String,
+        partIndex: Int,
+        totalParts: Int,
+    ): PendingIntent {
+        val recipientToken = recipientToken(eventId, phone)
+        val intent = Intent(context, SmsSentReceiver::class.java).apply {
+            action = SmsSentReceiver.ACTION_SMS_SENT
+            // PendingIntent identity ignores extras. Give every event/recipient/
+            // part callback a unique data URI so requestCode hash collisions
+            // cannot cause one recipient's evidence to overwrite another's.
+            data = Uri.Builder()
+                .scheme("guardian-internal")
+                .authority("sms-sent")
+                .appendPath(eventId)
+                .appendPath(recipientToken)
+                .appendPath(partIndex.toString())
+                .build()
+            putExtra(SmsSentReceiver.EXTRA_EVENT_ID, eventId)
+            putExtra(SmsSentReceiver.EXTRA_RECIPIENT_TOKEN, recipientToken)
+            putExtra(SmsSentReceiver.EXTRA_PART_INDEX, partIndex)
+            putExtra(SmsSentReceiver.EXTRA_TOTAL_PARTS, totalParts)
         }
+        val requestCode = partIndex
         return PendingIntent.getBroadcast(
             context,
-            phone.hashCode(),
+            requestCode,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+    }
+
+    /**
+     * Event-scoped recipient correlation token. SHA-256 avoids the collision
+     * risk of Kotlin's 32-bit String.hashCode without persisting phone numbers.
+     */
+    fun recipientToken(eventId: String, phone: String): String {
+        val normalized = sanitizePhone(phone)
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest("$eventId|$normalized".toByteArray(Charsets.UTF_8))
+        return digest.joinToString(separator = "") { byte -> "%02x".format(byte) }
     }
 
     /**

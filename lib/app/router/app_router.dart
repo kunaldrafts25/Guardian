@@ -16,7 +16,6 @@ import 'package:guardian/features/splash/presentation/screens/splash_screen.dart
 
 // Auth Screens
 import 'package:guardian/features/auth/presentation/screens/login_screen.dart';
-import 'package:guardian/features/auth/presentation/screens/otp_verification_screen.dart';
 import 'package:guardian/features/auth/presentation/screens/profile_setup_screen.dart';
 
 // Onboarding
@@ -97,14 +96,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'login',
         builder: (context, state) => const LoginScreen(),
         routes: [
-          GoRoute(
-            path: 'otp',
-            name: 'otp-verification',
-            builder: (context, state) {
-              final phoneNumber = state.extra as String? ?? '';
-              return OtpVerificationScreen(phoneNumber: phoneNumber);
-            },
-          ),
           GoRoute(
             path: 'profile-setup',
             name: 'profile-setup',

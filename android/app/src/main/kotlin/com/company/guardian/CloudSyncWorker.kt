@@ -14,6 +14,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import kotlinx.coroutines.delay
 
 /**
  * Native emergency cloud outbox.
@@ -30,7 +31,7 @@ class CloudSyncWorker(
 
     override suspend fun doWork(): Result {
         val eventId = inputData.getString("event_id") ?: return Result.failure()
-        val event = NativeEmergencyStore.eventById(applicationContext, eventId)
+        var event = NativeEmergencyStore.eventById(applicationContext, eventId)
             ?: return Result.success()
 
         if (event.optBoolean("cloud_synced", false)) {
@@ -48,6 +49,15 @@ class CloudSyncWorker(
         if (eventOwner == null || authOwner == null || eventOwner != authOwner) {
             Log.e(TAG, "Refusing cross-account native emergency upload for $eventId.")
             return Result.failure()
+        }
+
+        // Android sent PendingIntents are asynchronous. Wait briefly for stronger
+        // radio/modem evidence without delaying responder orchestration materially.
+        if ((event.optJSONArray("accepted_contact_ids")?.length() ?: 0) > 0 &&
+            event.optJSONObject("sms_sent_results") == null
+        ) {
+            delay(1200L)
+            event = NativeEmergencyStore.eventById(applicationContext, eventId) ?: event
         }
 
         return uploadEvent(event, auth, allowRefresh = true)
@@ -215,17 +225,33 @@ class CloudSyncWorker(
         motion.put("snapshot_version", event.optInt("snapshot_version", 0))
         motion.put(
             "local_sms_accepted_count",
-            event.optJSONArray("accepted_phones")?.length() ?: 0,
+            event.optJSONArray("accepted_contact_ids")?.length() ?: 0,
         )
 
         val localDelivery = org.json.JSONArray()
         val acceptedContactIds = event.optJSONArray("accepted_contact_ids")
+        val recipientTokenByContact =
+            event.optJSONObject("sms_recipient_token_by_contact")
+        val legacyPhoneHashByContact = event.optJSONObject("phone_hash_by_contact")
+        val sentResults = event.optJSONObject("sms_sent_results")
         if (acceptedContactIds != null) {
             for (index in 0 until acceptedContactIds.length()) {
+                val contactId = acceptedContactIds.optString(index)
+                val recipientToken =
+                    recipientTokenByContact?.optString(contactId)?.takeIf { it.isNotBlank() }
+                        ?: legacyPhoneHashByContact?.optInt(contactId)
+                            ?.takeIf { it != 0 }
+                            ?.toString()
+                val sentState = recipientToken?.let {
+                    sentResults?.optJSONObject(it)?.optString("status")
+                }
                 localDelivery.put(
                     JSONObject()
-                        .put("contact_id", acceptedContactIds.optString(index))
-                        .put("state", "OS_ACCEPTED"),
+                        .put("contact_id", contactId)
+                        .put(
+                            "state",
+                            if (sentState == "SENT") "SENT" else "OS_ACCEPTED",
+                        ),
                 )
             }
         }

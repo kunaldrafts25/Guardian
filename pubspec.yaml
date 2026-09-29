@@ -12,14 +12,12 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  cupertino_icons: ^1.0.6
 
   # ═══════════════════════════════════════════════
   # Firebase
   # ═══════════════════════════════════════════════
   firebase_core: ^3.8.1
   firebase_messaging: ^15.1.6
-  google_sign_in: ^6.2.2
 
   # ═══════════════════════════════════════════════
   # State Management — Riverpod ONLY (GetIt removed)
@@ -35,29 +33,18 @@ dependencies:
   path: ^1.9.0
 
   # ═══════════════════════════════════════════════
-  # Maps and Location — OpenStreetMap (FREE, no API key)
+  # Maps and Location — Google Maps SDK + Guardian-proxied Places/Routes
   # ═══════════════════════════════════════════════
-  flutter_map: ^7.0.2           # OSM map rendering (replaces google_maps_flutter)
-  latlong2: ^0.9.0              # LatLng type for flutter_map
-  flutter_map_tile_caching: ^9.1.0  # Offline tile caching for no-network mode
+  google_maps_flutter: ^2.18.1
+  latlong2: ^0.9.0              # Provider-neutral route geometry model
   geolocator: ^13.0.2
   geocoding: ^3.0.0
   sensors_plus: ^4.0.2
 
   # ═══════════════════════════════════════════════
-  # Audio — voice SOS + emergency recording
-  # ═══════════════════════════════════════════════
-  speech_to_text: ^7.0.0
-  record: ^6.1.2                     # Emergency audio recording
-
-  # ═══════════════════════════════════════════════
   # UI Components
   # ═══════════════════════════════════════════════
   flutter_svg: ^2.0.9
-  cached_network_image: ^3.3.1
-  lottie: ^3.1.3
-  shimmer: ^3.0.0
-  google_fonts: ^6.2.2
 
   # ═══════════════════════════════════════════════
   # Core Utilities
@@ -67,13 +54,12 @@ dependencies:
   permission_handler: ^11.2.0
   # 9.4.7 conflicts with geolocator_apple in Flutter 3.47 iOS builds.
   permission_handler_apple: ^9.6.1
-  url_launcher: ^6.2.4               # Emergency call + iOS SMS fallback
+  url_launcher: ^6.2.4               # Emergency call + OAuth browser launch
+  app_links: ^6.4.1                  # Cognito PKCE custom-scheme callback
   intl: ^0.20.2
   connectivity_plus: ^6.1.4
-  dio: ^5.7.0
   http: ^1.2.0
   uuid: ^4.5.1
-  geohash_plus: ^1.1.0
   crypto: ^3.0.5                     # Compact SMS integrity checks
 
   # ═══════════════════════════════════════════════
@@ -85,11 +71,6 @@ dependencies:
   # Routing
   # ═══════════════════════════════════════════════
   go_router: ^14.6.2
-
-  # ═══════════════════════════════════════════════
-  # Code Generation Support
-  # ═══════════════════════════════════════════════
-  equatable: ^2.0.7
 
 dev_dependencies:
   flutter_test:
@@ -106,10 +87,6 @@ dev_dependencies:
   # Testing
   mockito: ^5.4.4
   mocktail: ^1.0.3
-  network_image_mock: ^2.1.1
-
-dependency_overrides:
-  google_fonts: ^6.2.2
 
 flutter:
   uses-material-design: true
@@ -120,10 +97,4 @@ flutter:
     enable-swift-package-manager: false
 
   assets:
-    - assets/images/
-    - assets/images/onboarding/
     - assets/icons/
-    - assets/animations/
-    - assets/translations/
-    # TFLite models (added when trained)
-    # - assets/models/

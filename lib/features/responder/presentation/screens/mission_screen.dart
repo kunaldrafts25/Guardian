@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -18,12 +19,22 @@ class _MissionScreenState extends State<MissionScreen> {
   ResponderMission? _mission;
   bool _loading = true;
   bool _acting = false;
+  bool _refreshingLocation = false;
   String? _error;
+  String? _locationError;
+  AuthorizedMissionLocation? _liveLocation;
+  Timer? _locationTimer;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _locationTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -34,7 +45,10 @@ class _MissionScreenState extends State<MissionScreen> {
     try {
       final mission =
           await ResponderService.instance.getMission(widget.missionId);
-      if (mounted) setState(() => _mission = mission);
+      if (mounted) {
+        setState(() => _mission = mission);
+        _configureLiveTracking(mission);
+      }
     } catch (error) {
       if (mounted) setState(() => _error = _cleanError(error));
     } finally {
@@ -48,6 +62,7 @@ class _MissionScreenState extends State<MissionScreen> {
       final result =
           await ResponderService.instance.acceptInvitation(mission.incidentId);
       _mission = result.mission;
+      _configureLiveTracking(result.mission);
       if (!result.grantAvailable && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -114,13 +129,78 @@ class _MissionScreenState extends State<MissionScreen> {
         _mission!.missionId,
         status,
       );
+      _configureLiveTracking(_mission!);
     });
+  }
+
+  bool _tracksPreciseLocation(ResponderMission mission) =>
+      mission.status == 'ACCEPTED' || mission.status == 'EN_ROUTE';
+
+  void _configureLiveTracking(ResponderMission mission) {
+    _locationTimer?.cancel();
+    _locationTimer = null;
+    if (!_tracksPreciseLocation(mission)) {
+      if (mounted) {
+        setState(() {
+          _liveLocation = null;
+          _locationError = null;
+        });
+      }
+      return;
+    }
+    unawaited(_refreshLiveLocation());
+    _locationTimer = Timer.periodic(
+      const Duration(seconds: 7),
+      (_) => unawaited(_refreshLiveLocation()),
+    );
+  }
+
+  Future<void> _refreshLiveLocation() async {
+    final mission = _mission;
+    if (mission == null ||
+        !_tracksPreciseLocation(mission) ||
+        _refreshingLocation) {
+      return;
+    }
+    _refreshingLocation = true;
+    try {
+      final location =
+          await ResponderService.instance.getAuthorizedLocation(mission);
+      if (!mounted) return;
+      setState(() {
+        _liveLocation = location;
+        _locationError = null;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _locationError =
+              'Latest authorized victim location is temporarily unavailable.';
+        });
+      }
+    } finally {
+      _refreshingLocation = false;
+    }
   }
 
   Future<void> _navigate() async {
     await _run(() async {
-      final location =
-          await ResponderService.instance.getAuthorizedLocation(_mission!);
+      await _refreshLiveLocation();
+      final location = _liveLocation;
+      if (location == null || location.isUnavailable) {
+        throw StateError(
+          'A current authorized victim location is unavailable. Try again shortly.',
+        );
+      }
+      if (location.isStale) {
+        final age = location.ageSeconds?.round();
+        throw StateError(
+          'The last known victim location is stale'
+          '${age == null ? '' : ' (${age}s old)'}. '
+          'Wait for a fresh fix before opening navigation.',
+        );
+      }
+
       final Uri uri;
       if (!kIsWeb && Platform.isIOS) {
         uri = Uri.parse(
@@ -204,6 +284,10 @@ class _MissionScreenState extends State<MissionScreen> {
             ),
           ),
         ),
+        if (_tracksPreciseLocation(mission)) ...[
+          const SizedBox(height: 12),
+          _buildLiveLocationCard(context),
+        ],
         if (_error != null) ...[
           const SizedBox(height: 12),
           Text(_error!,
@@ -222,6 +306,100 @@ class _MissionScreenState extends State<MissionScreen> {
           const Center(child: CircularProgressIndicator()),
         ],
       ],
+    );
+  }
+
+  Widget _buildLiveLocationCard(BuildContext context) {
+    final location = _liveLocation;
+    final age = location?.ageSeconds?.round();
+    final quality = location?.quality;
+    final label = switch (quality) {
+      LocationFreshnessQuality.fresh => 'Current victim location',
+      LocationFreshnessQuality.aging => 'Recent victim location',
+      LocationFreshnessQuality.stale => 'Last known victim location',
+      _ => 'Waiting for victim location',
+    };
+    final icon = quality == LocationFreshnessQuality.fresh
+        ? Icons.gps_fixed
+        : quality == LocationFreshnessQuality.aging
+            ? Icons.gps_not_fixed
+            : Icons.location_searching;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                if (_refreshingLocation)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (location != null) ...[
+              Text(
+                '${location.latitude.toStringAsFixed(5)}, '
+                '${location.longitude.toStringAsFixed(5)}',
+              ),
+              const SizedBox(height: 4),
+              Text(
+                [
+                  if (age != null) 'updated ${age}s ago',
+                  if (location.accuracy != null)
+                    'accuracy ±${location.accuracy!.round()} m',
+                  location.source,
+                ].join(' • '),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              if (location.isAging || location.isStale) ...[
+                const SizedBox(height: 8),
+                Text(
+                  location.isStale
+                      ? 'Do not treat this point as the victim’s current position. Guardian will keep requesting a fresher fix.'
+                      : 'This fix is aging. Confirm the latest point before changing direction.',
+                  style: TextStyle(
+                    color: location.isStale
+                        ? Theme.of(context).colorScheme.error
+                        : Theme.of(context).colorScheme.secondary,
+                  ),
+                ),
+              ],
+            ] else
+              const Text(
+                'Guardian is requesting the latest authorized emergency location.',
+              ),
+            if (_locationError != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _locationError!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: _refreshingLocation
+                  ? null
+                  : () => unawaited(_refreshLiveLocation()),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Refresh location'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

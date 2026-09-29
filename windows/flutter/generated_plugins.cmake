@@ -3,14 +3,12 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  app_links
   connectivity_plus
   firebase_core
   flutter_secure_storage_windows
   geolocator_windows
-  objectbox_flutter_libs
   permission_handler_windows
-  record_windows
-  speech_to_text_windows
   sqlite3_flutter_libs
   url_launcher_windows
 )

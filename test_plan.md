@@ -1,154 +1,181 @@
-# Guardian Comprehensive Safety & Quality Test Plan (Post-P0/P1/P2/P3 + Phase 4 Critical Repair)
+# Guardian Safety & Quality Test Plan — Phase 5
 
-This test plan defines the formal verification suite and regression acceptance criteria for Guardian across mobile clients (Flutter & Android native) and cloud infrastructure (AWS API Gateway, Lambda, DynamoDB, Cognito, SNS, Bedrock).
+This plan reflects the current Google/Cognito, Google Maps, durable-SOS, responder, and agentic architecture.
 
----
+## 1. Authentication and account isolation
 
-## 1. Authentication, Sessions & Identity Governance
+Automated:
+- Google/Cognito configuration rejects missing or wrong Google audience in the development verification helper.
+- Retired phone OTP routes are absent.
+- Protected Gateway identity rejects Cognito ID-token claims and accepts access-token claims.
+- Protected endpoints require `X-Guardian-Session-ID`.
+- Revoked or other-user Guardian sessions are rejected.
+- Refresh is bound to the stored session/refresh-token hash.
+- Session listings are paginated.
+- Device endpoints are bound to account + session + stable device ID.
 
-### 1.1 Amazon Cognito Phone Authentication
-- [x] Verify phone number E.164 normalization and custom SMS challenge initiation (`POST /auth/send-otp`).
-- [x] Test OTP verification and secure storage of access, ID, and refresh tokens in `FlutterSecureStorage`.
-- [x] Verify token refresh flow with active `X-Guardian-Session-ID` (`POST /auth/refresh`).
-- [x] Verify that an expired session or failed refresh clears all local credentials and redirects to login immediately.
-- [x] Test rejection of dev/mock tokens in production release builds.
+Staging:
+- Google hosted login PKCE callback on Android/iOS.
+- App process death during OAuth callback and subsequent resume.
+- Token refresh and remote session revocation.
+- Account A -> logout -> Account B on the same push token/device.
 
-### 1.2 Session Management & Multi-Device Isolation
-- [x] Verify that every authenticated request enforces valid `X-Guardian-Session-ID`.
-- [x] Test listing active sessions with device labels and timestamps (`GET /auth/sessions`).
-- [x] Test remote session revocation terminating unauthorized device access (`DELETE /auth/sessions/{id}`).
-- [x] Verify global sign-out revoking all user sessions in DynamoDB and Cognito (`POST /auth/sign-out`).
+## 2. Offline SOS and local durability
 
----
+Automated:
+- Drift outbox operations are account-scoped.
+- Legacy outbox rows are backfilled only when ownership can be proven.
+- Another account cannot replay a queued incident.
+- Offline cloud creation publishes a local/cloud binding event.
+- Active emergency binds the cloud incident and force-pushes the latest location.
+- Terminal local incidents are not recreated later.
 
-## 2. Emergency Triggering & Durability
+Physical/device:
+- Offline SOS, app background/kill, reconnect.
+- Native Android panic while Flutter is unavailable.
+- Reboot with pending emergency/check-in.
+- Account switch while User A has pending native/Flutter evidence.
 
-### 2.1 In-App Hold-to-Activate SOS
-- [x] Test 3-second hold countdown with haptic feedback and explicit abort window.
-- [x] Verify deterministic local incident generation with unique client UUID nonce.
-- [x] Verify atomic persistence to local Drift SQLite database before attempting outbound network I/O.
-- [x] Verify UI transition to live emergency tracking HUD.
+## 3. Location integrity
 
-### 2.2 Offline Durability & Outbox Synchronization
-- [x] Test SOS activation in airplane mode / zero cellular connectivity.
-- [x] Verify incident persistence in Drift `local_incidents` with status `PENDING_SYNC`.
-- [x] Test `OfflineSyncService` automatic background queue processing when network returns.
-- [x] Verify server-side idempotency ensuring replay or duplicate sync does not duplicate emergency alerts.
+Automated:
+- Native cached capture time remains original.
+- Stale/out-of-order coordinates are rejected.
+- DynamoDB update uses a captured-time condition to prevent concurrent rollback.
+- Terminal incidents reject location updates.
+- Precise responder location requires a valid live grant.
 
-### 2.3 Android Native Hardware Panic & Background Resilience
-- [x] Unit/code-path verification for rapid screen/power toggle triggering the native dispatcher.
-- [x] Verify priority-aware native trigger arbitration so a lower-confidence event cannot suppress a later explicit panic.
-- [x] Verify `NativeEmergencyStore` reads the encrypted, account-bound contact snapshot and attempts direct cellular SMS through `SmsManager`.
-- [x] Verify pending native events use stable event IDs and remain independently tracked for Flutter replay and cloud synchronization.
-- [x] Verify WorkManager cloud sync uses `POST /incidents`, Cognito access token, `X-Guardian-Session-ID`, and the same stable event ID.
-- [x] Verify native access-token refresh uses Guardian's existing `POST /auth/refresh` session validation and encrypted refresh token.
-- [x] Verify native emergency events cannot upload or replay under a different signed-in Guardian account.
-- [ ] Physical-device verification under locked screen, Doze, process death, reboot, no-data/reconnect, and OEM task killing.
+Staging:
+- Concurrent location writes with reversed completion order.
+- Victim movement while responder is `ACCEPTED` / `EN_ROUTE`.
+- Fresh -> aging -> stale responder UI behavior.
 
----
+## 4. Automatic triggers
 
-## 3. Location Freshness & Spatial Integrity
+Validate:
+- manual explicit SOS,
+- Android native power/screen panic,
+- Android shake,
+- Android fall heuristic,
+- check-in expiry,
+- route-deviation confirmation.
 
-### 3.1 Dual-Coordinate Separation
-- [x] Verify strict separation of `initial_location` (immutable origin) and `current_location` (streaming trajectory).
-- [x] Verify that periodic tracking updates never overwrite or erase `initial_location`.
+One physical/logical trigger must become one canonical incident. Explicit distress must outrank lower-confidence automatic signals. Unattested automatic telemetry must not gain direct-dispatch authority merely from its event-type string.
 
-### 3.2 Location Freshness Quality Filtering
-- [x] Verify classification of GPS fixes based on age and accuracy:
-  - `FRESH`: Age $\le 15$s, accuracy $\le 50$m
-  - `ACCEPTABLE`: Age $\le 60$s, accuracy $\le 100$m
-  - `STALE`: Age $\le 120$s
-  - `EXPIRED`: Age $> 120$s
-- [x] Test suppression of stale/expired coordinates from remote streaming until fresh GPS lock acquired.
-- [x] Verify backend freshness evaluation (`FRESH` $\le 30$s) for responder location grant endpoints.
+Voice SOS and UI multi-tap are not active product triggers.
 
----
+## 5. SMS and push truth
 
-## 4. Responder Discovery, Escalation & Mission Lifecycle
+Automated/code:
+- Native Android SMS has per-part sent callbacks.
+- Submission acceptance and radio-send result are distinct.
+- Cloud fallback is not suppressed solely by OS API acceptance.
+- Push `DEV_MODE_NOT_SENT` is not provider acceptance.
+- Push endpoint delivery validates the bound Guardian session.
+- Token rebinding disables prior account/session binding.
 
-### 4.1 Responder Availability & Heartbeat
-- [x] Verify responder heartbeat dispatch every 15 minutes while available, plus movement-triggered updates after 500m.
-- [x] Verify DynamoDB geohash indexing and 30-minute availability expiration, leaving margin for the 15-minute heartbeat cadence.
-- [x] Test immediate availability teardown and deactivation heartbeat upon toggling offline.
+Physical/staging:
+- radio off/no service after submission,
+- multipart SMS partial failure,
+- real FCM/APNs acceptance and disabled endpoint,
+- same token switching accounts.
 
-### 4.2 Progressive Radial Escalation
-- [x] Verify 4-stage progressive expansion ladder:
-  - Stage 1: 1,000m radius, 60s timeout, max 3 candidates
-  - Stage 2: 2,000m radius, 90s timeout, max 5 candidates
-  - Stage 3: 5,000m radius, 120s timeout, max 8 candidates
-  - Stage 4: 10,000m radius, 180s timeout, max 10 candidates
-- [x] Test automatic escalation stage advancement upon timeout without quorum.
-- [x] Test automatic candidate redispatch upon responder decline or withdrawal.
+Do not mark carrier handset delivery unless an actual delivery receipt is implemented.
 
-### 4.3 Mission Lifecycle & Precise Location Authorization
-- [x] Verify candidate invitation delivery with coarse location only (approximate neighborhood/distance).
-- [x] Test mission acceptance (`POST /incidents/{id}/accept`) issuing a short-lived `navigation_grant`.
-- [x] Verify maximum accepted responder limit (`MAX_ACCEPTED_RESPONDERS = 2`) rejecting excess acceptances with `409 Conflict`.
-- [x] Test exchanging valid grant for precise coordinates (`POST /incidents/{id}/authorized-location`).
-- [x] Verify immediate revocation of navigation grant upon:
-  - Responder arrival (`ARRIVED`)
-  - Mission completion (`COMPLETED`)
-  - Responder withdrawal (`WITHDRAWN`)
-  - Incident resolution or cancellation (`RESOLVED`, `CANCELLED`)
+## 6. Responders
 
----
+Automated:
+- eligibility requires active/approved/trusted responder and nonexpired availability.
+- geohash/fallback queries paginate.
+- exact haversine distance filters candidates.
+- one backend progression engine widens 1 -> 2 -> 5 -> 10 km.
+- zero reachable invitations widen immediately.
+- acceptance is a DynamoDB transaction enforcing incident nonterminal + capacity + live invitation.
+- capacity is released on withdrawal/completion/cancellation paths.
+- grants are responder/mission/incident-bound and time-limited.
+- terminal incident revokes future exact-location access.
 
-## 5. SMS Evidence & Truth-in-Advertising
+Staging:
+- simultaneous acceptance by more responders than capacity,
+- cancellation racing acceptance,
+- withdrawal after sole acceptance,
+- all invitations decline/expire,
+- max-radius exhaustion.
 
-### 5.1 Telephony State Semantics
-- [x] Verify the modeled states remain distinct: `NOT_ATTEMPTED`, `COMPOSER_OPENED`, `SUBMISSION_REQUESTED`, `OS_ACCEPTED`, `PROVIDER_ACCEPTED`, `SENT`, `DELIVERED`, `FAILED`, and `UNKNOWN`.
-- [x] Verify iOS composer launch never suppresses cloud fallback.
-- [x] Verify Android native replay reconstructs per-recipient `OS_ACCEPTED` / `FAILED` evidence and cloud fallback skips only the exact locally accepted contact.
-- [x] Verify UI/backend wording treats current Android `SmsManager` success as OS submission acceptance, not handset delivery.
-- [ ] Persist and surface real carrier sent/delivery callbacks before treating `SENT` or `DELIVERED` as states produced by the Android transport.
+## 7. Agentic safety and workflow recovery
 
----
+Automated:
+- Bedrock output is validated advisory input.
+- deterministic policy owns actions.
+- capabilities are action/incident/version bound and single-use.
+- duplicate initial agent execution is leased/idempotent.
+- external actions use independent claims.
+- contact provider failure does not block responder action.
+- verification and escalation deadlines have recoverable idempotency.
+- early SQS messages are requeued until deadline.
+- reconciler repairs overdue deadlines and failed incident-created orchestration.
+- terminal incidents turn stale workflow messages into no-ops.
 
-## 6. Safety Policy Governance & Amazon Bedrock Advisory
+Staging:
+- duplicate EventBridge delivery,
+- SQS retry/DLQ behavior,
+- reconciler after intentionally failed queue send,
+- Bedrock outage.
 
-### 6.1 Deterministic Policy Invariants
-- [x] Verify that safety-critical actions require signed, single-use capability tokens from deterministic policy.
-- [x] Verify atomic capability token consumption preventing replay attacks.
-- [x] Verify that Amazon Bedrock advisory advice cannot downgrade, cancel, or suppress explicit panic events.
-- [x] Verify Bedrock alone cannot elevate a low deterministic anomaly directly into unrestricted CRITICAL dispatch.
-- [x] Verify contact-provider failure cannot prevent independently authorized responder dispatch.
-- [x] Verify initial agent execution uses an atomic recoverable lease and duplicate EventBridge delivery cannot execute a concurrent second run.
-- [x] Verify user-verification timeout is backend-owned and idempotent rather than Flutter-timer dependent.
-- [x] Verify agent-ledger write failure is treated as an observability degradation rather than an authorization bypass or mandatory-action blocker.
+## 8. Abuse and moderation
 
----
+Automated:
+- production-path TTL-backed incident frequency advisory exists.
+- advisory never blocks explicit SOS.
+- trigger provenance/trust classification is persisted.
+- incident reports require owner or associated responder.
+- moderation records are separate and TTL-backed.
 
-## 7. Mapping, Routing & External Navigation
+Red team:
+- modified client fabricates `ANDROID_FALL` / `ANDROID_POWER_GESTURE`.
+- repeated fake incidents.
+- responder-luring attempts.
+- prompt injection in telemetry and free text.
 
-### 7.1 OpenStreetMap & OSRM Foot Routing
-- [x] Verify in-app map rendering using `flutter_map` with OpenStreetMap tile servers.
-- [x] Test walking route fetching from OSRM foot router (`https://router.project-osrm.org`).
-- [x] Verify safe zone geofencing and proximity calculation.
+## 9. Maps and route deviation
 
-### 7.2 External Navigation Handoff
-- [x] Test launching external GPS turn-by-turn navigation via `geo:lat,lng` intent on Android.
-- [x] Test fallback to Apple Maps URL on iOS and Google Maps web intent on web.
+Automated:
+- authenticated Google Places autocomplete/details proxy.
+- authenticated Google walking-route proxy.
+- mobile place search uses Guardian backend rather than public Nominatim.
+- walking geometry uses Google Routes rather than public OSRM.
+- map rendering uses Google Maps SDK.
+- missing/provider-failed route geometry cannot be treated as authoritative for route-deviation SOS.
+- no "verified safe" route claims.
 
----
+Deployment:
+- Android key package/signing restrictions.
+- iOS key bundle restrictions.
+- server Places/Routes key only in Secrets Manager.
+- quotas/budgets/monitoring.
 
-## 8. Automated Test Execution Baseline
+## 10. Privacy and retention
 
-All automated regression suites must be 100% green before staging promotion:
+Verify:
+- no OTP flow/logging remains.
+- logs avoid full contact phone, token, session, navigation grant, and precise GPS unless explicitly required.
+- cloud incident/timeline/agent evidence carries retention TTL.
+- local pruning never deletes active/pending safety evidence.
+- Drift/SQLite protection boundary is documented truthfully; it is not described as SQLCipher-encrypted.
 
-```powershell
-# 1. Backend Pytest Suite
-python -m pytest aws/tests --quiet
+## 11. CI gate
 
-# 2. Flutter formatting, static analysis, and tests
-dart format --output=none --set-exit-if-changed lib test
-flutter analyze --no-fatal-infos
-flutter test
+The same final SHA must pass:
+- backend pytest,
+- SAM `validate --lint`,
+- SAM build,
+- Drift generated-code check,
+- Dart format,
+- Flutter analyze,
+- Flutter test suite,
+- Android release APK build,
+- iOS simulator build.
 
-# 3. AWS infrastructure validation
-sam validate --lint --template-file aws/template.yaml
-sam build --template-file aws/template.yaml
+## 12. Production acceptance not proven by CI
 
-# 4. Release-compilation gates exercised by CI
-flutter build apk --release
-flutter build ios --simulator --no-codesign
-```
+Before real-user rollout execute real AWS staging and physical-device tests for Cognito federation, DynamoDB concurrency, EventBridge/SQS, SNS push/SMS, Android sensor/background behavior, iOS callbacks/location, and Google Maps Platform credentials/quota behavior.

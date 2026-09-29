@@ -14,6 +14,19 @@ from aws.server import app
 from aws.session_service import create_session
 
 
+def test_dev_services_do_not_contact_aws_when_boto3_is_installed():
+    from aws import cognito_service, sns_push_service
+
+    with patch("boto3.resource") as resource, patch("boto3.client") as client:
+        assert cognito_service.get_user_profile("local-user") == {
+            "user_id": "local-user", "dev_mode": True,
+        }
+        assert sns_push_service._sns_client() is None
+        assert sns_push_service._dynamo() is None
+    resource.assert_not_called()
+    client.assert_not_called()
+
+
 client = TestClient(
     app,
     headers={

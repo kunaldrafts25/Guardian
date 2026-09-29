@@ -514,11 +514,11 @@ class _ActiveIncident extends StatelessWidget {
           ),
         if (emergency.currentLocation != null) ...[
           const SizedBox(height: 16),
-          Card(
+          const Card(
             child: ListTile(
-              leading: const Icon(Icons.gps_fixed_rounded),
-              title: const Text('Location evidence captured'),
-              subtitle: const Text(
+              leading: Icon(Icons.gps_fixed_rounded),
+              title: Text('Location evidence captured'),
+              subtitle: Text(
                 'Precise coordinates are available to authorized emergency workflows.',
               ),
             ),

@@ -91,6 +91,8 @@ test/.test_coverage.dart
 __pycache__/
 *.pyc
 .pytest_cache/
+.venv/
+pytest-cache-files-*/
 
 # --- Misc ---
 pubspec.lock

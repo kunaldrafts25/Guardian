@@ -2,8 +2,10 @@
 
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
+
+from aws.runtime_mode import is_local_dev_mode
 
 try:
     import boto3
@@ -12,11 +14,15 @@ except ImportError:  # pragma: no cover
 
 
 AGENT_LEDGER_TABLE = os.environ.get("DYNAMODB_AGENT_LEDGER_TABLE", "guardian-agent-ledger")
+INCIDENT_RETENTION_DAYS = max(
+    30,
+    min(365, int(os.environ.get("INCIDENT_RETENTION_DAYS", "90"))),
+)
 _LOCAL_LEDGER: Dict[str, List[Dict[str, Any]]] = {}
 
 
 def _dev_mode() -> bool:
-    return os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    return is_local_dev_mode()
 
 
 def _table():
@@ -51,6 +57,9 @@ def append_agent_event(
         "event_type": event_type,
         "policy_version": policy_version,
         "recorded_at": now.isoformat(),
+        "expires_at": int(
+            (now + timedelta(days=INCIDENT_RETENTION_DAYS)).timestamp()
+        ),
     }
     optional = {
         "decision": decision,

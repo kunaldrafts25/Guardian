@@ -29,12 +29,10 @@
 	<true/>
 	<key>MinimumOSVersion</key>
 	<string>16.0</string>
+	<key>GOOGLE_MAPS_IOS_API_KEY</key>
+	<string>$(GOOGLE_MAPS_IOS_API_KEY)</string>
 
-	<!-- ═══════════════════════════════════════════════════
-	     Google Sign-In — OAuth redirect URL scheme
-	     Replace REVERSED_CLIENT_ID with the value from
-	     GoogleService-Info.plist after Firebase iOS setup
-	     ═══════════════════════════════════════════════════ -->
+	<!-- Cognito managed-login callback for Google federation. -->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -42,7 +40,7 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.530178096868-90d5lls6prav97gaueu9814dgprlmlm7</string>
+				<string>guardian</string>
 			</array>
 		</dict>
 	</array>
@@ -65,25 +63,9 @@
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>Guardian uses your location in the background to provide accurate location in emergency alerts.</string>
 
-	<!-- Microphone — for voice SOS triggers and audio threat detection -->
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Guardian uses the microphone when you enable and use voice SOS commands.</string>
-
-	<!-- Camera — for environment safety classification and evidence capture -->
-	<key>NSCameraUsageDescription</key>
-	<string>Guardian can capture photos or video as evidence during an emergency alert.</string>
-
-	<!-- Contacts — for emergency contact phone number validation -->
-	<key>NSContactsUsageDescription</key>
-	<string>Guardian can import phone numbers from your contacts to set up your emergency contact list faster.</string>
-
 	<!-- Motion — for shake and fall detection -->
 	<key>NSMotionUsageDescription</key>
 	<string>Guardian uses motion sensors when you enable shake gestures for emergency alerts.</string>
-
-	<!-- Face ID — for biometric lock of sensitive settings -->
-	<key>NSFaceIDUsageDescription</key>
-	<string>Use Face ID to quickly authenticate and access Guardian settings.</string>
 
 	<!-- ═══════════════════════════════════════════════════
 	     BACKGROUND MODES — Critical for safety monitoring
@@ -93,7 +75,6 @@
 		<string>location</string>
 		<string>fetch</string>
 		<string>remote-notification</string>
-		<string>audio</string>
 	</array>
 
 	<!-- ═══════════════════════════════════════════════════

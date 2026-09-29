@@ -70,14 +70,11 @@ def calculate_movement_risk(event_type: str, motion_data: Optional[Dict[str, Any
 
 def calculate_location_risk(location: Optional[Dict[str, Any]] = None, unsafe_zones: Optional[List[Dict[str, Any]]] = None) -> float:
     """
-    Location-based risk factor based on safe zone proximity and historical incidents.
+    Neutral location factor until verified location-risk signals are available.
     """
     if not location or "latitude" not in location or "longitude" not in location:
         return 0.40  # Unknown location baseline
 
-    lat = location.get("latitude", 0.0)
-    lng = location.get("longitude", 0.0)
-    
     # P1-10: Mark placeholder signals as UNAVAILABLE and use a neutral score (0.30)
     # The client doesn't send is_safe_zone, unsafe_zones, or is_isolated.
     # We remove the false references to unsafe zones.

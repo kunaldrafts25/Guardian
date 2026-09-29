@@ -13,3 +13,13 @@ Retain Drift (SQLite) with transactional outbox semantics as the primary local p
 - **Positive**: Complete offline survivability. Even if the device has zero signal, the emergency event is safely persisted with its initial timestamp, coordinates, and local SMS dispatch status.
 - **Positive**: When connectivity is restored, `OfflineSyncService` drains the outbox and synchronizes the incident with AWS API Gateway using idempotent client nonces.
 - **Negative**: Requires maintaining local schema migrations across app updates.
+
+
+## Phase 5 storage-protection clarification
+
+This ADR is about durability, not application-level database encryption. The
+current Drift store is ordinary SQLite protected by the OS application sandbox
+and device-at-rest controls. Authentication secrets and Android native cloud
+credentials use secure/encrypted platform storage instead. See ADR 0009 for the
+explicit threat-model boundary and do not describe the Drift file as SQLCipher-
+encrypted.

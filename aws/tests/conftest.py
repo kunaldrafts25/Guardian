@@ -4,7 +4,8 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def seed_development_responder_store():
+def seed_development_responder_store(monkeypatch):
+    monkeypatch.setenv("GUARDIAN_DEV_MODE", "true")
     from aws.agent import tools
     from aws.agent import ledger, policy_authorization
 

@@ -54,7 +54,7 @@ class ShakeDetectionService {
       return;
     }
 
-    _subscription = accelerometerEvents.listen(_onAccelerometerEvent);
+    _subscription = accelerometerEventStream().listen(_onAccelerometerEvent);
     Logger.info('📱 Shake detection started');
   }
 

@@ -3901,6 +3901,14 @@ class $LocalOutboxOperationsTable extends LocalOutboxOperations
   late final GeneratedColumn<String> operationId = GeneratedColumn<String>(
       'operation_id', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _ownerUserIdMeta =
+      const VerificationMeta('ownerUserId');
+  @override
+  late final GeneratedColumn<String> ownerUserId = GeneratedColumn<String>(
+      'owner_user_id', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
   static const VerificationMeta _aggregateTypeMeta =
       const VerificationMeta('aggregateType');
   @override
@@ -3979,6 +3987,7 @@ class $LocalOutboxOperationsTable extends LocalOutboxOperations
   @override
   List<GeneratedColumn> get $columns => [
         operationId,
+        ownerUserId,
         aggregateType,
         aggregateId,
         operationType,
@@ -4009,6 +4018,12 @@ class $LocalOutboxOperationsTable extends LocalOutboxOperations
               data['operation_id']!, _operationIdMeta));
     } else if (isInserting) {
       context.missing(_operationIdMeta);
+    }
+    if (data.containsKey('owner_user_id')) {
+      context.handle(
+          _ownerUserIdMeta,
+          ownerUserId.isAcceptableOrUnknown(
+              data['owner_user_id']!, _ownerUserIdMeta));
     }
     if (data.containsKey('aggregate_type')) {
       context.handle(
@@ -4087,6 +4102,8 @@ class $LocalOutboxOperationsTable extends LocalOutboxOperations
     return LocalOutboxOperation(
       operationId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}operation_id'])!,
+      ownerUserId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}owner_user_id'])!,
       aggregateType: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}aggregate_type'])!,
       aggregateId: attachedDatabase.typeMapping
@@ -4121,6 +4138,7 @@ class $LocalOutboxOperationsTable extends LocalOutboxOperations
 class LocalOutboxOperation extends DataClass
     implements Insertable<LocalOutboxOperation> {
   final String operationId;
+  final String ownerUserId;
   final String aggregateType;
   final String aggregateId;
   final String operationType;
@@ -4134,6 +4152,7 @@ class LocalOutboxOperation extends DataClass
   final DateTime updatedAt;
   const LocalOutboxOperation(
       {required this.operationId,
+      required this.ownerUserId,
       required this.aggregateType,
       required this.aggregateId,
       required this.operationType,
@@ -4149,6 +4168,7 @@ class LocalOutboxOperation extends DataClass
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['operation_id'] = Variable<String>(operationId);
+    map['owner_user_id'] = Variable<String>(ownerUserId);
     map['aggregate_type'] = Variable<String>(aggregateType);
     map['aggregate_id'] = Variable<String>(aggregateId);
     map['operation_type'] = Variable<String>(operationType);
@@ -4170,6 +4190,7 @@ class LocalOutboxOperation extends DataClass
   LocalOutboxOperationsCompanion toCompanion(bool nullToAbsent) {
     return LocalOutboxOperationsCompanion(
       operationId: Value(operationId),
+      ownerUserId: Value(ownerUserId),
       aggregateType: Value(aggregateType),
       aggregateId: Value(aggregateId),
       operationType: Value(operationType),
@@ -4193,6 +4214,7 @@ class LocalOutboxOperation extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return LocalOutboxOperation(
       operationId: serializer.fromJson<String>(json['operationId']),
+      ownerUserId: serializer.fromJson<String>(json['ownerUserId']),
       aggregateType: serializer.fromJson<String>(json['aggregateType']),
       aggregateId: serializer.fromJson<String>(json['aggregateId']),
       operationType: serializer.fromJson<String>(json['operationType']),
@@ -4211,6 +4233,7 @@ class LocalOutboxOperation extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'operationId': serializer.toJson<String>(operationId),
+      'ownerUserId': serializer.toJson<String>(ownerUserId),
       'aggregateType': serializer.toJson<String>(aggregateType),
       'aggregateId': serializer.toJson<String>(aggregateId),
       'operationType': serializer.toJson<String>(operationType),
@@ -4227,6 +4250,7 @@ class LocalOutboxOperation extends DataClass
 
   LocalOutboxOperation copyWith(
           {String? operationId,
+          String? ownerUserId,
           String? aggregateType,
           String? aggregateId,
           String? operationType,
@@ -4240,6 +4264,7 @@ class LocalOutboxOperation extends DataClass
           DateTime? updatedAt}) =>
       LocalOutboxOperation(
         operationId: operationId ?? this.operationId,
+        ownerUserId: ownerUserId ?? this.ownerUserId,
         aggregateType: aggregateType ?? this.aggregateType,
         aggregateId: aggregateId ?? this.aggregateId,
         operationType: operationType ?? this.operationType,
@@ -4257,6 +4282,8 @@ class LocalOutboxOperation extends DataClass
     return LocalOutboxOperation(
       operationId:
           data.operationId.present ? data.operationId.value : this.operationId,
+      ownerUserId:
+          data.ownerUserId.present ? data.ownerUserId.value : this.ownerUserId,
       aggregateType: data.aggregateType.present
           ? data.aggregateType.value
           : this.aggregateType,
@@ -4287,6 +4314,7 @@ class LocalOutboxOperation extends DataClass
   String toString() {
     return (StringBuffer('LocalOutboxOperation(')
           ..write('operationId: $operationId, ')
+          ..write('ownerUserId: $ownerUserId, ')
           ..write('aggregateType: $aggregateType, ')
           ..write('aggregateId: $aggregateId, ')
           ..write('operationType: $operationType, ')
@@ -4305,6 +4333,7 @@ class LocalOutboxOperation extends DataClass
   @override
   int get hashCode => Object.hash(
       operationId,
+      ownerUserId,
       aggregateType,
       aggregateId,
       operationType,
@@ -4321,6 +4350,7 @@ class LocalOutboxOperation extends DataClass
       identical(this, other) ||
       (other is LocalOutboxOperation &&
           other.operationId == this.operationId &&
+          other.ownerUserId == this.ownerUserId &&
           other.aggregateType == this.aggregateType &&
           other.aggregateId == this.aggregateId &&
           other.operationType == this.operationType &&
@@ -4337,6 +4367,7 @@ class LocalOutboxOperation extends DataClass
 class LocalOutboxOperationsCompanion
     extends UpdateCompanion<LocalOutboxOperation> {
   final Value<String> operationId;
+  final Value<String> ownerUserId;
   final Value<String> aggregateType;
   final Value<String> aggregateId;
   final Value<String> operationType;
@@ -4351,6 +4382,7 @@ class LocalOutboxOperationsCompanion
   final Value<int> rowid;
   const LocalOutboxOperationsCompanion({
     this.operationId = const Value.absent(),
+    this.ownerUserId = const Value.absent(),
     this.aggregateType = const Value.absent(),
     this.aggregateId = const Value.absent(),
     this.operationType = const Value.absent(),
@@ -4366,6 +4398,7 @@ class LocalOutboxOperationsCompanion
   });
   LocalOutboxOperationsCompanion.insert({
     required String operationId,
+    this.ownerUserId = const Value.absent(),
     required String aggregateType,
     required String aggregateId,
     required String operationType,
@@ -4385,6 +4418,7 @@ class LocalOutboxOperationsCompanion
         payloadJson = Value(payloadJson);
   static Insertable<LocalOutboxOperation> custom({
     Expression<String>? operationId,
+    Expression<String>? ownerUserId,
     Expression<String>? aggregateType,
     Expression<String>? aggregateId,
     Expression<String>? operationType,
@@ -4400,6 +4434,7 @@ class LocalOutboxOperationsCompanion
   }) {
     return RawValuesInsertable({
       if (operationId != null) 'operation_id': operationId,
+      if (ownerUserId != null) 'owner_user_id': ownerUserId,
       if (aggregateType != null) 'aggregate_type': aggregateType,
       if (aggregateId != null) 'aggregate_id': aggregateId,
       if (operationType != null) 'operation_type': operationType,
@@ -4417,6 +4452,7 @@ class LocalOutboxOperationsCompanion
 
   LocalOutboxOperationsCompanion copyWith(
       {Value<String>? operationId,
+      Value<String>? ownerUserId,
       Value<String>? aggregateType,
       Value<String>? aggregateId,
       Value<String>? operationType,
@@ -4431,6 +4467,7 @@ class LocalOutboxOperationsCompanion
       Value<int>? rowid}) {
     return LocalOutboxOperationsCompanion(
       operationId: operationId ?? this.operationId,
+      ownerUserId: ownerUserId ?? this.ownerUserId,
       aggregateType: aggregateType ?? this.aggregateType,
       aggregateId: aggregateId ?? this.aggregateId,
       operationType: operationType ?? this.operationType,
@@ -4451,6 +4488,9 @@ class LocalOutboxOperationsCompanion
     final map = <String, Expression>{};
     if (operationId.present) {
       map['operation_id'] = Variable<String>(operationId.value);
+    }
+    if (ownerUserId.present) {
+      map['owner_user_id'] = Variable<String>(ownerUserId.value);
     }
     if (aggregateType.present) {
       map['aggregate_type'] = Variable<String>(aggregateType.value);
@@ -4495,6 +4535,7 @@ class LocalOutboxOperationsCompanion
   String toString() {
     return (StringBuffer('LocalOutboxOperationsCompanion(')
           ..write('operationId: $operationId, ')
+          ..write('ownerUserId: $ownerUserId, ')
           ..write('aggregateType: $aggregateType, ')
           ..write('aggregateId: $aggregateId, ')
           ..write('operationType: $operationType, ')
@@ -6960,6 +7001,7 @@ typedef $$LocalIncidentEventsTableProcessedTableManager = ProcessedTableManager<
 typedef $$LocalOutboxOperationsTableCreateCompanionBuilder
     = LocalOutboxOperationsCompanion Function({
   required String operationId,
+  Value<String> ownerUserId,
   required String aggregateType,
   required String aggregateId,
   required String operationType,
@@ -6976,6 +7018,7 @@ typedef $$LocalOutboxOperationsTableCreateCompanionBuilder
 typedef $$LocalOutboxOperationsTableUpdateCompanionBuilder
     = LocalOutboxOperationsCompanion Function({
   Value<String> operationId,
+  Value<String> ownerUserId,
   Value<String> aggregateType,
   Value<String> aggregateId,
   Value<String> operationType,
@@ -7001,6 +7044,9 @@ class $$LocalOutboxOperationsTableFilterComposer
   });
   ColumnFilters<String> get operationId => $composableBuilder(
       column: $table.operationId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get ownerUserId => $composableBuilder(
+      column: $table.ownerUserId, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get aggregateType => $composableBuilder(
       column: $table.aggregateType, builder: (column) => ColumnFilters(column));
@@ -7047,6 +7093,9 @@ class $$LocalOutboxOperationsTableOrderingComposer
   });
   ColumnOrderings<String> get operationId => $composableBuilder(
       column: $table.operationId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get ownerUserId => $composableBuilder(
+      column: $table.ownerUserId, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<String> get aggregateType => $composableBuilder(
       column: $table.aggregateType,
@@ -7098,6 +7147,9 @@ class $$LocalOutboxOperationsTableAnnotationComposer
   });
   GeneratedColumn<String> get operationId => $composableBuilder(
       column: $table.operationId, builder: (column) => column);
+
+  GeneratedColumn<String> get ownerUserId => $composableBuilder(
+      column: $table.ownerUserId, builder: (column) => column);
 
   GeneratedColumn<String> get aggregateType => $composableBuilder(
       column: $table.aggregateType, builder: (column) => column);
@@ -7165,6 +7217,7 @@ class $$LocalOutboxOperationsTableTableManager extends RootTableManager<
                   $db: db, $table: table),
           updateCompanionCallback: ({
             Value<String> operationId = const Value.absent(),
+            Value<String> ownerUserId = const Value.absent(),
             Value<String> aggregateType = const Value.absent(),
             Value<String> aggregateId = const Value.absent(),
             Value<String> operationType = const Value.absent(),
@@ -7180,6 +7233,7 @@ class $$LocalOutboxOperationsTableTableManager extends RootTableManager<
           }) =>
               LocalOutboxOperationsCompanion(
             operationId: operationId,
+            ownerUserId: ownerUserId,
             aggregateType: aggregateType,
             aggregateId: aggregateId,
             operationType: operationType,
@@ -7195,6 +7249,7 @@ class $$LocalOutboxOperationsTableTableManager extends RootTableManager<
           ),
           createCompanionCallback: ({
             required String operationId,
+            Value<String> ownerUserId = const Value.absent(),
             required String aggregateType,
             required String aggregateId,
             required String operationType,
@@ -7210,6 +7265,7 @@ class $$LocalOutboxOperationsTableTableManager extends RootTableManager<
           }) =>
               LocalOutboxOperationsCompanion.insert(
             operationId: operationId,
+            ownerUserId: ownerUserId,
             aggregateType: aggregateType,
             aggregateId: aggregateId,
             operationType: operationType,

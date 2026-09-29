@@ -26,7 +26,8 @@ part 'guardian_database.g.dart';
 // TABLE DEFINITIONS
 // ═══════════════════════════════════════════════════════
 
-/// Emergency contacts — stored locally, encrypted at rest
+/// Emergency contacts — stored in OS-protected app storage. The Drift file is
+/// not SQLCipher-encrypted; see the storage/privacy ADR before changing this.
 class LocalContacts extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get ownerUserId => text()();
@@ -144,6 +145,7 @@ class LocalIncidentEvents extends Table {
 /// Durable operations awaiting an authenticated cloud write.
 class LocalOutboxOperations extends Table {
   TextColumn get operationId => text()();
+  TextColumn get ownerUserId => text().withDefault(const Constant(''))();
   TextColumn get aggregateType => text()();
   TextColumn get aggregateId => text()();
   TextColumn get operationType => text()();
@@ -200,7 +202,7 @@ class GuardianDatabase extends _$GuardianDatabase {
   GuardianDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -250,6 +252,23 @@ class GuardianDatabase extends _$GuardianDatabase {
           }
           if (from < 7 && to >= 7) {
             await migrator.deleteTable('local_mesh_beacons');
+          }
+          if (from < 8 && to >= 8) {
+            await migrator.addColumn(
+              localOutboxOperations,
+              localOutboxOperations.ownerUserId,
+            );
+            // Existing pending incident operations predate owner scoping.
+            // Bind only rows that can be proven from their matching local alert;
+            // unknown rows remain unowned and therefore cannot replay.
+            await customStatement(
+              'UPDATE local_outbox_operations '
+              'SET owner_user_id = COALESCE(('
+              'SELECT user_id FROM local_alerts '
+              'WHERE local_alerts.alert_id = local_outbox_operations.aggregate_id'
+              '), \'\') '
+              'WHERE owner_user_id = \'\'',
+            );
           }
         },
       );
@@ -334,8 +353,11 @@ class GuardianDatabase extends _$GuardianDatabase {
   Future<void> upsertAlert(LocalAlertsCompanion alert) =>
       into(localAlerts).insertOnConflictUpdate(alert);
 
-  Future<List<LocalAlert>> getUnsyncedAlerts() =>
-      (select(localAlerts)..where((t) => t.syncedToCloud.equals(false))).get();
+  Future<List<LocalAlert>> getUnsyncedAlerts(String ownerUserId) =>
+      (select(localAlerts)
+            ..where((t) =>
+                t.userId.equals(ownerUserId) & t.syncedToCloud.equals(false)))
+          .get();
 
   Future<LocalAlert?> getActiveAlert(String userId) => (select(localAlerts)
         ..where((alert) =>
@@ -386,6 +408,7 @@ class GuardianDatabase extends _$GuardianDatabase {
       } else {
         await _queueTerminalCloudUpdate(
           alertId: alertId,
+          ownerUserId: alert.userId,
           cloudIncidentId: cloudIncidentId,
           terminalState: currentState,
           occurredAt: alert.resolvedAt ?? now,
@@ -442,6 +465,7 @@ class GuardianDatabase extends _$GuardianDatabase {
       if (alert.cloudIncidentId != null) {
         await _queueTerminalCloudUpdate(
           alertId: alertId,
+          ownerUserId: alert.userId,
           cloudIncidentId: alert.cloudIncidentId!,
           terminalState: terminalState,
           occurredAt: occurredAt,
@@ -452,6 +476,7 @@ class GuardianDatabase extends _$GuardianDatabase {
 
   Future<void> _queueTerminalCloudUpdate({
     required String alertId,
+    required String ownerUserId,
     required String cloudIncidentId,
     required EmergencyIncidentState terminalState,
     required DateTime occurredAt,
@@ -459,6 +484,7 @@ class GuardianDatabase extends _$GuardianDatabase {
       into(localOutboxOperations).insert(
         LocalOutboxOperationsCompanion.insert(
           operationId: '$alertId:update:${terminalState.name}',
+          ownerUserId: Value(ownerUserId),
           aggregateType: 'incident',
           aggregateId: alertId,
           operationType: 'updateIncidentStatus',
@@ -476,6 +502,7 @@ class GuardianDatabase extends _$GuardianDatabase {
   /// cloud operation. Replaying the same identifiers is safe.
   Future<bool> queueAlertForCloud({
     required LocalAlertsCompanion alert,
+    required String ownerUserId,
     required String alertId,
     required String eventType,
     required DateTime occurredAt,
@@ -509,6 +536,7 @@ class GuardianDatabase extends _$GuardianDatabase {
         await into(localOutboxOperations).insert(
           LocalOutboxOperationsCompanion.insert(
             operationId: '$alertId:createIncident',
+            ownerUserId: Value(ownerUserId),
             aggregateType: 'incident',
             aggregateId: alertId,
             operationType: 'createIncident',
@@ -546,11 +574,13 @@ class GuardianDatabase extends _$GuardianDatabase {
           .get();
 
   Future<List<LocalOutboxOperation>> getDueOutboxOperations({
+    required String ownerUserId,
     DateTime? now,
     int limit = 25,
   }) =>
       (select(localOutboxOperations)
             ..where((operation) =>
+                operation.ownerUserId.equals(ownerUserId) &
                 operation.status.equals(OutboxOperationState.pending.name) &
                 operation.nextAttemptAt
                     .isSmallerOrEqualValue(now ?? DateTime.now()))
@@ -748,6 +778,65 @@ class GuardianDatabase extends _$GuardianDatabase {
       updatedAt: Value(DateTime.now()),
     ));
     return affected == 1;
+  }
+
+  /// Remove old local safety history without touching active/pending evidence.
+  ///
+  /// The database itself relies on OS application sandbox/device encryption,
+  /// so minimizing retained sensitive history is part of the privacy boundary.
+  Future<void> pruneLocalSafetyData({
+    Duration incidentRetention = const Duration(days: 90),
+    Duration locationRetention = const Duration(days: 7),
+  }) async {
+    final now = DateTime.now();
+    final incidentCutoff = now.subtract(incidentRetention);
+    final locationCutoff = now.subtract(locationRetention);
+
+    await transaction(() async {
+      await (delete(localLocationLog)
+            ..where((row) => row.timestamp.isSmallerThanValue(locationCutoff)))
+          .go();
+
+      await (delete(localDeliveryAttempts)
+            ..where((row) => row.updatedAt.isSmallerThanValue(incidentCutoff)))
+          .go();
+
+      await (delete(localIncidentEvents)
+            ..where((row) => row.createdAt.isSmallerThanValue(incidentCutoff)))
+          .go();
+
+      await (delete(localIncidents)
+            ..where((row) =>
+                row.syncedToCloud.equals(true) &
+                row.createdAt.isSmallerThanValue(incidentCutoff)))
+          .go();
+
+      final oldTerminalAlerts = await (select(localAlerts)
+            ..where((row) =>
+                row.syncedToCloud.equals(true) &
+                row.createdAt.isSmallerThanValue(incidentCutoff) &
+                row.status.isIn(const ['resolved', 'cancelled', 'expired'])))
+          .get();
+      for (final alert in oldTerminalAlerts) {
+        await (delete(localIncidentEvents)
+              ..where((row) => row.incidentId.equals(alert.alertId)))
+            .go();
+        await (delete(localDeliveryAttempts)
+              ..where((row) => row.incidentId.equals(alert.alertId)))
+            .go();
+        await (delete(localAlerts)
+              ..where((row) => row.alertId.equals(alert.alertId)))
+            .go();
+      }
+
+      await (delete(localCheckIns)
+            ..where((row) =>
+                row.status.isIn(
+                  const ['confirmed', 'cancelled', 'escalated'],
+                ) &
+                row.scheduledAt.isSmallerThanValue(incidentCutoff)))
+          .go();
+    });
   }
 }
 

@@ -12,6 +12,8 @@ import uuid
 from functools import lru_cache
 from typing import Any, Dict, Iterable
 
+from aws.runtime_mode import is_local_dev_mode
+
 try:
     import boto3
 except ImportError:  # pragma: no cover - production package includes boto3
@@ -40,7 +42,7 @@ AGENT_AUTHORIZATIONS_TABLE = os.environ.get(
 
 
 def _dev_mode() -> bool:
-    return os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    return is_local_dev_mode()
 
 
 def _b64encode(value: bytes) -> str:

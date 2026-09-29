@@ -12,11 +12,12 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from aws.runtime_mode import is_local_dev_mode
 from aws.session_service import validate_access_session
 
 
 def _dev_mode_enabled() -> bool:
-    return os.environ.get("GUARDIAN_DEV_MODE", "false").lower() == "true"
+    return is_local_dev_mode()
 
 
 def is_dev_mode() -> bool:
@@ -32,6 +33,11 @@ def _gateway_identity(request: Request) -> Optional[Tuple[str, FrozenSet[str]]]:
         .get("authorizer", {})
         .get("claims", {})
     )
+    # Guardian protected APIs accept Cognito access tokens only. API Gateway
+    # can authenticate both ID and access tokens when no OAuth scope is attached
+    # to a route, so enforce token_use here before trusting gateway claims.
+    if str(claims.get("token_use") or "").lower() != "access":
+        return None
     user_id = claims.get("sub") or claims.get("username") or claims.get("cognito:username")
     if not user_id:
         return None
@@ -58,9 +64,17 @@ def _cognito_identity(access_token: str) -> Optional[Tuple[str, FrozenSet[str]]]
             region_name=os.environ.get("AWS_DEFAULT_REGION", "ap-south-1"),
         )
         result = client.get_user(AccessToken=access_token)
-        user_id = result.get("Username")
+        username = str(result.get("Username") or "")
+        attributes = {
+            str(item.get("Name")): str(item.get("Value") or "")
+            for item in result.get("UserAttributes", [])
+            if item.get("Name")
+        }
+        # API Gateway's verified claims use Cognito sub as the immutable user
+        # identity. The direct/local fallback must return the same identifier.
+        user_id = attributes.get("sub") or None
         group_result = client.admin_list_groups_for_user(
-            Username=user_id,
+            Username=username,
             UserPoolId=pool_id,
             Limit=20,
         )
@@ -80,9 +94,8 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
     _public_paths = {
         "/",
         "/health",
-        "/auth/send-otp",
-        "/auth/verify-otp",
         "/auth/google",
+        "/auth/session",
         "/auth/refresh",
         "/docs",
         "/docs/oauth2-redirect",
